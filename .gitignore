@@ -1,0 +1,7 @@
+.DS_Store
+.vercel
+node_modules
+*.log
+# large native/source exports — keep out of git
+*_BM_*.csv
+Siwash_North_BM_Nov_2021.csv
