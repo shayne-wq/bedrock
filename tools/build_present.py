@@ -747,12 +747,49 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   viewer.scene.postRender.addEventListener(hud);
 
   // ---- export ----
-  function grab(){ viewer.render(); return viewer.scene.canvas.toDataURL('image/png'); }
+  // toDataURL captures the WebGL canvas ONLY — every DOM overlay, including the
+  // synthetic-drill warning, is absent from it. An exported still of the drill
+  // chapter would otherwise show fabricated holes with nothing marking them as
+  // fabricated, which is the worst way this tool could be misused. So the
+  // disclaimer is burned into the bitmap rather than left to the page chrome.
+  function stamp(dataUrl){
+    return new Promise(res=>{
+      const img=new Image();
+      img.onload=()=>{
+        const c=document.createElement('canvas'); c.width=img.width; c.height=img.height;
+        const x=c.getContext('2d'); x.drawImage(img,0,0);
+        const S=c.width/1440, pad=Math.round(22*S);
+        const disc=(CLASS_CONFIRMED?'':'Resource class labels unconfirmed. ')+
+                   'Illustrative visualization — not a mineral resource statement.';
+        x.font=Math.round(13*S)+'px ui-monospace, monospace';
+        x.textBaseline='bottom';
+        const w=x.measureText(disc).width, h=Math.round(24*S);
+        x.fillStyle='rgba(7,9,10,.82)';
+        x.fillRect(pad-Math.round(9*S), c.height-pad-h, w+Math.round(18*S), h);
+        x.fillStyle='#C6CAC5';
+        x.fillText(disc, pad, c.height-pad-Math.round(6*S));
+        if(drills&&DRILL_SYNTHETIC){
+          const warn='SYNTHETIC DRILL DATA — FABRICATED, NOT REAL RESULTS';
+          x.font='600 '+Math.round(15*S)+'px ui-monospace, monospace';
+          const ww=x.measureText(warn).width, wh=Math.round(30*S);
+          const wy=c.height-pad-h-Math.round(10*S)-wh;
+          x.fillStyle='#D9584A';
+          x.fillRect(pad-Math.round(9*S), wy, ww+Math.round(18*S), wh);
+          x.fillStyle='#0d0f10';
+          x.fillText(warn, pad, wy+wh-Math.round(8*S));
+        }
+        res(c.toDataURL('image/png'));
+      };
+      img.onerror=()=>res(dataUrl);
+      img.src=dataUrl;
+    });
+  }
+  function grab(){ viewer.render(); return stamp(viewer.scene.canvas.toDataURL('image/png')); }
   function dl(name,href){const a=document.createElement('a');a.download=name;a.href=href;a.click();}
   function loadJs(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
-  $('expPng').onclick=()=>{ dl('elk-gold-'+(cur+1)+'.png',grab()); toast('PNG saved'); };
+  $('expPng').onclick=async()=>{ dl('elk-gold-'+(cur+1)+'.png',await grab()); toast('PNG saved'); };
 
   async function shoot(){
     // Walk every chapter, let the camera settle and tiles land, capture.
@@ -763,7 +800,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     for(let i=0;i<CHAPTERS.length;i++){
       go(i); await sleep(3200);
       const s=readout();
-      shots.push({title:CHAPTERS[i].title,body:CHAPTERS[i].body,img:grab(),stats:s});
+      shots.push({title:CHAPTERS[i].title,body:CHAPTERS[i].body,img:await grab(),stats:s});
       toast('Capturing '+(i+1)+' / '+CHAPTERS.length,1500);
     }
     if(wasPanel) $('xbtn').click();
@@ -840,7 +877,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   $('load').style.display='none';
   $('begin').onclick=()=>{$('intro').style.opacity='0';setTimeout(()=>$('intro').style.display='none',800);
     frameFor(CHAPTERS[0],true); if(EMBED) play();};
-  window.__viewer=viewer; window.__api={go:go,play:play,stop:stop,readout:readout,shoot:shoot};
+  window.__viewer=viewer; window.__api={go:go,play:play,stop:stop,readout:readout,shoot:shoot,grab:grab};
 })().catch(e=>{
   // Never leave the opaque boot overlay covering an error the user can't read.
   const l=$('load'); if(l) l.style.display='none';
