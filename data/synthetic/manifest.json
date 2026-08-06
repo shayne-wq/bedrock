@@ -1,0 +1,12 @@
+{
+  "synthetic": true,
+  "warning": "FABRICATED DATA \u2014 not real drill results. Demo use only.",
+  "generator": "tools/make_synthetic_drills.py",
+  "seed": 20211130,
+  "holes": 40,
+  "total_metres": 9194.7,
+  "assay_intervals": 359,
+  "mineralized_intervals": 162,
+  "best_interval_gpt": 63.656,
+  "crs": "EPSG:26910 (UTM 10N, NAD83)"
+}
