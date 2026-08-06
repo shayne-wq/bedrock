@@ -793,17 +793,22 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
 
   async function shoot(){
     // Walk every chapter, let the camera settle and tiles land, capture.
-    const wasPanel=$('panel').classList.contains('on');
+    // Exporting is a side trip: put the viewer back where the user left it.
+    const wasPanel=$('panel').classList.contains('on'), wasChapter=cur;
     if(wasPanel) $('xbtn').click();
     stop();
     const shots=[];
-    for(let i=0;i<CHAPTERS.length;i++){
-      go(i); await sleep(3200);
-      const s=readout();
-      shots.push({title:CHAPTERS[i].title,body:CHAPTERS[i].body,img:await grab(),stats:s});
-      toast('Capturing '+(i+1)+' / '+CHAPTERS.length,1500);
+    try{
+      for(let i=0;i<CHAPTERS.length;i++){
+        go(i); await sleep(3200);
+        const s=readout();
+        shots.push({title:CHAPTERS[i].title,body:CHAPTERS[i].body,img:await grab(),stats:s});
+        toast('Capturing '+(i+1)+' / '+CHAPTERS.length,1500);
+      }
+    } finally {
+      go(wasChapter);
+      if(wasPanel) $('xbtn').click();
     }
-    if(wasPanel) $('xbtn').click();
     return shots;
   }
   const FOOT=(CLASS_CONFIRMED?'':'Resource class labels unconfirmed. ')+
