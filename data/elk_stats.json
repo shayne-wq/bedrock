@@ -59,6 +59,8 @@
     "YBR2",
     "YBR2a"
   ],
+  "dropped_blocks": 0,
+  "blocks_straddling_multiple_domains": 18367,
   "total": {
     "blocks": 168013,
     "tonnes": 8985428.4,

@@ -7,6 +7,6 @@
   "total_metres": 9194.7,
   "assay_intervals": 359,
   "mineralized_intervals": 162,
-  "best_interval_gpt": 63.656,
+  "best_interval_gpt": 58.06,
   "crs": "EPSG:26910 (UTM 10N, NAD83)"
 }

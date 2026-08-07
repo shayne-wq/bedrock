@@ -175,6 +175,8 @@ def main():
         "class_labels": {str(k): v for k, v in CLASS_LABELS.items()},
         "class_mapping_confirmed": CLASS_CONFIRMED,
         "veins": veins,
+        "dropped_blocks": dropped,
+        "blocks_straddling_multiple_domains": shared,
         "total": rollup(total),
         "by_class": {str(k): rollup(v) for k, v in sorted(per_class.items())},
         "by_vein": {k: rollup(v) for k, v in sorted(

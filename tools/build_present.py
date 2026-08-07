@@ -47,7 +47,6 @@ TRACE_STEP = 5.0          # m between desurveyed trace points
 stats = json.loads(STATS.read_text())
 VEINS = stats["veins"]
 CLASS_LABELS = stats["class_labels"]
-TONNES_PER_BLOCK = stats["tonnes_per_block"]
 
 # ---------------------------------------------------------------- blocks
 rows = []
@@ -80,6 +79,7 @@ for x, y, z, g, penv, cls, vein in rows:
 b64 = base64.b64encode(bytes(buf)).decode()
 b64m = base64.b64encode(bytes(meta)).decode()
 N = len(rows)
+assert len(VEINS) <= 256, f"{len(VEINS)} vein domains exceeds the uint8 packing in META"
 
 RUNS = []
 start = 0
@@ -112,10 +112,19 @@ def load_drills():
     keeps the build dependency-free. Returns [] when no drill data is present.
     """
     man_p = DRILLDIR / "manifest.json"
-    col_p = DRILLDIR / "SYNTHETIC_collars.csv"
-    sur_p = DRILLDIR / "SYNTHETIC_surveys.csv"
-    ass_p = DRILLDIR / "SYNTHETIC_assays.csv"
-    if not (col_p.exists() and sur_p.exists() and ass_p.exists()):
+
+    def find(kind):
+        """Accept either SYNTHETIC_<kind>.csv or a plain <kind>.csv, so real
+        collar/survey/assay exports drop in without being renamed to look
+        synthetic. Synthetic-ness is decided by the manifest, not the filename."""
+        for name in (f"SYNTHETIC_{kind}.csv", f"{kind}.csv"):
+            q = DRILLDIR / name
+            if q.exists():
+                return q
+        return None
+
+    col_p, sur_p, ass_p = find("collars"), find("surveys"), find("assays")
+    if not (col_p and sur_p and ass_p):
         return [], {}
     man = json.loads(man_p.read_text()) if man_p.exists() else {"synthetic": True}
 
@@ -197,7 +206,7 @@ CHAPTERS = [
    "title": "How well is it known?", "body": "Recoloured by resource classification. Confidence is not evenly distributed through a deposit — and this is the first question any technical reader asks."},
   # Cut-off lifted to 1.0 here so the low-grade halo stops burying the traces.
   {"h": 38, "p": -24, "r": 1900, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11, "drills": True,
-   "title": "Drilled from surface", "body": "Drill traces coloured by assay grade, hung from their collars on the ridge above. The holes are what the block model is built from."},
+   "title": "Drilled from surface", "body": "Drill traces coloured by assay grade, hung from their collars on the ridge above. These holes are synthetic — traced through the modelled grades to show how drilling reads against the block model."},
   {"h": 0, "p": -89, "r": 2500, "cut": 0.3, "xray": True, "mode": "grade", "dwell": 9,
    "title": "Footprint in plan", "body": "Seen from directly above: northwest-trending vein corridors threading across the ridge."},
   {"h": 4, "p": -4, "r": 2650, "cut": 0.3, "xray": True, "mode": "grade", "dwell": 10,
@@ -238,7 +247,9 @@ HTML = r"""<!DOCTYPE html>
   #bar{position:fixed;left:0;right:0;bottom:0;z-index:6;padding:70px 34px 26px;
        background:linear-gradient(180deg,rgba(7,9,10,0) 0%,rgba(7,9,10,.72) 44%,rgba(7,9,10,.92) 100%);
        display:flex;align-items:flex-end;justify-content:space-between;gap:36px;transition:opacity .4s}
-  #cap{max-width:560px;opacity:0;transform:translateY(14px);transition:opacity .6s ease,transform .6s ease}
+  /* Visible by default — the caption IS the story. The .in class animates a
+     transform-only enter on top; it must never be what makes text appear. */
+  #cap{max-width:560px;transform:translateY(14px);opacity:.999;transition:opacity .6s ease,transform .6s ease}
   #cap.in{opacity:1;transform:none}
   #cap .ey{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.22em;color:#C99A3A;text-transform:uppercase}
   #cap h2{font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.05;margin:12px 0 12px}
@@ -285,6 +296,7 @@ HTML = r"""<!DOCTYPE html>
   #readout .l{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:#8E948E}
   #readout .v{font-family:'JetBrains Mono',monospace;font-size:14px;color:#EDEEEC}
   #readout .v.hero{color:#C99A3A;font-size:16px}
+  #veincav{margin-top:10px;font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.55;color:#E3BE79}
   #caveat{margin-top:12px;font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.55;color:#A8AEA9}
   .xrow{display:flex;gap:6px;margin-top:8px}
   .xrow .btn{flex:1;text-align:center}
@@ -323,6 +335,13 @@ HTML = r"""<!DOCTYPE html>
   body.embed #cap h2{font-size:22px}
   body.embed #cap p{font-size:15px}
   body.embed #intro h1{font-size:clamp(30px,6vw,54px)}
+  /* A 2.3s camera flight per chapter, fired every 9-11s on autoplay, is the
+     canonical vestibular trigger. Honour the OS setting: cut the flight to a
+     snap, stop autoplay starting itself, and flatten the CSS transitions. */
+  @media(prefers-reduced-motion:reduce){
+    #cap,#intro,#prog,#dwell,#bar,.btn,.seg button,.chip{transition:none!important}
+    #dwell{display:none}
+  }
   @media(max-width:900px){#rail{display:none}#panel{width:auto;left:16px;right:16px}#cap h2{font-size:23px}#cap p{font-size:16px}}
 </style>
 </head>
@@ -379,6 +398,7 @@ HTML = r"""<!DOCTYPE html>
     <button class="btn sm" id="expPptx">PPTX</button>
     <button class="btn sm" id="expPdf">PDF</button>
   </div>
+  <div id="veincav"></div>
   <div id="caveat"></div>
 </div>
 
@@ -399,7 +419,7 @@ HTML = r"""<!DOCTYPE html>
     <span class="count" id="count">1 / 9</span>
     <button id="next" class="btn">Next ›</button>
     <button id="play" class="btn" title="Autoplay (P)">▶ Play</button>
-    <button id="narr" class="btn sm" title="Narration (N)">🔊</button>
+    <button id="narr" class="btn sm" title="Narration (N)">Narrate</button>
   </div>
 </div>
 
@@ -427,6 +447,7 @@ proj4.defs('EPSG:26910','+proj=utm +zone=10 +datum=NAD83 +units=m +no_defs');
 const GEOID=-18, rad=Cesium.Math.toRadians, $=id=>document.getElementById(id);
 const setStat=t=>$('status').textContent=t;
 const EMBED=new URLSearchParams(location.search).has('embed');
+const REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches;
 if(EMBED) document.body.classList.add('embed');
 
 function unb64(b){const s=atob(b);const u=new Uint8Array(s.length);for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i);return u;}
@@ -578,20 +599,34 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     // A block can belong to more than one domain, so under isolation this is
     // "blocks touching this vein", not an exclusive count. Say so.
     $('r_nl').textContent=vein===-1?'Blocks':'Blocks in domain';
+    // The shell on screen is filtered on each block's DOMINANT domain, but the
+    // tonnage above is share-weighted across every domain a block touches. For
+    // veins with many straddlers the two differ by up to ~36%, so say so rather
+    // than let a geologist assume the boxes are the number.
+    $('veincav').textContent = vein===-1 ? '' :
+      'Shell shows blocks whose dominant domain is '+VEINS[vein]+
+      '; tonnage above is share-weighted across all blocks touching it, so it counts more than is drawn.';
     return {t:t,g:t?m/t:0,oz:m/G_PER_OZ,n:n};
   }
 
   // ---- deep links ----
+  let hashTimer=null;
   function syncHash(){
     if(restoring) return;
-    const on=Object.keys(clsOn).filter(c=>clsOn[c]).join('');
-    location.replace('#c='+cur+'&m='+mode+'&k='+cutIdx+'&v='+vein+'&s='+on+'&d='+(drills?1:0));
+    // '-' rather than '' for "no classes selected": an empty value round-trips
+    // through the ||'0123' default and would silently re-enable all four.
+    const on=Object.keys(clsOn).filter(c=>clsOn[c]).join('')||'-';
+    const h='#c='+cur+'&m='+mode+'&k='+cutIdx+'&v='+vein+'&s='+on+'&d='+(drills?1:0);
+    // Dragging the cut-off fires apply() per tick; replaceState instead of
+    // location.replace keeps that off the navigation path entirely.
+    clearTimeout(hashTimer);
+    hashTimer=setTimeout(()=>history.replaceState(null,'',h),200);
   }
   function readHash(){
     const h=new URLSearchParams(location.hash.slice(1));
     if(!h.has('c')) return null;
     return {c:+h.get('c')||0, m:h.get('m')==='class'?'class':'grade', k:Math.max(0,Math.min(LADDER.length-1,+h.get('k')||0)),
-            v:+h.get('v'), s:h.get('s')||'0123', d:h.get('d')==='1'};
+            v:+h.get('v'), s:h.has('s')?h.get('s'):'0123', d:h.get('d')==='1'};
   }
 
   // ---- explore UI ----
@@ -648,7 +683,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   function frameFor(c,animate){
     const hpr=new Cesium.HeadingPitchRange(rad(c.h),rad(c.p),c.r);
     viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
-    if(animate) viewer.camera.flyToBoundingSphere(new Cesium.BoundingSphere(center,RADIUS),
+    if(animate&&!REDUCED) viewer.camera.flyToBoundingSphere(new Cesium.BoundingSphere(center,RADIUS),
       {offset:hpr,duration:2.3,complete:()=>viewer.camera.lookAt(center,hpr)});
     else viewer.camera.lookAt(center,hpr);
   }
@@ -683,12 +718,21 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
 
   // ---- narration + autoplay ----
   const synth=window.speechSynthesis;
+  let narrGuard=null;
   function speak(c){
-    if(!synth) return;
-    synth.cancel();
+    if(!synth){ armDwell(c); return; }
+    synth.cancel(); clearTimeout(narrGuard);
     const u=new SpeechSynthesisUtterance(c.title+'. '+c.body);
     u.rate=0.96; u.pitch=1.0;
-    u.onend=()=>{ if(playing&&narrating) advance(); };
+    let done=false;
+    const finish=()=>{ if(done) return; done=true; clearTimeout(narrGuard);
+                       if(playing&&narrating) advance(); };
+    u.onend=finish;
+    // Chrome silently kills utterances around 15s and some devices have no
+    // voices at all, in which case onend never fires and the deck stalls with
+    // the button still reading Pause. Watchdog so playback always progresses.
+    u.onerror=finish;
+    narrGuard=setTimeout(finish,((c.dwell||9)*1000)*2.5);
     synth.speak(u);
   }
   function advance(){ if(cur<CHAPTERS.length-1) go(cur+1); else stop(); }
@@ -709,7 +753,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   }
   function stop(){
     playing=false; $('play').classList.remove('on'); $('play').textContent='▶ Play';
-    clearTimeout(dwellTimer); if(synth) synth.cancel();
+    clearTimeout(dwellTimer); clearTimeout(narrGuard); if(synth) synth.cancel();
     const d=$('dwell'); d.style.transition='none'; d.style.width='0';
   }
   $('play').onclick=()=>playing?stop():play();
@@ -722,9 +766,14 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   $('next').onclick=()=>{stop();go(cur+1);};
   $('prev').onclick=()=>{stop();go(cur-1);};
   addEventListener('keydown',e=>{
+    // Space on a focused <select> or the slider must not also advance the deck.
+    const el=document.activeElement, tag=el&&el.tagName;
+    if(tag==='SELECT'||tag==='INPUT'||tag==='TEXTAREA') return;
     if(e.key==='ArrowRight'||e.key===' '){stop();go(cur+1);}
     else if(e.key==='ArrowLeft'){stop();go(cur-1);}
-    else if(e.key==='e'||e.key==='E') $('xbtn').click();
+    // In embed mode the panel is display:none, so toggling it would only hide
+    // the caption and nav with no visible way back.
+    else if((e.key==='e'||e.key==='E')&&!EMBED) $('xbtn').click();
     else if(e.key==='p'||e.key==='P') $('play').click();
     else if(e.key==='n'||e.key==='N') $('narr').click();
   });
@@ -753,7 +802,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // fabricated, which is the worst way this tool could be misused. So the
   // disclaimer is burned into the bitmap rather than left to the page chrome.
   function stamp(dataUrl){
-    return new Promise(res=>{
+    return new Promise((res,rej)=>{
       const img=new Image();
       img.onload=()=>{
         const c=document.createElement('canvas'); c.width=img.width; c.height=img.height;
@@ -780,21 +829,51 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         }
         res(c.toDataURL('image/png'));
       };
-      img.onerror=()=>res(dataUrl);
+      // Fail CLOSED. Resolving the unstamped original here would emit a
+      // bitmap of fabricated drill holes carrying no label at all, while
+      // still reporting success — the exact misuse this guard exists to stop.
+      img.onerror=()=>rej(new Error('could not stamp the export — aborted'));
       img.src=dataUrl;
     });
   }
   function grab(){ viewer.render(); return stamp(viewer.scene.canvas.toDataURL('image/png')); }
   function dl(name,href){const a=document.createElement('a');a.download=name;a.href=href;a.click();}
-  function loadJs(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+  // Pinned by hash like the head deps: a poisoned CDN response here would run
+  // in-origin at the moment a deck is generated, and could strip the synthetic
+  // disclaimer off every slide. Cached so repeat clicks don't re-evaluate.
+  const LIBS={
+    pptx:{src:'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js',
+          sri:'sha384-Cck14aA9cifjYolcnjebXRfWGkz5ltHMBiG4px/j8GS+xQcb7OhNQWZYyWjQ+UwQ'},
+    pdf:{src:'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+         sri:'sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk'}};
+  const _libs={};
+  function loadJs(key){
+    const L=LIBS[key];
+    if(_libs[key]) return _libs[key];
+    return _libs[key]=new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src=L.src; s.integrity=L.sri; s.crossOrigin='anonymous';
+      s.onload=res;
+      s.onerror=()=>{ delete _libs[key]; rej(new Error('could not load '+key+' (integrity check or network)')); };
+      document.head.appendChild(s);});
+  }
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
-  $('expPng').onclick=async()=>{ dl('elk-gold-'+(cur+1)+'.png',await grab()); toast('PNG saved'); };
+  $('expPng').onclick=async()=>{
+    try{ dl('elk-gold-'+(cur+1)+'.png',await grab()); toast('PNG saved'); }
+    catch(e){ toast('Export aborted: '+e.message,5000); }
+  };
 
+  let exporting=false;
   async function shoot(){
+    if(exporting) throw new Error('an export is already running');
     // Walk every chapter, let the camera settle and tiles land, capture.
     // Exporting is a side trip: put the viewer back where the user left it.
     const wasPanel=$('panel').classList.contains('on'), wasChapter=cur;
+    // Exporting walks every chapter, which resets mode/cut/vein/classes. Snapshot
+    // the user's exploration so a deck export isn't a destructive act.
+    const snap={mode:mode,cutIdx:cutIdx,vein:vein,clsOn:Object.assign({},clsOn)};
+    exporting=true; ['expPng','expPptx','expPdf'].forEach(id=>$(id).disabled=true);
     if(wasPanel) $('xbtn').click();
     stop();
     const shots=[];
@@ -807,7 +886,13 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       }
     } finally {
       go(wasChapter);
+      setMode(snap.mode); setCut(snap.cutIdx);
+      vein=snap.vein; vsel.value=String(vein);
+      Object.keys(snap.clsOn).forEach(k=>{clsOn[k]=snap.clsOn[k];});
+      chips.querySelectorAll('.chip').forEach(el=>el.classList.toggle('on',clsOn[el.dataset.c]));
+      apply();
       if(wasPanel) $('xbtn').click();
+      exporting=false; ['expPng','expPptx','expPdf'].forEach(id=>$(id).disabled=false);
     }
     return shots;
   }
@@ -818,7 +903,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   $('expPptx').onclick=async()=>{
     try{
       toast('Building deck…',60000);
-      await loadJs('https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js');
+      await loadJs('pptx');
       const shots=await shoot();
       const p=new PptxGenJS(); p.layout='LAYOUT_16x9';
       shots.forEach(s=>{
@@ -830,7 +915,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         sl.addText(s.body,{x:0.5,y:4.25,w:8.5,h:0.9,fontSize:13,color:'C6CAC5',fontFace:'Arial'});
         sl.addText(fmt(s.stats.t)+'   ·   '+s.stats.g.toFixed(2)+' g/t AuEq   ·   '+fmtoz(s.stats.oz),
           {x:0.5,y:5.05,w:8.5,h:0.35,fontSize:12,color:'C99A3A',fontFace:'Consolas'});
-        sl.addText(FOOT,{x:0.5,y:5.35,w:8.5,h:0.3,fontSize:8,color:'6B716D',fontFace:'Arial'});
+        sl.addText(FOOT,{x:0.5,y:5.32,w:8.5,h:0.34,fontSize:10,color:'C6CAC5',fontFace:'Arial'});
       });
       await p.writeFile({fileName:'Elk-Gold-Siwash-North.pptx'});
       toast('PPTX saved');
@@ -840,7 +925,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   $('expPdf').onclick=async()=>{
     try{
       toast('Building PDF…',60000);
-      await loadJs('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
+      await loadJs('pdf');
       const shots=await shoot();
       const {jsPDF}=window.jspdf;
       const doc=new jsPDF({orientation:'landscape',unit:'pt',format:[960,540]});
@@ -854,7 +939,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         doc.text(doc.splitTextToSize(s.body,880),40,428);
         doc.setTextColor(201,154,58); doc.setFontSize(11);
         doc.text(fmt(s.stats.t)+'   ·   '+s.stats.g.toFixed(2)+' g/t AuEq   ·   '+fmtoz(s.stats.oz),40,492);
-        doc.setTextColor(107,113,109); doc.setFontSize(7.5);
+        doc.setTextColor(198,202,197); doc.setFontSize(10);
         doc.text(doc.splitTextToSize(FOOT,880),40,512);
       });
       doc.save('Elk-Gold-Siwash-North.pdf');
@@ -881,7 +966,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   }
   $('load').style.display='none';
   $('begin').onclick=()=>{$('intro').style.opacity='0';setTimeout(()=>$('intro').style.display='none',800);
-    frameFor(CHAPTERS[0],true); if(EMBED) play();};
+    frameFor(CHAPTERS[0],true); if(EMBED&&!REDUCED) play();};
   window.__viewer=viewer; window.__api={go:go,play:play,stop:stop,readout:readout,shoot:shoot,grab:grab};
 })().catch(e=>{
   // Never leave the opaque boot overlay covering an error the user can't read.

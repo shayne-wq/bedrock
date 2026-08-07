@@ -50,22 +50,19 @@ rng = random.Random(SEED)
 def load_blocks():
     """Index blocks on the 10 x 5 x 5 m grid for nearest-cell lookup."""
     grid = {}
-    xs, ys, zs = [], [], []
     for r in csv.DictReader(open(SRC, newline="")):
-        x, y, z = float(r["x"]), float(r["y"]), float(r["z"])
-        key = (round(x / 10), round(y / 5), round(z / 5))
+        key = (round(float(r["x"]) / 10), round(float(r["y"]) / 5), round(float(r["z"]) / 5))
         g = float(r["aueq"])
         # keep the richest block if two land in one cell
-        if key not in grid or g > grid[key][0]:
-            grid[key] = (g, int(r["vein"]), int(r["cls"]))
-        xs.append(x); ys.append(y); zs.append(z)
-    return grid, (min(xs), max(xs), min(ys), max(ys), min(zs), max(zs))
+        if key not in grid or g > grid[key]:
+            grid[key] = g
+    return grid
 
 
 def main():
     if not SRC.exists():
         sys.exit(f"missing {SRC} — run tools/extract_blocks.py first")
-    grid, _bounds = load_blocks()
+    grid = load_blocks()
 
     # Column tops, so collars sit on something resembling the ridge.
     tops = defaultdict(lambda: -1e9)
@@ -121,9 +118,10 @@ def main():
         while d < depth:
             px, py, pz = cx + dx * d, cy + dy * d, cz + dz * d
             cell = grid.get((round(px / 10), round(py / 5), round(pz / 5)))
-            if cell:
-                # modelled grade, roughened so it doesn't look machine-made
-                g = max(0.0, cell[0] * rng.uniform(0.55, 1.75))
+            if cell is not None:
+                # modelled grade, roughened so it doesn't look machine-made.
+                # Symmetric in log space so the noise adds no net grade bias.
+                g = max(0.0, cell * math.exp(rng.uniform(-0.55, 0.55)))
             else:
                 g = rng.uniform(BG_LO, BG_HI)
             samples.append((d, min(d + SAMPLE_M, depth), round(g, 3)))
