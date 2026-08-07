@@ -452,10 +452,84 @@ HTML = r"""<!DOCTYPE html>
   #readout .v{font-family:'JetBrains Mono',monospace;font-size:14px;color:#EDEEEC}
   #readout .v.hero{color:#C99A3A;font-size:16px}
   #veincav{margin-top:10px;font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.55;color:#E3BE79}
+  .erow{display:flex;align-items:center;gap:9px;margin:7px 0}
+  .erow label{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.1em;
+              text-transform:uppercase;color:#8E948E;width:74px;flex:0 0 auto}
+  .erow input{flex:1;accent-color:#C99A3A;min-width:0}
+  .erow span{font-family:'JetBrains Mono',monospace;font-size:11px;color:#EDEEEC;
+             width:52px;text-align:right;flex:0 0 auto}
+  #econout{margin-top:12px;padding-top:11px;border-top:1px solid rgba(255,255,255,.11)}
+  #econout .row{display:flex;justify-content:space-between;align-items:baseline;padding:3px 0}
+  #econout .l{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.14em;
+              text-transform:uppercase;color:#8E948E}
+  #econout .v{font-family:'JetBrains Mono',monospace;font-size:13px;color:#EDEEEC}
+  #econout .v.hero{color:#C99A3A;font-size:15px}
+  #e_note{margin-top:9px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
+          line-height:1.5;color:#A8AEA9}
+  #e_note.warn{color:#0d0f10;background:#D9584A;padding:6px 9px;border-radius:3px;font-weight:600}
   #caveat{margin-top:12px;font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.55;color:#A8AEA9}
   .xrow{display:flex;gap:6px;margin-top:8px}
   .xrow .btn{flex:1;text-align:center}
 
+  /* Text edition: light, high contrast, prints cleanly, no canvas involved. */
+  #datamode{display:none;position:fixed;inset:0;z-index:18;overflow:auto;
+            background:#F7F6F3;color:#14181b;padding:56px 24px 96px}
+  body.datamode #datamode{display:block}
+  body.datamode #cesiumContainer,body.datamode #bar,body.datamode #rail,
+  body.datamode #legend,body.datamode #panel,body.datamode #brand,
+  body.datamode #intro,body.datamode #slide,body.datamode #ink,
+  body.datamode #inkbar,body.datamode #synwarn,body.datamode #compass,
+  body.datamode #scalebar,body.datamode #inspect{display:none!important}
+  #datamode header,#datamode section,#datamode footer{max-width:760px;margin:0 auto 40px}
+  #datamode .eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;
+    letter-spacing:.24em;text-transform:uppercase;color:#8a6a1f;margin-bottom:10px}
+  #datamode h1{font-size:40px;font-weight:800;letter-spacing:-.03em;line-height:1.05}
+  #datamode h2{font-size:20px;font-weight:700;margin:34px 0 10px;letter-spacing:-.01em}
+  #datamode .lead{font-family:Newsreader,Georgia,serif;font-size:19px;line-height:1.55;
+    color:#3a4045;margin-top:14px}
+  #datamode p{font-family:Newsreader,Georgia,serif;font-size:17px;line-height:1.6;color:#23282c}
+  #datamode .sect{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.2em;
+    text-transform:uppercase;color:#6c7278;margin:0 0 8px}
+  #datamode .fig{font-family:'JetBrains Mono',monospace;font-size:13px;color:#14181b;
+    background:#ECEAE4;border-left:3px solid #8a6a1f;padding:11px 14px;margin-top:12px}
+  #datamode table{border-collapse:collapse;width:100%;margin-top:14px;
+    font-family:'JetBrains Mono',monospace;font-size:13px}
+  #datamode caption{text-align:left;font-size:12px;color:#4a5054;padding-bottom:8px}
+  #datamode th,#datamode td{text-align:left;padding:8px 12px 8px 0;
+    border-bottom:1px solid #D9D5CC}
+  #datamode thead th{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#4a5054}
+  #datamode tr.tot th,#datamode tr.tot td{font-weight:700;border-top:2px solid #14181b}
+  #datamode dl{display:grid;grid-template-columns:auto 1fr;gap:4px 18px;margin-top:14px;
+    font-family:'JetBrains Mono',monospace;font-size:13px}
+  #datamode dt{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#4a5054}
+  #datamode pre{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.6;
+    background:#ECEAE4;padding:16px;overflow:auto;white-space:pre-wrap;color:#23282c}
+  @media print{ #datamode{position:static;padding:0} #datatoggle{display:none} }
+  #prov{position:fixed;inset:0;z-index:15;display:none;align-items:center;justify-content:center;
+        background:rgba(4,6,7,.82);backdrop-filter:blur(5px);padding:36px}
+  #prov.on{display:flex}
+  #prov .pinner{background:#0d1114;border:1px solid rgba(255,255,255,.16);border-radius:6px;
+                max-width:780px;width:100%;max-height:100%;display:flex;flex-direction:column}
+  .phead{display:flex;justify-content:space-between;align-items:center;
+         padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.10)}
+  .phead>span{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.24em;
+              text-transform:uppercase;color:#C99A3A}
+  .phead>div{display:flex;gap:8px}
+  #provbody{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.65;
+            color:#C6CAC5;padding:18px 20px;overflow:auto;white-space:pre-wrap;margin:0}
+  #inspect{position:fixed;left:30px;bottom:120px;z-index:10;width:290px;display:none;
+           background:rgba(12,15,16,.95);border:1px solid rgba(255,255,255,.14);
+           border-radius:5px;padding:14px 16px;backdrop-filter:blur(8px)}
+  #inspect.on{display:block}
+  .ihead{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
+  .ihead span{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.22em;
+              text-transform:uppercase;color:#C99A3A}
+  .ihead button{background:none;border:none;color:#C6CAC5;font-size:18px;cursor:pointer;
+                line-height:1;padding:0 4px;min-height:44px;min-width:44px}
+  .irow{display:flex;justify-content:space-between;gap:14px;padding:3px 0}
+  .ik{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.1em;
+      text-transform:uppercase;color:#8E948E}
+  .iv{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#EDEEEC;text-align:right}
   #synwarn{position:fixed;left:50%;transform:translateX(-50%);bottom:118px;z-index:9;display:none;
            font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;
            color:#0d0f10;background:#D9584A;padding:7px 15px;border-radius:3px;font-weight:600}
@@ -571,6 +645,8 @@ HTML = r"""<!DOCTYPE html>
 </div>
 
 <div id="tools">
+  <button id="datatoggle" class="btn sm" title="Text edition — no 3D required">Text</button>
+  <button id="provbtn" class="btn sm" title="Audit trail — where every number comes from">Audit</button>
   <button id="sitebtn" class="btn sm" title="Ground-level site view">Site</button>
   <button id="drawbtn" class="btn sm" title="Annotate (D)">Draw</button>
   <button id="sharebtn" class="btn sm" title="Copy a link to this exact view">Link</button>
@@ -593,6 +669,29 @@ HTML = r"""<!DOCTYPE html>
 
   <h3>Mine plan timeline</h3>
   <div class="cutrow"><input type="range" id="stage" min="-1" max="3" step="1" value="-1"><span id="stagev" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#C99A3A;min-width:96px;text-align:right">none</span></div>
+
+  <h3>Economic scenario</h3>
+  <div class="erow"><label for="e_price">Gold price</label>
+    <input type="range" id="e_price" min="1200" max="4000" step="50" value="2400">
+    <span id="e_pricev">$2,400</span></div>
+  <div class="erow"><label for="e_cost">Cost / t</label>
+    <input type="range" id="e_cost" min="15" max="180" step="5" value="65">
+    <span id="e_costv">$65</span></div>
+  <div class="erow"><label for="e_rec">Recovery</label>
+    <input type="range" id="e_rec" min="50" max="98" step="1" value="90">
+    <span id="e_recv">90%</span></div>
+  <div class="chips" style="margin-top:9px">
+    <div class="chip" id="e_inf"><span class="sw" style="background:#D9584A"></span>Include Inferred</div>
+  </div>
+  <div id="econout">
+    <div class="row"><span class="l">Break-even cut-off</span><span class="v hero" id="e_be">—</span></div>
+    <div class="row"><span class="l">Tonnes above it</span><span class="v" id="e_t">—</span></div>
+    <div class="row"><span class="l">Grade</span><span class="v" id="e_g">—</span></div>
+    <div class="row"><span class="l">Contained</span><span class="v" id="e_oz">—</span></div>
+    <div class="row"><span class="l">In-situ revenue</span><span class="v" id="e_rev">—</span></div>
+    <div class="row"><span class="l">Less op cost</span><span class="v" id="e_mar">—</span></div>
+  </div>
+  <div id="e_note"></div>
 
   <h3>Cross section</h3>
   <div class="seg" id="sectseg">
@@ -689,6 +788,21 @@ HTML = r"""<!DOCTYPE html>
   <button class="ibtn" id="inkClear">Clear</button>
 </div>
 
+<main id="datamode" aria-hidden="true"></main>
+
+<div id="prov"><div class="pinner">
+  <div class="phead"><span>Audit trail</span>
+    <div><button class="btn sm" id="provcopy">Copy</button>
+         <button class="btn sm" id="provclose">Close</button></div></div>
+  <pre id="provbody"></pre>
+</div></div>
+
+<div id="inspect">
+  <div class="ihead"><span id="i_title">Block</span>
+    <button id="i_close" title="Close">\u00d7</button></div>
+  <div id="i_body"></div>
+</div>
+
 <div id="synwarn">Synthetic drill data — fabricated, not real results</div>
 
 <svg id="compass" viewBox="0 0 100 100"><g id="cneedle">
@@ -740,7 +854,7 @@ const DATA="__B64__", META="__META__", N=__N__,
       ZTOP=__ZTOP__, ZBOT=__ZBOT__;
 const CHAPTERS=__CHAPTERS__, RUNS=__RUNS__, BUCKETS=__BUCKETS__, VEINS=__VEINS__,
       LADDER=__LADDER__, CLASS_LABELS=__CLASS_LABELS__, CLASS_CONFIRMED=__CLASS_CONFIRMED__,
-      THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
+      PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
 proj4.defs('EPSG:26910','+proj=utm +zone=10 +datum=NAD83 +units=m +no_defs');
 const TONNES_PER_BLOCK=675;   // 10 x 5 x 5 m at 2.7 t/m3
 const GEOID=-18, rad=Cesium.Math.toRadians, $=id=>document.getElementById(id);
@@ -956,10 +1070,11 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     const ROD=tube(1.1,6);
     const P=(p_)=>toCart(p_[0],p_[1],EXAG===1?p_[2]:(CZ+(p_[2]-CZ)*EXAG));
     HOLES.forEach(h=>{
-      drillEnts.push(viewer.entities.add({polylineVolume:{
+      const trace=viewer.entities.add({polylineVolume:{
         positions:[P(h.collar),P(h.end)], shape:ROD,
         material:new Cesium.Color(0.87,0.89,0.87,0.55),
-        outline:false}}));
+        outline:false}});
+      trace.__hole=h; drillEnts.push(trace);
       h.segs.forEach(s=>{ if(s.g<GRADE_FLOOR) return;
         const col=depthShade(ramp(s.g,false),s.d||0);
         // Assayed intervals as beads strung on the trace rather than fat rods:
@@ -969,9 +1084,10 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         drillEnts.push(viewer.entities.add({position:P(s.mid),
           ellipsoid:{radii:new Cesium.Cartesian3(r,r,r),material:col}}));
         // and the grade bar out the side, length scaled by assay
-        drillEnts.push(viewer.entities.add({polyline:{
+        const bar=viewer.entities.add({polyline:{
           positions:[P(s.mid),P(s.bar)], width:3, material:col,
-          depthFailMaterial:ghost(col)}}));
+          depthFailMaterial:ghost(col)}});
+        bar.__hole=h; bar.__seg=s; drillEnts.push(bar);
       });
       // A collar is a physical thing on the ground; a solid marker reads as one
       // where a screen-space dot reads as a UI annotation.
@@ -1029,6 +1145,312 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     return hiEnts;
   }
   const showHi=on=>{ if(on) buildHighlights(); if(hiEnts) hiEnts.forEach(e=>e.show=on); };
+
+  // ---- accessible data mode ----
+  // A WebGL deck is unreadable to a screen reader, unusable without a GPU,
+  // invisible to search, and impossible to print. This renders the whole deck
+  // as semantic HTML with every figure in a real table — same content, no
+  // canvas. Reachable at ?data=1 and from the toolbar.
+  function buildDataMode(){
+    const wrap=$('datamode');
+    if(wrap.dataset.built) return;
+    wrap.dataset.built='1';
+    const h=document.createElement('header');
+    h.innerHTML='<p class="eyebrow">Orebody \u00b7 text edition</p>'+
+      '<h1>Elk Gold \u2014 Siwash North</h1>';
+    const lead=document.createElement('p'); lead.className='lead';
+    lead.textContent='Every chapter of the presentation, with its figures, as text. '+
+      'No 3D required. Figures are computed from the same rollups the interactive '+
+      'view uses.';
+    h.appendChild(lead); wrap.appendChild(h);
+
+    const totals=document.createElement('section');
+    totals.innerHTML='<h2>Deposit total</h2>';
+    const tt=document.createElement('table');
+    tt.innerHTML='<caption>At the '+GRADE_FLOOR+' g/t floor and above, by resource class</caption>'+
+      '<thead><tr><th scope="col">Class</th><th scope="col">Tonnes</th>'+
+      '<th scope="col">Grade</th><th scope="col">Contained</th></tr></thead>';
+    const tb=document.createElement('tbody');
+    Object.keys(PROV.by_class).forEach(k=>{
+      const s=statsAbove(GRADE_FLOOR,{classes:[+k]});
+      if(!s.tonnes) return;
+      const tr=document.createElement('tr');
+      [CLASS_LABELS[k], Math.round(s.tonnes).toLocaleString()+' t',
+       s.grade.toFixed(2)+' g/t', Math.round(s.oz).toLocaleString()+' oz']
+        .forEach((v,i)=>{ const c=document.createElement(i?'td':'th');
+          if(!i) c.scope='row'; c.textContent=v; tr.appendChild(c); });
+      tb.appendChild(tr);
+    });
+    const all=statsAbove(GRADE_FLOOR);
+    const trf=document.createElement('tr'); trf.className='tot';
+    ['All classes', Math.round(all.tonnes).toLocaleString()+' t',
+     all.grade.toFixed(2)+' g/t', Math.round(all.oz).toLocaleString()+' oz']
+      .forEach((v,i)=>{ const c=document.createElement(i?'td':'th');
+        if(!i) c.scope='row'; c.textContent=v; trf.appendChild(c); });
+    tb.appendChild(trf); tt.appendChild(tb); totals.appendChild(tt);
+    wrap.appendChild(totals);
+
+    CHAPTERS.forEach((c,i)=>{
+      const sec=document.createElement('section');
+      const t2=document.createElement('h2');
+      t2.textContent=(i+1)+'. '+((c.slide?c.slide.title:c.title)||'Chapter '+(i+1));
+      sec.appendChild(t2);
+      if(c.section){ const s=document.createElement('p'); s.className='sect';
+        s.textContent=c.section; sec.appendChild(s); }
+      const body=(c.slide?c.slide.body:c.body)||'';
+      if(body){ const b=document.createElement('p'); b.textContent=body; sec.appendChild(b); }
+      if(c.slide&&c.slide.stats){
+        const dl=document.createElement('dl');
+        c.slide.stats.forEach(x=>{
+          const dt=document.createElement('dt'); dt.textContent=x.k;
+          const dd=document.createElement('dd'); dd.textContent=x.v;
+          dl.appendChild(dt); dl.appendChild(dd);});
+        sec.appendChild(dl);
+      }
+      if(c.slide&&c.slide.table){
+        const tb2=document.createElement('table'); const th=document.createElement('thead');
+        const hr=document.createElement('tr');
+        c.slide.table[0].forEach(x=>{const th2=document.createElement('th');
+          th2.scope='col'; th2.textContent=x; hr.appendChild(th2);});
+        th.appendChild(hr); tb2.appendChild(th);
+        const bd=document.createElement('tbody');
+        c.slide.table.slice(1).forEach(row=>{const tr=document.createElement('tr');
+          row.forEach((x,j)=>{const cell=document.createElement(j?'td':'th');
+            if(!j) cell.scope='row'; cell.textContent=x; tr.appendChild(cell);});
+          bd.appendChild(tr);});
+        tb2.appendChild(bd); sec.appendChild(tb2);
+      }
+      if(!c.slide){
+        const cut=Math.max(GRADE_FLOOR, c.cut===undefined?GRADE_FLOOR:c.cut);
+        const s=statsAbove(cut,{classes:c.classes||null});
+        const p2=document.createElement('p'); p2.className='fig';
+        p2.textContent='At '+cut.toFixed(2)+' g/t'+
+          (c.classes?' ('+c.classes.map(k=>CLASS_LABELS[k]).join(', ')+')':'')+': '+
+          Math.round(s.tonnes).toLocaleString()+' t at '+s.grade.toFixed(2)+
+          ' g/t AuEq, '+Math.round(s.oz).toLocaleString()+' oz contained, from '+
+          s.blocks.toLocaleString()+' blocks.';
+        sec.appendChild(p2);
+      }
+      wrap.appendChild(sec);
+    });
+
+    const foot=document.createElement('footer');
+    const pre=document.createElement('pre'); pre.textContent=provText();
+    foot.innerHTML='<h2>Audit trail</h2>'; foot.appendChild(pre);
+    wrap.appendChild(foot);
+  }
+  function setDataMode(on){
+    if(on) buildDataMode();
+    document.body.classList.toggle('datamode',on);
+    $('datamode').setAttribute('aria-hidden', on?'false':'true');
+    if(on) window.scrollTo(0,0);
+  }
+
+  // ---- provenance ----
+  // Nothing in a competing deck tells you where a number came from. Every
+  // headline figure here resolves to a source file, a predicate and a
+  // reconciliation, and the whole trail copies to the clipboard — the
+  // difference between showing a picture and showing your work.
+  function currentPredicate(){
+    const p=[];
+    p.push('AuEq >= '+Math.max(cutVal(),GRADE_FLOOR).toFixed(2)+' g/t (hard floor '+GRADE_FLOOR+')');
+    const on=Object.keys(clsOn).filter(c=>clsOn[c]).map(c=>CLASS_LABELS[c]);
+    p.push('classes: '+(on.length?on.join(', '):'none'));
+    p.push(vein===-1?'all '+VEINS.length+' vein domains':'domain '+VEINS[vein]+' (share-weighted)');
+    if(sectAxis) p.push('cross section '+sectAxis.toUpperCase()+' at '+
+      Math.round(sectPos)+', slab \u00b1'+SECT_HALF+' m (totalled per block)');
+    if(surfOn) p.push('geometry: '+surfOn+' surfaces');
+    if(planOn) p.push('geometry: plan grade\u00d7thickness raster');
+    return p;
+  }
+  function provText(){
+    const r=readout();
+    const L=[];
+    L.push('OREBODY — AUDIT TRAIL');
+    L.push('');
+    L.push('Source            '+PROV.source);
+    L.push('Rows scanned      '+PROV.scanned_rows.toLocaleString());
+    L.push('Mineralized       '+PROV.mineralized_blocks.toLocaleString()+' blocks');
+    L.push('Dropped           '+PROV.dropped_blocks+' (blocks with no vein share)');
+    L.push('Straddling >1 dom '+PROV.straddlers.toLocaleString()+
+           ' — vein tonnage is share-weighted, never credited whole');
+    L.push('Block             '+PROV.block_m3+' m3 @ '+PROV.density+
+           ' t/m3 = '+PROV.tonnes_per_block+' t; ore tonnes = that x Percent_Env');
+    L.push('');
+    L.push('DEPOSIT TOTAL (no cut-off)');
+    L.push('  '+PROV.total.tonnes.toLocaleString()+' t @ '+PROV.total.grade_gt+
+           ' g/t = '+PROV.total.oz.toLocaleString()+' oz');
+    L.push('');
+    L.push('CURRENTLY ON SCREEN');
+    currentPredicate().forEach(x=>L.push('  '+x));
+    L.push('  => '+fmt(r.t)+' @ '+r.g.toFixed(2)+' g/t = '+fmtoz(r.oz)+
+           '  ('+r.n.toLocaleString()+' blocks)');
+    L.push('');
+    L.push('BY CLASS');
+    Object.keys(PROV.by_class).forEach(k=>{
+      const v=PROV.by_class[k];
+      if(!v.tonnes) return;
+      L.push('  '+(CLASS_LABELS[k]+'              ').slice(0,14)+
+             v.tonnes.toLocaleString()+' t @ '+v.grade_gt+' g/t = '+
+             v.oz.toLocaleString()+' oz');
+    });
+    L.push('');
+    L.push('CAVEATS');
+    if(!PROV.class_confirmed)
+      L.push('  Resource class labels follow MineSight convention and are UNCONFIRMED');
+    L.push('  against the Nov-2021 technical report.');
+    if(PROV.drills_synthetic) L.push('  Drill holes are FABRICATED. Not real results.');
+    if(PROV.site_synthetic)   L.push('  Site features and pit stages are FABRICATED. Not a mine plan.');
+    L.push('  Silver is absent from the source; AuEq is effectively gold-only.');
+    L.push('  Illustrative visualization — not a mineral resource statement.');
+    return L.join('\n');
+  }
+  function showProv(){ $('provbody').textContent=provText(); $('prov').classList.add('on'); }
+
+  // ---- click to interrogate ----
+  // Their decks are something you watch. This makes the model answerable: click
+  // anywhere on the deposit and get the actual block behind that pixel, not a
+  // tooltip someone authored. Blocks are batched into primitives so they cannot
+  // be picked individually; instead the click is turned into a world position,
+  // taken back to UTM, and matched against the source grid.
+  const cellIndex=new Map();
+  let cellIndexBuilt=false;
+  function buildCellIndex(){
+    if(cellIndexBuilt) return;
+    for(let i=0;i<N;i++){
+      const k=Math.round(F[i*5]/10)+'|'+Math.round(F[i*5+1]/5)+'|'+Math.round(F[i*5+2]/5);
+      cellIndex.set(k,i);
+    }
+    cellIndexBuilt=true;
+  }
+  function pickAt(win){
+    const scene=viewer.scene;
+    const picked=scene.pick(win);
+    if(picked && picked.id && picked.id.polyline && picked.id.__hole){
+      return {kind:'hole', hole:picked.id.__hole, seg:picked.id.__seg};
+    }
+    const pos=scene.pickPosition(win);
+    if(!Cesium.defined(pos)) return null;
+    const carto=Cesium.Cartographic.fromCartesian(pos);
+    const ll=[Cesium.Math.toDegrees(carto.longitude), Cesium.Math.toDegrees(carto.latitude)];
+    const utm=proj4('WGS84','EPSG:26910',ll);
+    let z=carto.height-GEOID;
+    if(EXAG!==1) z=CZ+(z-CZ)/EXAG;
+    buildCellIndex();
+    // search a small neighbourhood: the click lands on a face, not a centre
+    for(let dz=0;dz<=2;dz++) for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+      for(const s of [-1,1]){
+        const k=(Math.round((utm[0]-EMIN)/10)+dx)+'|'+
+                (Math.round((utm[1]-NMIN)/5)+dy)+'|'+
+                (Math.round(z/5)+s*dz);
+        const i=cellIndex.get(k);
+        if(i!==undefined) return {kind:'block', i:i};
+      }
+    }
+    return null;
+  }
+  function showPick(p){
+    const el=$('inspect');
+    if(!p){ el.classList.remove('on'); return; }
+    let rows=[];
+    if(p.kind==='block'){
+      const i=p.i, g=F[i*5+3], penv=F[i*5+4];
+      const tn=TONNES_PER_BLOCK*penv;
+      const topKey=Math.round(F[i*5]/10)+'|'+Math.round(F[i*5+1]/5);
+      rows=[['Grade', g.toFixed(2)+' g/t AuEq'],
+            ['Ore tonnes', Math.round(tn).toLocaleString()+' t'],
+            ['Contained', (tn*g/G_PER_OZ).toFixed(2)+' oz'],
+            ['Ore fraction', (penv*100).toFixed(1)+'%'],
+            ['Class', CLASS_LABELS[M[i*2]]+(CLASS_CONFIRMED?'':' (unconfirmed)')],
+            ['Domain', VEINS[M[i*2+1]]],
+            ['Easting', Math.round(F[i*5]+EMIN).toLocaleString()],
+            ['Northing', Math.round(F[i*5+1]+NMIN).toLocaleString()],
+            ['Elevation', Math.round(F[i*5+2])+' m'],
+            ['Block', '10 \u00d7 5 \u00d7 5 m @ 2.7 t/m\u00b3']];
+      $('i_title').textContent='Block';
+    } else {
+      const h=p.hole, s=p.seg;
+      rows=[['Hole', h.id+(DRILL_SYNTHETIC?'  (synthetic)':'')],
+            ['Collar', Math.round(h.collar[0]).toLocaleString()+' E, '+
+                       Math.round(h.collar[1]).toLocaleString()+' N'],
+            ['Total depth', h.td.toFixed(1)+' m']];
+      if(s) rows.push(['Interval', s.f+'\u2013'+s.t+' m'],
+                      ['Assay', s.g.toFixed(2)+' g/t Au over '+(s.t-s.f).toFixed(1)+' m']);
+      $('i_title').textContent='Drill hole';
+    }
+    $('i_body').innerHTML='';
+    rows.forEach(r=>{
+      const d=document.createElement('div'); d.className='irow';
+      const k=document.createElement('span'); k.className='ik'; k.textContent=r[0];
+      const v=document.createElement('span'); v.className='iv'; v.textContent=r[1];
+      d.appendChild(k); d.appendChild(v); $('i_body').appendChild(d);
+    });
+    el.classList.add('on');
+  }
+  viewer.screenSpaceEventHandler.setInputAction(m=>{
+    if(inking) return;
+    showPick(pickAt(m.position));
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+  // ---- exact statistics at an arbitrary cut-off ----
+  // The bucket tables are keyed to the ladder, so they can only answer ladder
+  // steps. An economic cut-off is a continuous function of price and cost and
+  // almost never lands on one, so this sums the blocks directly. 168k rows is
+  // a couple of milliseconds and it means the economics are exact rather than
+  // snapped to the nearest step.
+  function statsAbove(cut, opts){
+    opts=opts||{};
+    const useCls=opts.classes||null;
+    let n=0,t=0,m=0;
+    for(let i=0;i<N;i++){
+      const g=F[i*5+3];
+      if(g<cut-1e-9 || g<GRADE_FLOOR-1e-9) continue;
+      if(useCls && useCls.indexOf(M[i*2])<0) continue;
+      const tn=TONNES_PER_BLOCK*F[i*5+4];
+      n++; t+=tn; m+=tn*g;
+    }
+    return {blocks:n, tonnes:t, grade:t?m/t:0, oz:m/G_PER_OZ, metal_g:m};
+  }
+
+  // ---- economic scenario ----
+  // Cut-off is not a preference, it is arithmetic: the grade at which a tonne
+  // pays for itself. Presenting it as a fixed number someone chose hides the
+  // only question an investor is actually asking.
+  //   value of 1 t at grade g  =  (g / 31.1035) * price * recovery
+  //   break-even when that equals cost  =>  g = cost * 31.1035 / (price * rec)
+  const ECON={price:2400, cost:65, rec:0.90, inferred:false};
+  function breakEven(){
+    const denom=ECON.price*ECON.rec;
+    return denom>0 ? (ECON.cost*G_PER_OZ)/denom : GRADE_FLOOR;
+  }
+  function econ(){
+    const be=Math.max(GRADE_FLOOR, breakEven());
+    // NI 43-101 does not permit Inferred material in economic analysis. It is
+    // excluded here by default and can only be added deliberately, with the
+    // output relabelled — the guard belongs in the tool, not in a footnote.
+    const cls=ECON.inferred?[0,1,2,3]:[0,1,2];
+    const s=statsAbove(be,{classes:cls});
+    const revenue=s.oz*ECON.price*ECON.rec;
+    const opcost=s.tonnes*ECON.cost;
+    return {be:be, s:s, revenue:revenue, opcost:opcost, margin:revenue-opcost,
+            capped:breakEven()<GRADE_FLOOR};
+  }
+  function paintEcon(){
+    const e=econ();
+    const money=v=>(Math.abs(v)>=1e9?(v/1e9).toFixed(2)+' B':(v/1e6).toFixed(0)+' M');
+    $('e_be').textContent=e.be.toFixed(2)+' g/t'+(e.capped?'  (floored)':'');
+    $('e_t').textContent=fmt(e.s.tonnes);
+    $('e_g').textContent=e.s.grade.toFixed(2)+' g/t';
+    $('e_oz').textContent=fmtoz(e.s.oz);
+    $('e_rev').textContent='$'+money(e.revenue);
+    $('e_mar').textContent='$'+money(e.margin);
+    $('e_mar').style.color=e.margin>=0?'#6FCF57':'#E8433C';
+    $('e_note').textContent=ECON.inferred
+      ? 'INCLUDES INFERRED — not permissible for economic analysis under NI 43-101. Illustrative only.'
+      : 'Inferred excluded, as NI 43-101 requires. Illustrative scenario, not an economic study.';
+    $('e_note').className=ECON.inferred?'warn':'';
+    return e;
+  }
 
   // ---- cross sections ----
   // A slice through the deposit on a fixed bearing, which is how a geologist
@@ -1723,6 +2145,20 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     $('inkbar').classList.toggle('on',on);
     $('inkPen').classList.toggle('on',on);
   }
+  $('datatoggle').onclick=()=>{
+    const on=!document.body.classList.contains('datamode');
+    setDataMode(on); $('datatoggle').textContent=on?'3D':'Text';};
+  if(new URLSearchParams(location.search).get('data')==='1'){
+    setDataMode(true); $('datatoggle').textContent='3D';
+    $('intro').style.display='none';
+  }
+  $('provbtn').onclick=showProv;
+  $('provclose').onclick=()=>$('prov').classList.remove('on');
+  $('provcopy').onclick=()=>navigator.clipboard.writeText(provText())
+    .then(()=>toast('Audit trail copied'),()=>toast('Copy failed'));
+  addEventListener('keydown',e=>{ if(e.key==='Escape'){$('prov').classList.remove('on');
+    $('inspect').classList.remove('on');} });
+  $('i_close').onclick=()=>$('inspect').classList.remove('on');
   $('inkPen').onclick=()=>setInking(!inking);
   $('drawbtn').onclick=()=>setInking(!inking);
   $('inkUndo').onclick=()=>{strokes.pop();inkRedraw();};
@@ -1777,6 +2213,24 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   $('stage').max=String(STAGES.length-1);
   $('stage').oninput=e=>showStage(+e.target.value);
   const sectFrom=pct=>sectAxis==='ns' ? EMIN+EX*pct/100 : NMIN+EY*pct/100;
+  // Moving any economic input re-derives the cut-off and drives the model with
+  // it, so the picture and the economics can never describe different deposits.
+  function applyEcon(sync){
+    const e=paintEcon();
+    if(sync!==false){
+      let i=0; for(let k=0;k<LADDER.length;k++) if(LADDER[k]<=e.be+1e-9) i=k;
+      setCut(Math.max(CUT_DEFAULT_IDX,i));
+      apply();
+    }
+  }
+  $('e_price').oninput=e=>{ECON.price=+e.target.value;
+    $('e_pricev').textContent='$'+ECON.price.toLocaleString(); applyEcon();};
+  $('e_cost').oninput=e=>{ECON.cost=+e.target.value;
+    $('e_costv').textContent='$'+ECON.cost; applyEcon();};
+  $('e_rec').oninput=e=>{ECON.rec=(+e.target.value)/100;
+    $('e_recv').textContent=e.target.value+'%'; applyEcon();};
+  $('e_inf').onclick=()=>{ECON.inferred=!ECON.inferred;
+    $('e_inf').classList.toggle('on',ECON.inferred); applyEcon();};
   $('sectseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
     $('sectseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
     const ax=b.dataset.x||null;
@@ -2269,6 +2723,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   };
 
   setPop(true);
+  paintEcon();
 
   // ---- boot ----
   const st=readHash();
@@ -2343,6 +2798,21 @@ for k, v in {
     "__BUCKETS__": js(BUCKETS),
     "__BY_CB__": js(BY_CB),
     "__THUMBS__": js(THUMBS),
+    "__PROV__": js({
+        "source": stats.get("source"),
+        "scanned_rows": stats.get("scanned_rows"),
+        "mineralized_blocks": stats["total"]["blocks"],
+        "dropped_blocks": stats.get("dropped_blocks", 0),
+        "straddlers": stats.get("blocks_straddling_multiple_domains", 0),
+        "block_m3": stats.get("block_m3"),
+        "density": stats.get("density"),
+        "tonnes_per_block": stats.get("tonnes_per_block"),
+        "total": stats["total"],
+        "by_class": stats["by_class"],
+        "class_confirmed": stats.get("class_mapping_confirmed", False),
+        "drills_synthetic": DRILL_SYNTHETIC,
+        "site_synthetic": SITE_SYNTHETIC,
+    }),
     "__VGROUP__": js(VGROUP),
     "__VGROUP_NAMES__": js(VGROUP_NAMES),
     "__VEINS__": js(VEINS),
