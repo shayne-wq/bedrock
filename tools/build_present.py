@@ -37,6 +37,7 @@ STATS = ROOT / "data" / "elk_stats.json"
 BUCKETS_JSON = ROOT / "data" / "elk_buckets.json"
 DRILLDIR = ROOT / "data" / "synthetic"
 OUT = ROOT / "index.html"
+OUT_SW = ROOT / "sw.js"
 
 # Grade ladder for bucketing. Shaped like the cut-offs people actually pull
 # (0.1 / 0.3 / 1.0 g/t), not a linear bin — a linear bin fragments into
@@ -446,6 +447,10 @@ HTML = r"""<!DOCTYPE html>
   #load{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:#07090A;font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.2em;color:#8E948E}
   #status{position:fixed;right:14px;bottom:12px;z-index:4;font-family:'JetBrains Mono',monospace;font-size:10px;color:#8E948E}
   #status.fatal{color:#0d0f10;background:#D9584A;padding:7px 13px;border-radius:3px;font-size:11px;z-index:30;font-weight:600}
+  #offline{position:fixed;left:30px;bottom:12px;z-index:9;display:none;
+           font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.14em;
+           text-transform:uppercase;color:#07090A;background:#C99A3A;padding:6px 12px;border-radius:3px}
+  #offline.on{display:block}
   #toast{position:fixed;left:50%;top:26px;transform:translateX(-50%);z-index:14;background:rgba(12,15,16,.95);
          border:1px solid rgba(255,255,255,.18);border-radius:3px;padding:11px 18px;display:none;
          font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;color:#EDEEEC}
@@ -501,6 +506,9 @@ HTML = r"""<!DOCTYPE html>
     <button data-f="1" class="on">Hidden</button>
     <button data-f="0">Shown</button>
   </div>
+
+  <h3>Mine plan timeline</h3>
+  <div id="cutrow"><input type="range" id="stage" min="-1" max="3" step="1" value="-1"><span id="stagev" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#C99A3A;min-width:96px;text-align:right">none</span></div>
 
   <h3>Site features</h3>
   <div class="seg" id="siteseg">
@@ -602,6 +610,7 @@ HTML = r"""<!DOCTYPE html>
   <div class="sub">A high-grade gold system in British Columbia's Cariboo District — presented in three dimensions, on real terrain.</div>
   <button id="begin">Begin the walkthrough ▸</button>
 </div>
+<div id="offline"></div>
 <div id="status">booting…</div>
 
 <script src="https://cdn.jsdelivr.net/npm/cesium@1.120/Build/Cesium/Cesium.js"
@@ -870,6 +879,56 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   }
   const showSite=on=>{ if(on) buildSite(); if(siteEnts) siteEnts.forEach(e=>e.show=on); };
 
+  // ---- mine-plan timeline ----
+  // Conceptual pit stages as stacked shells: scrubbing the timeline shows how
+  // the excavation would grow and deepen against the orebody it is chasing.
+  // Every stage is invented; the warning banner covers it with the site layer.
+  let stageEnts=null, stageIdx=-1;
+  const STAGES=(SITE.stages||[]);
+  function buildStages(){
+    if(stageEnts||!STAGES.length) return stageEnts;
+    stageEnts=STAGES.map(st=>{
+      const deg=st.ring.reduce((acc,c)=>{const ll=proj4('EPSG:26910','WGS84',c);
+        acc.push(ll[0],ll[1]);return acc;},[]);
+      const ents=[];
+      // benches: concentric rings stepping down, the way a pit actually reads
+      const N=5;
+      for(let b=1;b<=N;b++){
+        const z=ZTOP+GEOID-(st.depth*b/N);
+        const shrink=1-(b/N)*0.62;
+        const pos=[];
+        for(let i=0;i<st.ring.length;i++){
+          const c=st.ring[i];
+          const mx=st.ring.reduce((s,q)=>s+q[0],0)/st.ring.length;
+          const my=st.ring.reduce((s,q)=>s+q[1],0)/st.ring.length;
+          const ll=proj4('EPSG:26910','WGS84',[mx+(c[0]-mx)*shrink, my+(c[1]-my)*shrink]);
+          pos.push(Cesium.Cartesian3.fromDegrees(ll[0],ll[1],EXAG===1?z:(CZ+GEOID+(z-CZ-GEOID)*EXAG)));
+        }
+        ents.push(viewer.entities.add({polyline:{positions:pos,width:2,
+          arcType:Cesium.ArcType.NONE,
+          material:Cesium.Color.fromCssColorString('#C7D0D8').withAlpha(0.85-b*0.09)}}));
+      }
+      ents.push(viewer.entities.add({
+        polygon:{hierarchy:Cesium.Cartesian3.fromDegreesArray(deg),
+          material:Cesium.Color.fromCssColorString('#AEB9C4').withAlpha(0.30),
+          classificationType:Cesium.ClassificationType.TERRAIN}}));
+      ents.forEach(e=>e.show=false);
+      return ents;
+    });
+    return stageEnts;
+  }
+  function showStage(i){
+    stageIdx=i; buildStages();
+    if(!stageEnts) return;
+    stageEnts.forEach((ents,k)=>ents.forEach(e=>e.show=(i>=0&&k<=i)));
+    $('stagev').textContent=i<0?'none':(STAGES[i].year+' — '+STAGES[i].name+
+      ' (' + STAGES[i].depth + ' m)');
+    $('synwarn').classList.toggle('on',
+      (drills&&DRILL_SYNTHETIC)||(siteOn&&SITE_SYNTHETIC)||(i>=0&&SITE_SYNTHETIC));
+    if(i>=0&&SITE_SYNTHETIC) $('synwarn').textContent=
+      'Conceptual pit stages — fabricated, not a real mine plan';
+  }
+
   // ---- depth reference grid ----
   // The single clearest way to say "this is underground" is to label how far
   // underground it is. Level rectangles every 100 m below the deposit's
@@ -1101,6 +1160,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   setCut(cutIdx);
   $('cut').oninput=e=>{setCut(+e.target.value);apply();};
   $('modeseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{setMode(b.dataset.m);apply();});
+  $('stage').max=String(STAGES.length-1);
+  $('stage').oninput=e=>showStage(+e.target.value);
   $('siteseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
     siteOn=b.dataset.s==='1';
     $('siteseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
@@ -1507,6 +1568,16 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   $('load').style.display='none';
   $('begin').onclick=()=>{$('intro').style.opacity='0';setTimeout(()=>$('intro').style.display='none',800);
     frameFor(CHAPTERS[0],true); if(EMBED&&!REDUCED) play();};
+  // ---- offline ----
+  if('serviceWorker' in navigator && location.protocol!=='file:'){
+    navigator.serviceWorker.register('sw.js').then(()=>{
+      const paint=()=>{ const on=navigator.onLine;
+        $('offline').textContent=on?'':'Offline — running from cache';
+        $('offline').classList.toggle('on',!on); };
+      addEventListener('online',paint); addEventListener('offline',paint); paint();
+    }).catch(()=>{});
+  }
+
   window.__viewer=viewer; window.__api={go:go,play:play,stop:stop,readout:readout,shoot:shoot,grab:grab};
 })().catch(e=>{
   // Never leave the opaque boot overlay covering an error the user can't read.
@@ -1555,8 +1626,46 @@ for k, v in {
 }.items():
     HTML = HTML.replace(k, v)
 
+# Offline: presentations get given in basements, core sheds and mine sites with
+# no signal. A runtime-caching service worker means a deck opened once on the
+# hotel wifi still runs with the aeroplane mode on. Cesium pulls its workers,
+# shaders and imagery lazily, so cache-on-first-sight beats trying to enumerate
+# a precache list that would rot on every Cesium bump.
+SW = """// Orebody offline cache. Generated by tools/build_present.py.
+const CACHE='orebody-v__SWVER__';
+self.addEventListener('install',e=>{self.skipWaiting();});
+self.addEventListener('activate',e=>{e.waitUntil(
+  caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k))))
+    .then(()=>self.clients.claim()));});
+self.addEventListener('fetch',e=>{
+  const r=e.request;
+  if(r.method!=='GET') return;
+  const url=new URL(r.url);
+  // Terrain and imagery tiles are unbounded; cache only what has been seen.
+  e.respondWith(caches.match(r).then(hit=>{
+    if(hit) return hit;
+    return fetch(r).then(res=>{
+      if(res && (res.status===200||res.type==='opaque')){
+        const copy=res.clone();
+        caches.open(CACHE).then(c=>c.put(r,copy)).catch(()=>{});
+      }
+      return res;
+    }).catch(()=>hit);
+  }));
+});
+self.addEventListener('message',e=>{
+  if(e.data==='usage'){
+    caches.open(CACHE).then(c=>c.keys()).then(ks=>{
+      e.source.postMessage({cached:ks.length});});
+  }
+});
+"""
+import hashlib
+SWVER = hashlib.sha1(HTML.encode()).hexdigest()[:10]
+OUT_SW.write_text(SW.replace("__SWVER__", SWVER))
+
 OUT.write_text(HTML)
-print(f"wrote {OUT.name} ({len(HTML)/1e6:.1f} MB)")
+print(f"wrote {OUT.name} ({len(HTML)/1e6:.1f} MB) + {OUT_SW.name}")
 print(f"  {N:,} blocks · {len(RUNS)} base primitives · {len(BUCKETS)} stat buckets")
 print(f"  {len(VEINS)} vein domains · {len(CHAPTERS)} chapters · ramp max {RAMPMAX} g/t")
 print(f"  {len(HOLES)} drill holes" + (" (SYNTHETIC)" if DRILL_SYNTHETIC else "") +

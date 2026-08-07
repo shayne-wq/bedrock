@@ -93,6 +93,20 @@ def main():
                             + rng.uniform(-h * 0.03, h * 0.03), 1)]
                      for i in range(13)],
         }],
+        # Conceptual pit stages, for the mine-plan timeline. Each stage is a
+        # larger, deeper shell than the last. Entirely invented.
+        "stages": [
+            {"id": f"SYN-STAGE-{i}", "name": nm, "year": yr, "data_source": TAINT,
+             "depth": dep,
+             "ring": ring(cx - w * 0.06, cy + h * 0.05,
+                          w * (0.13 + 0.055 * i), h * (0.10 + 0.045 * i),
+                          jitter=0.07)}
+            for i, (nm, yr, dep) in enumerate([
+                ("Starter pit", "Year 1", 70),
+                ("Stage 2", "Year 3", 140),
+                ("Stage 3", "Year 5", 215),
+                ("Final pit", "Year 8", 300)])
+        ],
         # Point labels with leader lines.
         "labels": [
             {"id": "SYN-LBL-01", "name": "Siwash North Deposit",
