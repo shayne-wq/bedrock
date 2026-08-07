@@ -488,6 +488,7 @@ HTML = r"""<!DOCTYPE html>
 </div>
 
 <div id="tools">
+  <button id="sitebtn" class="btn sm" title="Ground-level site view">Site</button>
   <button id="drawbtn" class="btn sm" title="Annotate (D)">Draw</button>
   <button id="sharebtn" class="btn sm" title="Copy a link to this exact view">Link</button>
   <button id="xbtn" class="btn">Explore ▸</button>
@@ -1240,6 +1241,30 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   $('xbtn').onclick=()=>{const on=$('panel').classList.toggle('on');
     $('xbtn').classList.toggle('on',on); $('xbtn').textContent=on?'Explore ◂':'Explore ▸';
     $('bar').style.opacity=on?'0':'1'; $('bar').style.pointerEvents=on?'none':'auto';};
+  // ---- ground-level site view ----
+  // The remote-walkthrough equivalent: stand on the ridge above the deposit and
+  // look around, rather than always orbiting it from the air. Rendered from the
+  // same real terrain, so it is a view of the actual place, not stand-in
+  // photography of somewhere else.
+  let ground3d=false, savedFrame=null;
+  $('sitebtn').onclick=()=>{
+    ground3d=!ground3d;
+    $('sitebtn').classList.toggle('on',ground3d);
+    if(ground3d){
+      stop();
+      savedFrame=cur;
+      viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+      const ll=proj4('EPSG:26910','WGS84',[EMIN-160,NMIN-160]);
+      viewer.camera.flyTo({
+        destination:Cesium.Cartesian3.fromDegrees(ll[0],ll[1],ZTOP+GEOID+55),
+        orientation:{heading:rad(46),pitch:rad(-11),roll:0},
+        duration:REDUCED?0:2.4});
+      setGround(1.0);
+      toast('Site view — drag to look around, scroll to move',3800);
+    } else {
+      go(savedFrame===null?cur:savedFrame);
+    }
+  };
   $('sharebtn').onclick=()=>{syncHash();
     navigator.clipboard.writeText(location.href).then(()=>toast('Link copied'),()=>toast('Copy failed'));};
 
