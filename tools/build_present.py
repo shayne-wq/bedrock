@@ -670,6 +670,12 @@ HTML = r"""<!DOCTYPE html>
   <h3>Mine plan timeline</h3>
   <div class="cutrow"><input type="range" id="stage" min="-1" max="3" step="1" value="-1"><span id="stagev" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#C99A3A;min-width:96px;text-align:right">none</span></div>
 
+  <h3>Block model</h3>
+  <div class="seg" id="blockseg">
+    <button data-b="1" class="on">Shown</button>
+    <button data-b="0">Hidden</button>
+  </div>
+
   <h3>Economic scenario</h3>
   <div class="erow"><label for="e_price">Gold price</label>
     <input type="range" id="e_price" min="1200" max="4000" step="50" value="2400">
@@ -1858,6 +1864,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // 0.5 g/t is the house default everywhere: below it the low-grade halo
   // bridges the gaps between veins and the whole system merges into one mass.
   const CUT_DEFAULT=GRADE_FLOOR, CUT_DEFAULT_IDX=LADDER.indexOf(CUT_DEFAULT);
+  let blocksOn=true;
   let mode='grade', cutIdx=CUT_DEFAULT_IDX, vein=-1, clsOn={0:true,1:true,2:true,3:true},
       cur=0, drills=false, playing=false, narrating=false, dwellTimer=null, restoring=false;
   const cutVal=()=>LADDER[cutIdx];
@@ -1900,14 +1907,14 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     const cut=cutVal();
     const vis=g=>g.lo>=cut-1e-9 && g.lo>=GRADE_FLOOR-1e-9 && clsOn[g.c];
     const veinMode=mode==='vein';
-    RUNS.forEach(r=>{ r.prim.show = !veinMode && vein===-1 && vis(r);
+    RUNS.forEach(r=>{ r.prim.show = blocksOn && !veinMode && vein===-1 && vis(r);
       r.prim.appearance.material.uniforms.color=colorOf(r); });
     if(veinMode){
-      buildVeinGroups().forEach(o=>{ o.prim.show = vein===-1 && o.lo>=cut-1e-9 && o.lo>=GRADE_FLOOR-1e-9;
+      buildVeinGroups().forEach(o=>{ o.prim.show = blocksOn && vein===-1 && o.lo>=cut-1e-9 && o.lo>=GRADE_FLOOR-1e-9;
         o.prim.appearance.material.uniforms.color=depthShade(
           Cesium.Color.fromCssColorString(VEIN_COLORS[o.g]).withAlpha(fade?0.85:1),o.d||0); });
     } else if(vgPrims){ vgPrims.forEach(o=>o.prim.show=false); }
-    if(vein!==-1) buildVein(vein).forEach(g=>{ g.prim.show=vis(g);
+    if(vein!==-1) buildVein(vein).forEach(g=>{ g.prim.show=blocksOn&&vis(g);
       g.prim.appearance.material.uniforms.color=colorOf(g); });
     // Drop non-active vein sets rather than parking them hidden — cycling all
     // 46 would otherwise leave a second full copy of the model resident.
@@ -1925,6 +1932,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     // top of it — leaving the cubes underneath is what made plan views blobby.
     if(surfOn||planOn||sectAxis) RUNS.forEach(r=>{ if(r.prim) r.prim.show=false; });
     if(sectAxis) buildSection();
+    if(sectPrims) sectPrims.forEach(o=>o.prim.show=blocksOn);
     syncWarn();
 
     readout(); syncHash();
@@ -1970,6 +1978,12 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     // tonnage above is share-weighted across every domain a block touches. For
     // veins with many straddlers the two differ by up to ~36%, so say so rather
     // than let a geologist assume the boxes are the number.
+    const bodyDrawn = blocksOn || surfOn || planOn;
+    if(!bodyDrawn){
+      $('veincav').textContent='Block model hidden. Figures still describe the '+
+        'current selection \u2014 they are simply not being drawn.';
+      return {t:t,g:t?m/t:0,oz:m/G_PER_OZ,n:n};
+    }
     $('veincav').textContent = vein===-1 ? '' :
       'Shell shows blocks whose dominant domain is '+VEINS[vein]+
       '; tonnage above is share-weighted across all blocks touching it, so it counts more than is drawn.';
@@ -2176,7 +2190,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     // '-' rather than '' for "no classes selected": an empty value round-trips
     // through the ||'0123' default and would silently re-enable all four.
     const on=Object.keys(clsOn).filter(c=>clsOn[c]).join('')||'-';
-    const h='#c='+cur+'&m='+mode+'&k='+cutIdx+'&v='+vein+'&s='+on+'&d='+(drills?1:0);
+    const h='#c='+cur+'&m='+mode+'&k='+cutIdx+'&v='+vein+'&s='+on+'&d='+(drills?1:0)+
+            '&b='+(blocksOn?1:0);
     // Dragging the cut-off fires apply() per tick; replaceState instead of
     // location.replace keeps that off the navigation path entirely.
     clearTimeout(hashTimer);
@@ -2186,7 +2201,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     const h=new URLSearchParams(location.hash.slice(1));
     if(!h.has('c')) return null;
     return {c:+h.get('c')||0, m:(['class','vein'].indexOf(h.get('m'))>=0?h.get('m'):'grade'), k:h.has('k')?Math.max(CUT_DEFAULT_IDX,Math.min(LADDER.length-1,+h.get('k'))):CUT_DEFAULT_IDX,
-            v:+h.get('v'), s:h.has('s')?h.get('s'):'0123', d:h.get('d')==='1'};
+            v:+h.get('v'), s:h.has('s')?h.get('s'):'0123', d:h.get('d')==='1',
+            b:h.has('b')?h.get('b')==='1':true};
   }
 
   // ---- explore UI ----
@@ -2223,6 +2239,10 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       apply();
     }
   }
+  $('blockseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    blocksOn=b.dataset.b==='1';
+    $('blockseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    apply();});
   $('e_price').oninput=e=>{ECON.price=+e.target.value;
     $('e_pricev').textContent='$'+ECON.price.toLocaleString(); applyEcon();};
   $('e_cost').oninput=e=>{ECON.cost=+e.target.value;
@@ -2430,6 +2450,9 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(c.site!==undefined){ siteOn=!!c.site;
       $('siteseg').querySelectorAll('button').forEach(x=>
         x.classList.toggle('on',(x.dataset.s==='1')===siteOn)); }
+    blocksOn=c.blocks!==false;
+    $('blockseg').querySelectorAll('button').forEach(x=>
+      x.classList.toggle('on',(x.dataset.b==='1')===blocksOn));
     surfOn=c.surfaces||'';
     $('surfseg').querySelectorAll('button').forEach(x=>
       x.classList.toggle('on',(x.dataset.f||'')===surfOn));
@@ -2736,6 +2759,9 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     Object.keys(clsOn).forEach(k=>{clsOn[k]=st.s.indexOf(k)>=0;});
     chips.querySelectorAll('.chip').forEach(el=>el.classList.toggle('on',clsOn[el.dataset.c]));
     setDrills(st.d);
+    blocksOn=st.b;
+    $('blockseg').querySelectorAll('button').forEach(x=>
+      x.classList.toggle('on',(x.dataset.b==='1')===blocksOn));
     restoring=false;
     apply();
     $('intro').style.display='none';
