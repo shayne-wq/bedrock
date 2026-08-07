@@ -61,19 +61,40 @@ Es = [r[0] for r in rows]; Ns = [r[1] for r in rows]; Zs = [r[2] for r in rows]
 EMIN, NMIN = min(Es), min(Ns)
 cE = (EMIN + max(Es)) / 2; cN = (NMIN + max(Ns)) / 2; cZ = (min(Zs) + max(Zs)) / 2
 EX = max(Es) - min(Es); EY = max(Ns) - min(Ns)
+ZTOP = max(Zs); ZBOT = min(Zs)
 
 
 def binof(g):
     return bisect.bisect_right(LADDER, g) - 1
 
 
+# Depth below the top of each block's own column. The model outcrops, so the
+# highest block in a column is a good stand-in for surface — good enough to
+# drive an aerial-perspective fade, and it needs no terrain query.
+DEPTH_BAND_M = 70.0
+N_DEPTH_BANDS = 6
+_tops = {}
+for _r in rows:
+    _k = (round(_r[0] / 10), round(_r[1] / 5))
+    if _k not in _tops or _r[2] > _tops[_k]:
+        _tops[_k] = _r[2]
+
+
+def depth_band(x, y, z):
+    top = _tops.get((round(x / 10), round(y / 5)), z)
+    return max(0, min(N_DEPTH_BANDS - 1, int((top - z) / DEPTH_BAND_M)))
+
+
 # Sort by (class, ladder-bin) so each render bucket is one contiguous run —
 # the viewer slices the buffer instead of shipping per-block indices.
-rows.sort(key=lambda r: (r[5], binof(r[3]), r[6]))
+# Depth joins the bucket key so an aerial-perspective fade is a per-primitive
+# uniform rather than a per-block attribute.
+rows = [r + (depth_band(r[0], r[1], r[2]),) for r in rows]
+rows.sort(key=lambda r: (r[5], binof(r[3]), r[7], r[6]))
 
 buf = bytearray()
 meta = bytearray()
-for x, y, z, g, penv, cls, vein in rows:
+for x, y, z, g, penv, cls, vein, dband in rows:
     buf += struct.pack("<ffff", x - EMIN, y - NMIN, z, g)
     meta += struct.pack("<BB", cls, vein)
 b64 = base64.b64encode(bytes(buf)).decode()
@@ -81,12 +102,16 @@ b64m = base64.b64encode(bytes(meta)).decode()
 N = len(rows)
 assert len(VEINS) <= 256, f"{len(VEINS)} vein domains exceeds the uint8 packing in META"
 
+def runkey(r):
+    return (r[5], binof(r[3]), r[7])
+
+
 RUNS = []
 start = 0
 for i in range(1, N + 1):
-    if i == N or (rows[i][5], binof(rows[i][3])) != (rows[start][5], binof(rows[start][3])):
-        c, b = rows[start][5], binof(rows[start][3])
-        RUNS.append({"c": c, "b": b, "lo": LADDER[b],
+    if i == N or runkey(rows[i]) != runkey(rows[start]):
+        c, b, d = runkey(rows[start])
+        RUNS.append({"c": c, "b": b, "d": d, "lo": LADDER[b],
                      "hi": LADDER[b + 1] if b + 1 < len(LADDER) else None,
                      "s": start, "n": i - start})
         start = i
@@ -178,8 +203,21 @@ def load_drills():
                 b = td
             if b <= a:
                 continue
-            segs.append({"a": pos_at(hid, a), "b": pos_at(hid, b), "g": au,
-                         "f": round(a, 1), "t": round(b, 1)})
+            pa, pb = pos_at(hid, a), pos_at(hid, b)
+            # Grade bar: a stick out the side of the hole, length scaled by
+            # assay. This is the convention on every drill section — it reads
+            # far faster than colour alone, and survives being seen edge-on.
+            d = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]]
+            # perpendicular to the hole, kept horizontal (d x up)
+            px_, py_ = d[1], -d[0]
+            m = math.hypot(px_, py_) or 1.0
+            blen = min(45.0, au * 2.2)
+            mid = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2, (pa[2] + pb[2]) / 2]
+            bar = [round(mid[0] + px_ / m * blen, 2),
+                   round(mid[1] + py_ / m * blen, 2), round(mid[2], 2)]
+            db = max(0, min(5, int((float(c["elevation"]) - mid[2]) / 70.0)))
+            segs.append({"a": pa, "b": pb, "g": au, "mid": mid, "bar": bar,
+                         "d": db, "f": round(a, 1), "t": round(b, 1)})
         holes.append({
             "id": hid,
             "collar": [float(c["easting"]), float(c["northing"]), float(c["elevation"])],
@@ -190,29 +228,42 @@ def load_drills():
     return holes, man
 
 
+# Top domains by contained metal get their own colour; the tail collapses to
+# "other". 46 categorical colours would be noise, 8 reads as structure.
+_voz = {}
+for _b in BUCKETS:
+    _voz[_b["v"]] = _voz.get(_b["v"], 0.0) + _b["m"]
+TOP_VEINS = [v for v, _ in sorted(_voz.items(), key=lambda kv: -kv[1])[:8]]
+VGROUP = [TOP_VEINS.index(i) if i in TOP_VEINS else 8 for i in range(len(VEINS))]
+VGROUP_NAMES = [VEINS[v] for v in TOP_VEINS] + ["other (%d)" % (len(VEINS) - len(TOP_VEINS))]
+
 HOLES, DRILL_MAN = load_drills()
+
+_site_p = DRILLDIR / "SYNTHETIC_site_features.json"
+SITE = json.loads(_site_p.read_text()) if _site_p.exists() else {}
+SITE_SYNTHETIC = bool(SITE.get("synthetic", True)) if SITE else False
 DRILL_SYNTHETIC = bool(DRILL_MAN.get("synthetic", True)) if HOLES else False
 
 CHAPTERS = [
   {"h": 28, "p": -26, "r": 3600, "cut": 0.1, "xray": True, "mode": "grade", "dwell": 9,
-   "title": "A high-grade gold system", "body": "The Elk Gold project sits in the Quesnel Highland of British Columbia's Cariboo District — a road-accessible, established mining region."},
+   "ground": 1.0, "title": "A high-grade gold system", "body": "The Elk Gold project sits in the Quesnel Highland of British Columbia's Cariboo District — a road-accessible, established mining region."},
   {"h": 30, "p": -22, "r": 2500, "cut": 0.1, "xray": True, "mode": "grade", "dwell": 9,
-   "title": "On real ground", "body": "Every block is placed at its true UTM position on real terrain — this is the actual mountain the deposit sits inside."},
+   "ground": 1.0, "title": "On real ground", "body": "Every block is placed at its true UTM position on real terrain — this is the actual mountain the deposit sits inside."},
   {"h": 44, "p": -34, "r": 1950, "cut": 0.1, "xray": True, "mode": "grade", "dwell": 10,
-   "title": "The orebody", "body": "A multi-vein gold system, roughly 1,440 by 1,385 metres, coloured by gold-equivalent grade — cool blues low, hot reds high."},
+   "ground": 1.0, "title": "The orebody", "body": "A multi-vein gold system, roughly 1,440 by 1,385 metres, coloured by gold-equivalent grade — cool blues low, hot reds high."},
   {"h": 66, "p": -30, "r": 1450, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 10,
-   "title": "The high-grade core", "body": "Raising the cut-off to 1 g/t strips away the halo and reveals the bonanza vein shells that carry most of the metal."},
+   "ground": 0.0, "title": "The high-grade core", "body": "Raising the cut-off to 1 g/t strips away the halo and reveals the bonanza vein shells that carry most of the metal."},
   {"h": 52, "p": -30, "r": 1700, "cut": 0.1, "xray": True, "mode": "class", "dwell": 11,
-   "title": "How well is it known?", "body": "Recoloured by resource classification. Confidence is not evenly distributed through a deposit — and this is the first question any technical reader asks."},
+   "ground": 0.0, "title": "How well is it known?", "body": "Recoloured by resource classification. Confidence is not evenly distributed through a deposit — and this is the first question any technical reader asks."},
   # Cut-off lifted to 1.0 here so the low-grade halo stops burying the traces.
   {"h": 38, "p": -24, "r": 1900, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11, "drills": True,
-   "title": "Drilled from surface", "body": "Drill traces coloured by assay grade, hung from their collars on the ridge above. These holes are synthetic — traced through the modelled grades to show how drilling reads against the block model."},
+   "ground": 0.0, "title": "Drilled from surface", "body": "Drill traces coloured by assay grade, hung from their collars on the ridge above. These holes are synthetic — traced through the modelled grades to show how drilling reads against the block model."},
   {"h": 0, "p": -89, "r": 2500, "cut": 0.3, "xray": True, "mode": "grade", "dwell": 9,
-   "title": "Footprint in plan", "body": "Seen from directly above: northwest-trending vein corridors threading across the ridge."},
+   "ground": 1.0, "title": "Footprint in plan", "body": "Seen from directly above: northwest-trending vein corridors threading across the ridge."},
   {"h": 4, "p": -4, "r": 2650, "cut": 0.3, "xray": True, "mode": "grade", "dwell": 10,
-   "title": "In profile", "body": "Turned on edge, the veins persist to roughly 475 metres below surface — and remain open at depth."},
+   "ground": 0.0, "title": "In profile", "body": "Turned on edge, the veins persist to roughly 475 metres below surface — and remain open at depth."},
   {"h": 26, "p": -27, "r": 3000, "cut": 0.15, "xray": True, "mode": "grade", "dwell": 10,
-   "title": "Explore it yourself", "body": "Forty-six vein domains, each one isolatable, each with its own grade and tonnage. Open Explore and interrogate the model directly."},
+   "ground": 0.0, "title": "Explore it yourself", "body": "Forty-six vein domains, each one isolatable, each with its own grade and tonnage. Open Explore and interrogate the model directly."},
 ]
 
 HTML = r"""<!DOCTYPE html>
@@ -262,11 +313,17 @@ HTML = r"""<!DOCTYPE html>
   .btn.sm{padding:9px 12px;font-size:10px}
   #nav .count{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:#8E948E;min-width:52px;text-align:center}
 
-  #legend{position:fixed;right:34px;top:28px;z-index:6;display:flex;align-items:center;gap:9px;opacity:.85}
+  #legend{position:fixed;right:34px;top:28px;z-index:6;display:flex;align-items:center;gap:9px;
+          background:rgba(7,9,10,.82);border:1px solid rgba(255,255,255,.10);border-radius:4px;
+          padding:8px 12px;backdrop-filter:blur(6px)}
   #ramp{height:8px;width:150px;border-radius:2px;background:linear-gradient(90deg,#14324f,#1c7fb8,#21b0a0,#8fd14f,#f2c14e,#e8532b)}
-  #legend span{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.06em;color:#8E948E}
-  #clsleg{display:none;gap:14px;align-items:center}
-  #clsleg .k{display:flex;align-items:center;gap:6px}
+  #legend span{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.05em;color:#C6CAC5;white-space:nowrap}
+  #legend .sw{border:1px solid rgba(255,255,255,.25)}
+  #depthleg{gap:3px!important}
+  #depthleg .sw{width:13px;height:9px;border-radius:1px}
+  #gradeleg,#clsleg,#veinleg{display:none;gap:13px;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:54vw}
+  #gradeleg{display:flex}
+  #legend .k{display:flex;align-items:center;gap:6px}
   .sw{width:10px;height:10px;border-radius:2px}
 
   #tools{position:fixed;right:34px;top:64px;z-index:7;display:flex;gap:8px}
@@ -311,6 +368,20 @@ HTML = r"""<!DOCTYPE html>
   #scalebar .l{height:3px;background:#EDEEEC;margin-left:auto;border-left:1px solid #EDEEEC;border-right:1px solid #EDEEEC}
   #scalebar .t{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#C6CAC5;margin-top:4px;letter-spacing:.08em}
 
+  /* Presenter ink: a transparent canvas over the scene. pointer-events flips
+     on only while drawing, so the globe stays draggable the rest of the time. */
+  #ink{position:fixed;inset:0;z-index:5;pointer-events:none;touch-action:none}
+  #ink.arm{pointer-events:auto;cursor:crosshair}
+  #inkbar{position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:11;
+          display:none;align-items:center;gap:8px;padding:8px 12px;border-radius:5px;
+          background:rgba(12,15,16,.94);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(8px)}
+  #inkbar.on{display:flex}
+  .ibtn{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+        color:#C6CAC5;background:transparent;border:1px solid rgba(255,255,255,.18);border-radius:3px;
+        padding:8px 11px;cursor:pointer}
+  .ibtn.on{background:#C99A3A;border-color:#C99A3A;color:#07090A}
+  .isw{width:18px;height:18px;border-radius:50%;cursor:pointer;border:2px solid rgba(255,255,255,.25)}
+  .isw.on{border-color:#fff;transform:scale(1.15)}
   #prog{position:fixed;left:0;top:0;height:2px;background:#C99A3A;width:0;z-index:8;transition:width .6s ease}
   #dwell{position:fixed;left:0;top:0;height:2px;background:rgba(201,154,58,.35);width:0;z-index:7}
 
@@ -354,11 +425,14 @@ HTML = r"""<!DOCTYPE html>
 <div id="brand"><div class="w">Orebody Present</div><div class="n">Elk Gold<br>Siwash North</div></div>
 <div id="rail"></div>
 <div id="legend">
-  <div id="gradeleg" style="display:flex;align-items:center;gap:9px"><span>AuEq</span><div id="ramp"></div><span id="rmax"></span></div>
+  <div id="gradeleg"></div>
   <div id="clsleg"></div>
+  <div id="veinleg"></div>
+  <div id="depthleg" style="display:flex"></div>
 </div>
 
 <div id="tools">
+  <button id="drawbtn" class="btn sm" title="Annotate (D)">Draw</button>
   <button id="sharebtn" class="btn sm" title="Copy a link to this exact view">Link</button>
   <button id="xbtn" class="btn">Explore ▸</button>
 </div>
@@ -368,6 +442,35 @@ HTML = r"""<!DOCTYPE html>
   <div class="seg" id="modeseg">
     <button data-m="grade" class="on">Grade</button>
     <button data-m="class">Class</button>
+    <button data-m="vein">Vein</button>
+  </div>
+
+  <h3>Low-grade halo (&lt; 0.3 g/t)</h3>
+  <div class="seg" id="fadeseg">
+    <button data-f="1" class="on">Hidden</button>
+    <button data-f="0">Shown</button>
+  </div>
+
+  <h3>Site features</h3>
+  <div class="seg" id="siteseg">
+    <button data-s="0" class="on">Hidden</button>
+    <button data-s="1">Shown</button>
+  </div>
+
+  <h3>Depth grid</h3>
+  <div class="seg" id="depthseg">
+    <button data-g="1" class="on">Shown</button>
+    <button data-g="0">Hidden</button>
+  </div>
+
+  <h3>Ground over deposit</h3>
+  <div id="cutrow"><input type="range" id="ground" min="0" max="100" step="5" value="0"><span id="groundv">cut away</span></div>
+
+  <h3>Vertical exaggeration</h3>
+  <div class="seg" id="exagseg">
+    <button data-x="1" class="on">1&times;</button>
+    <button data-x="1.5">1.5&times;</button>
+    <button data-x="2">2&times;</button>
   </div>
 
   <h3>Cut-off grade</h3>
@@ -400,6 +503,17 @@ HTML = r"""<!DOCTYPE html>
   </div>
   <div id="veincav"></div>
   <div id="caveat"></div>
+</div>
+
+<canvas id="ink"></canvas>
+<div id="inkbar">
+  <button class="ibtn on" id="inkPen" title="Draw (D)">Draw</button>
+  <span class="isw" data-c="#FF6A1F" style="background:#FF6A1F"></span>
+  <span class="isw" data-c="#FFD23F" style="background:#FFD23F"></span>
+  <span class="isw" data-c="#4FD1C5" style="background:#4FD1C5"></span>
+  <span class="isw" data-c="#FFFFFF" style="background:#FFFFFF"></span>
+  <button class="ibtn" id="inkUndo" title="Undo (\u2318Z)">Undo</button>
+  <button class="ibtn" id="inkClear">Clear</button>
 </div>
 
 <div id="synwarn">Synthetic drill data — fabricated, not real results</div>
@@ -439,10 +553,11 @@ HTML = r"""<!DOCTYPE html>
         crossorigin="anonymous"></script>
 <script>
 const DATA="__B64__", META="__META__", N=__N__, RAMPMAX=__RAMPMAX__,
-      EMIN=__EMIN__, NMIN=__NMIN__, CE=__CE__, CN=__CN__, CZ=__CZ__, EX=__EX__, EY=__EY__;
+      EMIN=__EMIN__, NMIN=__NMIN__, CE=__CE__, CN=__CN__, CZ=__CZ__, EX=__EX__, EY=__EY__,
+      ZTOP=__ZTOP__, ZBOT=__ZBOT__;
 const CHAPTERS=__CHAPTERS__, RUNS=__RUNS__, BUCKETS=__BUCKETS__, VEINS=__VEINS__,
       LADDER=__LADDER__, CLASS_LABELS=__CLASS_LABELS__, CLASS_CONFIRMED=__CLASS_CONFIRMED__,
-      BY_CB=__BY_CB__, HOLES=__HOLES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
+      BY_CB=__BY_CB__, HOLES=__HOLES__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
 proj4.defs('EPSG:26910','+proj=utm +zone=10 +datum=NAD83 +units=m +no_defs');
 const GEOID=-18, rad=Cesium.Math.toRadians, $=id=>document.getElementById(id);
 const setStat=t=>$('status').textContent=t;
@@ -453,14 +568,52 @@ if(EMBED) document.body.classList.add('embed');
 function unb64(b){const s=atob(b);const u=new Uint8Array(s.length);for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i);return u;}
 const F=new Float32Array(unb64(DATA).buffer), M=unb64(META);
 
-const STOPS=[[0,[.078,.196,.31]],[.2,[.11,.5,.72]],[.4,[.13,.69,.63]],[.6,[.56,.82,.31]],[.8,[.95,.76,.31]],[1,[.91,.33,.17]]];
-function ramp(g){const t=Math.max(0,Math.min(1,g/RAMPMAX));let a=STOPS[0],b=STOPS[STOPS.length-1];
-  for(let i=0;i<STOPS.length-1;i++){if(t>=STOPS[i][0]&&t<=STOPS[i+1][0]){a=STOPS[i];b=STOPS[i+1];break}}
-  const u=(t-a[0])/((b[0]-a[0])||1);
-  return new Cesium.Color(a[1][0]+(b[1][0]-a[1][0])*u,a[1][1]+(b[1][1]-a[1][1])*u,a[1][2]+(b[1][2]-a[1][2])*u,1);}
+// Discrete grade tiers, not a continuous ramp. Half the model sits under
+// 1 g/t; smoothly interpolating across it renders as fog, whereas stepped
+// bands read as structure. Alpha carries the same signal as hue so the
+// low-grade halo can recede without being deleted.
+// Alpha climbs steeply, not linearly: the sub-1 g/t tiers hold 55% of the
+// blocks but ~4% of the metal, so they exist only as context and must recede
+// hard. The 3+ tiers carry the deposit and stay solid.
+// Grade shells, after the convention the category already uses: a small number
+// of discrete, SOLID, strongly separated bands. Translucency was the wrong
+// instinct — stacking 20 semi-transparent blocks down any line of sight just
+// makes fog, and washing the whole model to see through it costs the very
+// contrast that lets you read grade. Solid shells + a hidden halo reads far
+// better than a transparent everything.
+//
+// The halo is the other half of it: 55% of blocks sit under 1 g/t and carry ~4%
+// of the metal. Drawn, they ARE the blob. Off by default, available as context.
+const TIERS=[
+  {lo:0,    css:'#3d4a57', a:0.30, label:'< 0.3',   halo:true},
+  {lo:0.3,  css:'#6FCF57', a:1.00, label:'0.3 – 1'},
+  {lo:1.0,  css:'#F2A33C', a:1.00, label:'1 – 3'},
+  {lo:3.0,  css:'#E8433C', a:1.00, label:'3 – 8'},
+  {lo:8.0,  css:'#E05CC8', a:1.00, label:'8+ g/t'}];
+const TIER_SCALE=[0.5,1.0,1.0,1.0,1.0];
+// Aerial perspective: things seen through more rock get fainter and drift
+// toward the cold background, exactly as haze works in air. Without it a 475 m
+// thick deposit viewed from above is a flat sheet with no way to tell any of it
+// is underground. Band 0 is at surface, band 5 is ~350 m down.
+// Depth darkens rather than dissolves. On solid shells a fade would only bring
+// the fog back; a graded shift toward the cold background still reads as "this
+// is further into the rock" while every shell stays legible.
+const DEPTH_ALPHA=[1.00,1.00,1.00,1.00,1.00,1.00];
+const DEPTH_MIX  =[0.00,0.13,0.26,0.38,0.50,0.60];
+const HAZE={r:0.055,g:0.075,b:0.105};
+function depthShade(col,d,fade){
+  const k=DEPTH_MIX[d]||0, a=DEPTH_ALPHA[d]||1;
+  return new Cesium.Color(col.red*(1-k)+HAZE.r*k, col.green*(1-k)+HAZE.g*k,
+                          col.blue*(1-k)+HAZE.b*k, col.alpha*(fade?a:Math.max(0.55,a)));
+}
+function tierOf(g){let k=0;for(let i=0;i<TIERS.length;i++) if(g>=TIERS[i].lo) k=i; return k;}
+function ramp(g,fade){const T=TIERS[tierOf(g)];
+  return Cesium.Color.fromCssColorString(T.css).withAlpha(fade?T.a:1);}
+const VEIN_COLORS=['#E8532B','#F2C14E','#21B0A0','#3EA6D6','#B07BD1','#7FD14F','#E88CB0','#D8843A','#55606B'];
+const vgColor=(v,fade)=>Cesium.Color.fromCssColorString(VEIN_COLORS[VGROUP[v]!==undefined?VGROUP[v]:8])
+  .withAlpha(fade?0.85:1);
 const CLS_COLOR={0:'#5b6470',1:'#3EA6D6',2:'#C99A3A',3:'#D9584A'};
 const clsColor=c=>Cesium.Color.fromCssColorString(CLS_COLOR[c]||'#888');
-$('rmax').textContent=RAMPMAX+'+ g/t';
 const fmt=n=>n>=1e6?(n/1e6).toFixed(2)+' Mt':Math.round(n).toLocaleString()+' t';
 const fmtoz=n=>n>=1e6?(n/1e6).toFixed(3)+' Moz':Math.round(n).toLocaleString()+' oz';
 function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on');
@@ -477,36 +630,77 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     animation:false,timeline:false,fullscreenButton:false,infoBox:false,selectionIndicator:false,requestRenderMode:false,
     contextOptions:{webgl:{preserveDrawingBuffer:true}}});   // needed for PNG/PPTX/PDF capture
   viewer.scene.screenSpaceCameraController.enableCollisionDetection=false;
+  // Chapters ran with depthTestAgainstTerrain off, which paints the deposit ON
+  // TOP of the mountain — the single biggest reason it never read as buried.
+  // A translucent globe keeps the surface visible while letting the subsurface
+  // show through, so the model is unmistakably beneath the ground.
+  viewer.scene.globe.translucency.enabled=true;
+  viewer.scene.globe.translucency.frontFaceAlpha=0.0;
+  // Confine the transparency to the deposit's own footprint. Making the whole
+  // globe translucent turns the surrounding landscape into a dark wash, which
+  // costs the terrain context that made this worth georeferencing. A rectangle
+  // leaves the mountain solid and cuts a window over the orebody instead.
+  const sw=proj4('EPSG:26910','WGS84',[EMIN-30,NMIN-30]);
+  const ne=proj4('EPSG:26910','WGS84',[EMIN+EX+30,NMIN+EY+30]);
+  viewer.scene.globe.translucency.rectangle=Cesium.Rectangle.fromDegrees(sw[0],sw[1],ne[0],ne[1]);
+  viewer.scene.globe.undergroundColor=Cesium.Color.fromCssColorString('#141a1f');
+  // Pull the saturation out of the satellite imagery so the only saturated
+  // thing on screen is the deposit. Terrain stays as context, not competition.
+  viewer.imageryLayers.get(0).saturation=0.45;
+  viewer.imageryLayers.get(0).brightness=0.78;
   viewer.scene.skyAtmosphere.show=true;
   viewer.scene.globe.tileLoadProgressEvent.addEventListener(q=>setStat('terrain tiles: '+q));
   viewer.scene.canvas.addEventListener('webglcontextlost',ev=>{ev.preventDefault();setStat('context lost — reloading');setTimeout(()=>location.reload(),1200);},false);
 
+  // Grade-fade on by default: 80% of the contained metal sits in 20% of the
+  // blocks, so an opaque model shows mostly low-grade halo wrapped around the
+  // part that matters. Fading by grade reveals the shells without deleting
+  // context the way the cut-off does.
+  let fade=true, EXAG=1, groundAlpha=0.0;
   const cll=proj4('EPSG:26910','WGS84',[CE,CN]);
   const center=Cesium.Cartesian3.fromDegrees(cll[0],cll[1],CZ+GEOID);
   const RADIUS=Math.max(EX,EY)*0.62;
   const toCart=(E,Nn,h)=>Cesium.Cartesian3.fromDegrees(...proj4('EPSG:26910','WGS84',[E,Nn]),h+GEOID);
 
   // Blocks are 10 x 5 x 5 m on the source grid.
-  const box=Cesium.BoxGeometry.fromDimensions({vertexFormat:Cesium.PerInstanceColorAppearance.VERTEX_FORMAT,
-                                               dimensions:new Cesium.Cartesian3(10,5,5)});
-  const posFor=i=>toCart(F[i*4]+EMIN,F[i*4+1]+NMIN,F[i*4+2]);
+  // Blocks are 10 x 5 x 5 m on the source grid; one geometry per grade tier so
+  // the low tiers can be drawn undersized without touching the data.
+  const BOXES=TIER_SCALE.map(s=>Cesium.BoxGeometry.fromDimensions({
+    vertexFormat:Cesium.PerInstanceColorAppearance.VERTEX_FORMAT,
+    dimensions:new Cesium.Cartesian3(10*s,5*s,5*s)}));
+  const boxFor=g=>BOXES[tierOf(g)];
+  // proj4 + Cartesian conversion is the expensive part of a rebuild, so do it
+  // once for all 168k blocks and reuse for every primitive set built later.
+  let POS=new Array(N);
+  function buildPositions(){
+    for(let i=0;i<N;i++){
+      const z=F[i*4+2], h=EXAG===1?z:(CZ+(z-CZ)*EXAG);
+      POS[i]=toCart(F[i*4]+EMIN,F[i*4+1]+NMIN,h);
+    }
+  }
 
   // One uniform-colour primitive per bucket: recolouring is a single material
   // uniform rather than 168k per-instance attribute writes.
-  function makePrim(indices,color){
-    const inst=indices.map(i=>new Cesium.GeometryInstance({geometry:box,
-      modelMatrix:Cesium.Transforms.eastNorthUpToFixedFrame(posFor(i))}));
+  function makePrim(indices,color,gradeMid){
+    const geom=boxFor(gradeMid===undefined?99:gradeMid);
+    const inst=indices.map(i=>new Cesium.GeometryInstance({geometry:geom,
+      modelMatrix:Cesium.Transforms.eastNorthUpToFixedFrame(POS[i])}));
     return new Cesium.Primitive({geometryInstances:inst,asynchronous:true,
-      appearance:new Cesium.MaterialAppearance({flat:false,translucent:false,
+      appearance:new Cesium.MaterialAppearance({flat:false,translucent:true,
         material:Cesium.Material.fromType('Color',{color})})});
   }
   setStat('building blocks…');
-  RUNS.forEach(r=>{
-    const idx=[]; for(let i=r.s;i<r.s+r.n;i++) idx.push(i);
-    r.mid=r.hi===null?r.lo*1.4:(r.lo+r.hi)/2;
-    r.prim=makePrim(idx,ramp(r.mid));
-    viewer.scene.primitives.add(r.prim);
-  });
+  buildPositions();
+  function buildBase(){
+    RUNS.forEach(r=>{
+      if(r.prim) viewer.scene.primitives.remove(r.prim);
+      const idx=[]; for(let i=r.s;i<r.s+r.n;i++) idx.push(i);
+      r.mid=r.hi===null?r.lo*1.4:(r.lo+r.hi)/2;
+      r.prim=makePrim(idx,depthShade(ramp(r.mid,fade),r.d||0,fade),r.mid);
+      viewer.scene.primitives.add(r.prim);
+    });
+  }
+  buildBase();
 
   // Per-vein sets are built lazily and cached — isolation is a deliberate click.
   const veinPrims={};
@@ -515,11 +709,11 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     const byKey={};
     for(const r of RUNS) for(let i=r.s;i<r.s+r.n;i++){
       if(M[i*2+1]!==v) continue;
-      const k=r.c+'|'+r.b;
-      (byKey[k]=byKey[k]||{c:r.c,b:r.b,lo:r.lo,mid:r.mid,idx:[]}).idx.push(i);
+      const k=r.c+'|'+r.b+'|'+r.d;
+      (byKey[k]=byKey[k]||{c:r.c,b:r.b,d:r.d,lo:r.lo,mid:r.mid,idx:[]}).idx.push(i);
     }
     const set=Object.values(byKey).map(g=>{
-      const p=makePrim(g.idx,ramp(g.mid)); p.show=false;
+      const p=makePrim(g.idx,depthShade(ramp(g.mid,fade),g.d||0,fade),g.mid); p.show=false;
       viewer.scene.primitives.add(p); return Object.assign({},g,{prim:p});
     });
     veinPrims[v]=set; return set;
@@ -534,38 +728,161 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   function buildDrills(){
     if(drillEnts||!HOLES.length) return drillEnts;
     drillEnts=[];
-    const ghost=c=>new Cesium.ColorMaterialProperty(c.withAlpha(0.30));
+    const ghost=c=>new Cesium.ColorMaterialProperty(c.withAlpha(0.32));
+    // A circular cross-section turns the trace into a solid rod instead of a
+    // flat line, so it shades, occludes and reads as a real object against the
+    // block model. Lines of any width stay flat and get lost.
+    const tube=(r,n)=>{const s=[];for(let i=0;i<n;i++){const a=2*Math.PI*i/n;
+      s.push(new Cesium.Cartesian2(r*Math.cos(a),r*Math.sin(a)));}return s;};
+    const ROD=tube(1.6,8), ORE=tube(4.2,10);
+    const P=(p_)=>toCart(p_[0],p_[1],EXAG===1?p_[2]:(CZ+(p_[2]-CZ)*EXAG));
     HOLES.forEach(h=>{
-      const white=new Cesium.Color(1,1,1,.55);
-      drillEnts.push(viewer.entities.add({polyline:{
-        positions:[toCart(h.collar[0],h.collar[1],h.collar[2]),toCart(h.end[0],h.end[1],h.end[2])],
-        width:1.6,material:white,depthFailMaterial:ghost(white)}}));
+      drillEnts.push(viewer.entities.add({polylineVolume:{
+        positions:[P(h.collar),P(h.end)], shape:ROD,
+        material:new Cesium.Color(0.87,0.89,0.87,0.55),
+        outline:false}}));
       h.segs.forEach(s=>{ if(s.g<0.1) return;
-        const col=ramp(s.g);
+        const col=depthShade(ramp(s.g,false),s.d||0,true);
+        // assayed interval as a fat rod
+        drillEnts.push(viewer.entities.add({polylineVolume:{
+          positions:[P(s.a),P(s.b)], shape:ORE, material:col}}));
+        // and the grade bar out the side, length scaled by assay
         drillEnts.push(viewer.entities.add({polyline:{
-          positions:[toCart(s.a[0],s.a[1],s.a[2]),toCart(s.b[0],s.b[1],s.b[2])],
-          width:7,material:col,depthFailMaterial:ghost(col)}}));
+          positions:[P(s.mid),P(s.bar)], width:3, material:col,
+          depthFailMaterial:ghost(col)}}));
       });
-      // collar marker on the ridge
-      drillEnts.push(viewer.entities.add({position:toCart(h.collar[0],h.collar[1],h.collar[2]),
-        point:{pixelSize:5,color:Cesium.Color.WHITE.withAlpha(.85),
+      drillEnts.push(viewer.entities.add({position:P(h.collar),
+        point:{pixelSize:6,color:Cesium.Color.WHITE.withAlpha(.9),
+               outlineColor:Cesium.Color.fromCssColorString('#07090A'),outlineWidth:1.5,
+               disableDepthTestDistance:Number.POSITIVE_INFINITY},
+        label:{text:h.id,font:'500 11px monospace',fillColor:Cesium.Color.WHITE.withAlpha(.85),
+               showBackground:true,backgroundColor:new Cesium.Color(0.03,0.04,0.04,0.72),
+               pixelOffset:new Cesium.Cartesian2(0,-16),scale:0.9,
+               distanceDisplayCondition:new Cesium.DistanceDisplayCondition(0,2200),
                disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
     });
     return drillEnts;
   }
   const showDrills=on=>{ if(drillEnts) drillEnts.forEach(e=>e.show=on); };
 
+  // ---- site features: claims, infrastructure, roads, labels ----
+  // Clamped to terrain rather than floated at a guessed elevation, so they sit
+  // on the actual ground the deposit is under.
+  let siteEnts=null, siteOn=false;
+  function buildSite(){
+    if(siteEnts||!SITE.areas) return siteEnts;
+    siteEnts=[];
+    const deg=r=>r.reduce((acc,c)=>{const ll=proj4('EPSG:26910','WGS84',c);acc.push(ll[0],ll[1]);return acc;},[]);
+    (SITE.claims||[]).forEach(c=>siteEnts.push(viewer.entities.add({name:c.name,
+      polyline:{positions:Cesium.Cartesian3.fromDegreesArray(deg(c.ring)),
+        width:2.5,clampToGround:true,
+        material:new Cesium.PolylineDashMaterialProperty({
+          color:Cesium.Color.fromCssColorString('#F2C14E'),dashLength:26})}})));
+    (SITE.areas||[]).forEach(a=>{
+      siteEnts.push(viewer.entities.add({name:a.name,
+        polygon:{hierarchy:Cesium.Cartesian3.fromDegreesArray(deg(a.ring)),
+          material:Cesium.Color.fromCssColorString(a.color).withAlpha(0.55),
+          classificationType:Cesium.ClassificationType.TERRAIN}}));
+      siteEnts.push(viewer.entities.add({
+        polyline:{positions:Cesium.Cartesian3.fromDegreesArray(deg(a.ring)),
+          width:1.6,clampToGround:true,
+          material:Cesium.Color.fromCssColorString(a.color).withAlpha(0.95)}}));
+    });
+    (SITE.roads||[]).forEach(rd=>siteEnts.push(viewer.entities.add({name:rd.name,
+      polyline:{positions:Cesium.Cartesian3.fromDegreesArray(deg(rd.path)),
+        width:4,clampToGround:true,
+        material:Cesium.Color.fromCssColorString('#E8B33C').withAlpha(0.9)}})));
+    // Labels on leader lines, the way a map annotation reads.
+    (SITE.labels||[]).forEach(l=>{
+      const ll=proj4('EPSG:26910','WGS84',l.at);
+      const base=Cesium.Cartesian3.fromDegrees(ll[0],ll[1],ZTOP+GEOID-40);
+      const tip=Cesium.Cartesian3.fromDegrees(ll[0],ll[1],ZTOP+GEOID+(l.dz||250));
+      siteEnts.push(viewer.entities.add({polyline:{positions:[base,tip],width:1,
+        material:Cesium.Color.WHITE.withAlpha(.42),arcType:Cesium.ArcType.NONE}}));
+      siteEnts.push(viewer.entities.add({position:tip,
+        label:{text:l.name,font:'500 13px Archivo, system-ui, sans-serif',
+          fillColor:Cesium.Color.WHITE,showBackground:true,
+          backgroundColor:new Cesium.Color(0.03,0.04,0.05,0.82),
+          backgroundPadding:new Cesium.Cartesian2(9,6),
+          verticalOrigin:Cesium.VerticalOrigin.BOTTOM,
+          disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+    });
+    return siteEnts;
+  }
+  const showSite=on=>{ if(on) buildSite(); if(siteEnts) siteEnts.forEach(e=>e.show=on); };
+
+  // ---- depth reference grid ----
+  // The single clearest way to say "this is underground" is to label how far
+  // underground it is. Level rectangles every 100 m below the deposit's
+  // outcrop, each tagged with its depth, give the eye a ruler to read the
+  // model against — far more legible than any amount of shading.
+  const DEPTH_STEP=100;
+  let depthEnts=null, depthOn=true;
+  function buildDepthGrid(){
+    if(depthEnts) return depthEnts;
+    depthEnts=[];
+    const zAt=z=>EXAG===1?z:(CZ+(z-CZ)*EXAG);
+    const pad=90;
+    const corners=[[EMIN-pad,NMIN-pad],[EMIN+EX+pad,NMIN-pad],
+                   [EMIN+EX+pad,NMIN+EY+pad],[EMIN-pad,NMIN+EY+pad]];
+    for(let d=DEPTH_STEP; ZTOP-d>=ZBOT-DEPTH_STEP; d+=DEPTH_STEP){
+      const z=zAt(ZTOP-d);
+      const ring=corners.concat([corners[0]]).map(c=>toCart(c[0],c[1],z));
+      depthEnts.push(viewer.entities.add({polyline:{
+        positions:ring, width:1.5, arcType:Cesium.ArcType.NONE,
+        material:new Cesium.PolylineDashMaterialProperty({
+          color:new Cesium.Color(1,1,1,0.30), dashLength:18})}}));
+      depthEnts.push(viewer.entities.add({
+        position:toCart(EMIN+EX+pad,NMIN-pad,z),
+        label:{text:d+' m',font:'500 12px "JetBrains Mono", monospace',
+               fillColor:Cesium.Color.WHITE.withAlpha(.9),showBackground:true,
+               backgroundColor:new Cesium.Color(0.03,0.04,0.05,0.78),
+               horizontalOrigin:Cesium.HorizontalOrigin.LEFT,
+               pixelOffset:new Cesium.Cartesian2(8,0),
+               disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+    }
+    return depthEnts;
+  }
+  const showDepth=on=>{ if(on) buildDepthGrid();
+    if(depthEnts) depthEnts.forEach(e=>e.show=on); };
+
   // ---- state ----
   let mode='grade', cutIdx=1, vein=-1, clsOn={0:true,1:true,2:true,3:true},
       cur=0, drills=false, playing=false, narrating=false, dwellTimer=null, restoring=false;
   const cutVal=()=>LADDER[cutIdx];
-  const colorOf=g=>mode==='grade'?ramp(g.mid):clsColor(g.c);
+  // Vein-identity colouring needs geometry grouped by domain rather than by
+  // (class, grade-bin), so it gets its own primitive set, built lazily once.
+  let vgPrims=null;
+  function buildVeinGroups(){
+    if(vgPrims) return vgPrims;
+    setStat('grouping by vein domain…');
+    const by={};
+    for(const r of RUNS) for(let i=r.s;i<r.s+r.n;i++){
+      const k=VGROUP[M[i*2+1]]+'|'+r.b+'|'+r.d;
+      (by[k]=by[k]||{g:VGROUP[M[i*2+1]],b:r.b,d:r.d,lo:r.lo,mid:r.mid,idx:[]}).idx.push(i);
+    }
+    vgPrims=Object.values(by).map(o=>{
+      const pr=makePrim(o.idx,depthShade(Cesium.Color.fromCssColorString(VEIN_COLORS[o.g]).withAlpha(fade?0.85:1),o.d,fade),o.mid);
+      pr.show=false; viewer.scene.primitives.add(pr); return Object.assign({},o,{prim:pr});
+    });
+    return vgPrims;
+  }
+  const colorOf=g=>depthShade(mode==='grade'?ramp(g.mid,true):clsColor(g.c),g.d||0,true);
+  // `fade` now means "hide the halo" rather than "make everything see-through".
+  const haloHidden=()=>fade;
+  const isHalo=g=>TIERS[tierOf(g.mid)].halo===true;
 
   function apply(){
     const cut=cutVal();
-    const vis=g=>g.lo>=cut-1e-9 && clsOn[g.c];
-    RUNS.forEach(r=>{ r.prim.show = vein===-1 && vis(r);
+    const vis=g=>g.lo>=cut-1e-9 && clsOn[g.c] && !(haloHidden() && isHalo(g));
+    const veinMode=mode==='vein';
+    RUNS.forEach(r=>{ r.prim.show = !veinMode && vein===-1 && vis(r);
       r.prim.appearance.material.uniforms.color=colorOf(r); });
+    if(veinMode){
+      buildVeinGroups().forEach(o=>{ o.prim.show = vein===-1 && o.lo>=cut-1e-9 && !(haloHidden() && isHalo(o));
+        o.prim.appearance.material.uniforms.color=depthShade(
+          Cesium.Color.fromCssColorString(VEIN_COLORS[o.g]).withAlpha(fade?0.85:1),o.d||0,fade); });
+    } else if(vgPrims){ vgPrims.forEach(o=>o.prim.show=false); }
     if(vein!==-1) buildVein(vein).forEach(g=>{ g.prim.show=vis(g);
       g.prim.appearance.material.uniforms.color=colorOf(g); });
     // Drop non-active vein sets rather than parking them hidden — cycling all
@@ -575,7 +892,14 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       delete veinPrims[v]; } });
     if(drills) buildDrills();
     showDrills(drills);
-    $('synwarn').classList.toggle('on',drills&&DRILL_SYNTHETIC);
+    showDepth(depthOn);
+    showSite(siteOn);
+    $('synwarn').textContent = (drills&&DRILL_SYNTHETIC&&siteOn&&SITE_SYNTHETIC)
+      ? 'Synthetic drill data and site features — fabricated, not real'
+      : (siteOn&&SITE_SYNTHETIC&&!drills)
+        ? 'Synthetic site features — conceptual, not a real mine plan'
+        : 'Synthetic drill data — fabricated, not real results';
+    $('synwarn').classList.toggle('on',(drills&&DRILL_SYNTHETIC)||(siteOn&&SITE_SYNTHETIC));
     readout(); syncHash();
   }
 
@@ -609,6 +933,57 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     return {t:t,g:t?m/t:0,oz:m/G_PER_OZ,n:n};
   }
 
+  // ---- presenter ink ----
+  // Live annotation over the 3D view: the thing a presenter reaches for when
+  // someone asks "which part?". Strokes are stored in normalised coordinates
+  // so they survive a window resize, and they clear on chapter change because
+  // an annotation belongs to the moment it was drawn.
+  const ink=$('ink'), ictx=ink.getContext('2d');
+  let strokes=[], drawing=null, inkColor='#FF6A1F', inking=false;
+  function inkResize(){
+    const dpr=devicePixelRatio||1;
+    ink.width=innerWidth*dpr; ink.height=innerHeight*dpr;
+    ink.style.width=innerWidth+'px'; ink.style.height=innerHeight+'px';
+    ictx.setTransform(dpr,0,0,dpr,0,0); inkRedraw();
+  }
+  function inkRedraw(){
+    ictx.clearRect(0,0,innerWidth,innerHeight);
+    ictx.lineCap='round'; ictx.lineJoin='round';
+    for(const s of strokes){
+      if(s.pts.length<2) continue;
+      ictx.strokeStyle=s.c; ictx.lineWidth=s.w;
+      ictx.shadowColor='rgba(0,0,0,.55)'; ictx.shadowBlur=4;
+      ictx.beginPath();
+      ictx.moveTo(s.pts[0][0]*innerWidth,s.pts[0][1]*innerHeight);
+      for(let i=1;i<s.pts.length;i++) ictx.lineTo(s.pts[i][0]*innerWidth,s.pts[i][1]*innerHeight);
+      ictx.stroke();
+    }
+    ictx.shadowBlur=0;
+  }
+  addEventListener('resize',inkResize); inkResize();
+  const inkPt=e=>[e.clientX/innerWidth, e.clientY/innerHeight];
+  ink.addEventListener('pointerdown',e=>{ if(!inking) return;
+    ink.setPointerCapture(e.pointerId);
+    drawing={c:inkColor,w:4,pts:[inkPt(e)]}; strokes.push(drawing);});
+  ink.addEventListener('pointermove',e=>{ if(!drawing) return;
+    drawing.pts.push(inkPt(e)); inkRedraw();});
+  ink.addEventListener('pointerup',()=>{drawing=null;});
+  ink.addEventListener('pointercancel',()=>{drawing=null;});
+  function setInking(on){
+    inking=on; ink.classList.toggle('arm',on);
+    $('inkbar').classList.toggle('on',on);
+    $('inkPen').classList.toggle('on',on);
+  }
+  $('inkPen').onclick=()=>setInking(!inking);
+  $('drawbtn').onclick=()=>setInking(!inking);
+  $('inkUndo').onclick=()=>{strokes.pop();inkRedraw();};
+  $('inkClear').onclick=()=>{strokes=[];inkRedraw();};
+  document.querySelectorAll('.isw').forEach(sw=>{
+    if(sw.dataset.c===inkColor) sw.classList.add('on');
+    sw.onclick=()=>{inkColor=sw.dataset.c;
+      document.querySelectorAll('.isw').forEach(x=>x.classList.toggle('on',x===sw));};});
+  const inkClearAll=()=>{strokes=[];drawing=null;inkRedraw();};
+
   // ---- deep links ----
   let hashTimer=null;
   function syncHash(){
@@ -635,6 +1010,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     $('modeseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.m===m));
     $('gradeleg').style.display=m==='grade'?'flex':'none';
     $('clsleg').style.display=m==='class'?'flex':'none';
+    $('veinleg').style.display=m==='vein'?'flex':'none';
   }
   function setCut(i){cutIdx=i;$('cut').value=i;$('cutv').textContent=cutVal().toFixed(2)+' g/t';}
   function setDrills(on){
@@ -644,7 +1020,59 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   setCut(cutIdx);
   $('cut').oninput=e=>{setCut(+e.target.value);apply();};
   $('modeseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{setMode(b.dataset.m);apply();});
+  $('siteseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    siteOn=b.dataset.s==='1';
+    $('siteseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    apply();});
+  $('depthseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    depthOn=b.dataset.g==='1';
+    $('depthseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    showDepth(depthOn);});
+  function setGround(a){
+    groundAlpha=a;
+    viewer.scene.globe.translucency.frontFaceAlpha=a;
+    // With the ground intact the deposit must draw over it, or it disappears
+    // inside the mountain entirely.
+    viewer.scene.globe.depthTestAgainstTerrain=a<0.9;
+    $('ground').value=Math.round(a*100);
+    $('groundv').textContent=a===0?'cut away':Math.round(a*100)+'%';
+  }
+  $('ground').oninput=e=>setGround((+e.target.value)/100);
+  $('fadeseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    if((b.dataset.f==='1')===fade) return;
+    fade=b.dataset.f==='1';
+    $('fadeseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    // Block size is baked into the geometry, so switching fade rebuilds.
+    setStat('rebuilding…');
+    if(vgPrims){ vgPrims.forEach(o=>viewer.scene.primitives.remove(o.prim)); vgPrims=null; }
+    Object.keys(veinPrims).forEach(v=>{ veinPrims[v].forEach(g=>viewer.scene.primitives.remove(g.prim));
+      delete veinPrims[v]; });
+    buildBase(); apply(); setStat('');});
+  $('exagseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    const k=parseFloat(b.dataset.x); if(k===EXAG) return;
+    $('exagseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    EXAG=k; setStat('rebuilding at '+k+'x…');
+    // Stretching Z moves every block, so geometry must be rebuilt. Terrain is
+    // stretched about the same datum so the two stay registered.
+    viewer.scene.verticalExaggeration=k;
+    viewer.scene.verticalExaggerationRelativeHeight=CZ+GEOID;
+    buildPositions();
+    if(vgPrims){ vgPrims.forEach(o=>viewer.scene.primitives.remove(o.prim)); vgPrims=null; }
+    Object.keys(veinPrims).forEach(v=>{ veinPrims[v].forEach(g=>viewer.scene.primitives.remove(g.prim));
+      delete veinPrims[v]; });
+    if(drillEnts){ drillEnts.forEach(e=>viewer.entities.remove(e)); drillEnts=null; }
+    if(depthEnts){ depthEnts.forEach(e=>viewer.entities.remove(e)); depthEnts=null; }
+    buildBase(); apply(); setStat('');});
   $('drillseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{setDrills(b.dataset.d==='1');apply();});
+  // Legends are built from the same tables that colour the geometry, so they
+  // cannot drift out of step with what is on screen.
+  const key=(css,label)=>'<div class="k"><span class="sw" style="background:'+css+
+    '"></span><span>'+label+'</span></div>';
+  $('gradeleg').innerHTML='<span>AuEq g/t</span>'+TIERS.map(T=>key(T.css,T.label)).join('');
+  $('veinleg').innerHTML='<span>Domain</span>'+VGROUP_NAMES.map((n,i)=>key(VEIN_COLORS[i],n)).join('');
+  $('depthleg').innerHTML='<span>Depth</span>'+DEPTH_ALPHA.map(a=>
+    '<div class="k"><span class="sw" style="background:#8fd6cf;opacity:'+a+'"></span></div>').join('')+
+    '<span>0 \u2192 350 m</span>';
   const chips=$('clschips');
   Object.keys(CLASS_LABELS).map(Number).sort().forEach(c=>{
     const d=document.createElement('div'); d.className='chip on'; d.dataset.c=c;
@@ -710,7 +1138,13 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     vein=-1; vsel.value='-1';
     Object.keys(clsOn).forEach(k=>{clsOn[k]=true;});
     chips.querySelectorAll('.chip').forEach(el=>el.classList.add('on'));
-    viewer.scene.globe.depthTestAgainstTerrain=!c.xray;
+    inkClearAll();
+    viewer.scene.globe.depthTestAgainstTerrain=true;
+    // Cutting the ground away is a deliberate beat, not a permanent state:
+    // overhead shots read better with the mountain intact and the deposit shown
+    // through it, and the cut earns its impact when the subsurface is the point.
+    const ga=(c.ground===undefined)?groundAlpha:c.ground;
+    setGround(ga);
     apply(); frameFor(c,!initial); paintUI();
     if(narrating) speak(c);
     if(playing) armDwell(c);
@@ -776,6 +1210,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     else if((e.key==='e'||e.key==='E')&&!EMBED) $('xbtn').click();
     else if(e.key==='p'||e.key==='P') $('play').click();
     else if(e.key==='n'||e.key==='N') $('narr').click();
+    else if(e.key==='d'||e.key==='D') setInking(!inking);
+    else if((e.metaKey||e.ctrlKey)&&e.key==='z'){ strokes.pop(); inkRedraw(); }
   });
 
   // ---- scale bar + compass ----
@@ -807,6 +1243,17 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       img.onload=()=>{
         const c=document.createElement('canvas'); c.width=img.width; c.height=img.height;
         const x=c.getContext('2d'); x.drawImage(img,0,0);
+        // Presenter ink lives on its own canvas, so composite it in or an
+        // exported still would silently drop what was drawn on screen.
+        if(strokes.length){
+          const sx=c.width/innerWidth, sy=c.height/innerHeight;
+          x.lineCap='round'; x.lineJoin='round';
+          for(const s of strokes){ if(s.pts.length<2) continue;
+            x.strokeStyle=s.c; x.lineWidth=s.w*sx; x.beginPath();
+            x.moveTo(s.pts[0][0]*c.width,s.pts[0][1]*c.height);
+            for(let i=1;i<s.pts.length;i++) x.lineTo(s.pts[i][0]*c.width,s.pts[i][1]*c.height);
+            x.stroke(); }
+        }
         const S=c.width/1440, pad=Math.round(22*S);
         const disc=(CLASS_CONFIRMED?'':'Resource class labels unconfirmed. ')+
                    'Illustrative visualization — not a mineral resource statement.';
@@ -991,15 +1438,20 @@ for k, v in {
     "__B64__": b64, "__META__": b64m, "__N__": str(N), "__RAMPMAX__": f"{RAMPMAX}",
     "__EMIN__": f"{EMIN:.1f}", "__NMIN__": f"{NMIN:.1f}", "__CE__": f"{cE:.1f}",
     "__CN__": f"{cN:.1f}", "__CZ__": f"{cZ:.1f}", "__EX__": f"{EX:.0f}", "__EY__": f"{EY:.0f}",
+    "__ZTOP__": f"{ZTOP:.0f}", "__ZBOT__": f"{ZBOT:.0f}",
     "__CHAPTERS__": js(CHAPTERS),
-    "__RUNS__": js([{k2: r[k2] for k2 in ("c", "b", "lo", "hi", "s", "n")} for r in RUNS]),
+    "__RUNS__": js([{k2: r[k2] for k2 in ("c", "b", "d", "lo", "hi", "s", "n")} for r in RUNS]),
     "__BUCKETS__": js(BUCKETS),
     "__BY_CB__": js(BY_CB),
+    "__VGROUP__": js(VGROUP),
+    "__VGROUP_NAMES__": js(VGROUP_NAMES),
     "__VEINS__": js(VEINS),
     "__LADDER__": js(LADDER),
     "__CLASS_LABELS__": js(CLASS_LABELS),
     "__CLASS_CONFIRMED__": "true" if stats.get("class_mapping_confirmed") else "false",
     "__HOLES__": js(HOLES),
+    "__SITE__": js(SITE),
+    "__SITE_SYNTHETIC__": "true" if SITE_SYNTHETIC else "false",
     "__DRILL_SYNTHETIC__": "true" if DRILL_SYNTHETIC else "false",
 }.items():
     HTML = HTML.replace(k, v)
