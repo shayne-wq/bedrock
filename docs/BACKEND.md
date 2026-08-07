@@ -5,9 +5,17 @@ no backend at all — the Elk Gold demo runs entirely on its own. The **console*
 (`/dashboard/`) is what turns it into a platform: accounts, uploads, deck
 editing, share links and audience analytics. That half needs Supabase.
 
-Nothing below has been run against a hosted Supabase project yet. It has all
-been run against a local one (`supabase start`), which is the same Postgres, the
-same auth, and the same edge runtime.
+All of this has been run against both a local stack (`supabase start`) and the
+hosted project — schema pushed, both functions deployed, endpoints smoke-tested
+live.
+
+One difference bites when you go from local to hosted: **pgcrypto lives in the
+`extensions` schema in both, but `extensions` is on the search_path locally and
+not for the role that applies migrations on hosted Supabase.** An unqualified
+`gen_random_bytes()` therefore applies cleanly locally and fails remotely with
+`42883`. Schema-qualify it — `extensions.gen_random_bytes(...)` — in any
+migration that reaches for pgcrypto. Local green does not prove remote green
+here.
 
 ---
 
@@ -63,8 +71,15 @@ by anonymous viewers who hold a share token and no account. Authorisation is the
 token, checked inside the function.
 
 ```bash
+supabase db reset                         # loads supabase/seed.sql
 bash supabase/tests/functions_test.sh     # 43 assertions against a running stack
 ```
+
+The suite asserts against fixtures in `supabase/seed.sql` — the Elk Gold
+project, the Siwash North deck and a known share token — so it needs a local
+stack that has been reset with that seed loaded. Run it against a **local**
+stack only: the seed creates a live, passcode-free share link with a guessable
+token, which has no business in a hosted project.
 
 ## 4. Point the console at it
 

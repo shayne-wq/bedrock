@@ -152,7 +152,11 @@ create trigger chapters_touch_deck
 create table share_links (
   id            uuid primary key default gen_random_uuid(),
   deck_id       uuid not null references decks(id) on delete cascade,
-  token         text not null unique default encode(gen_random_bytes(24), 'base64'),
+  -- Schema-qualified: pgcrypto lives in `extensions`, which is on the search_path
+  -- locally but not for the role that applies migrations on hosted Supabase.
+  -- Qualifying also pins the stored default, so an INSERT resolves it whatever
+  -- search_path the inserting role happens to carry.
+  token         text not null unique default encode(extensions.gen_random_bytes(24), 'base64'),
   label         text,
   expires_at    timestamptz,
   passcode_hash text,

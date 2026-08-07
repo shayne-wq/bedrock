@@ -9,8 +9,8 @@
 // not require editing — or accidentally committing — this file.
 
 const BAKED = {
-  url: "",
-  anonKey: "",
+  url: "https://czuaqwtngduvlisxonkh.supabase.co",
+  anonKey: "sb_publishable_7Uv04ITIEFMNPFyiJgHD6g_INAhri9",
 };
 
 function stored() {
