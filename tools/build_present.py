@@ -244,15 +244,29 @@ SITE = json.loads(_site_p.read_text()) if _site_p.exists() else {}
 SITE_SYNTHETIC = bool(SITE.get("synthetic", True)) if SITE else False
 DRILL_SYNTHETIC = bool(DRILL_MAN.get("synthetic", True)) if HOLES else False
 
+# Slide chapters sit in the same deck as the 3D scenes, so a presenter can move
+# between corporate narrative and the model without leaving the tool. The 3D
+# view stays live behind them - the deposit never disappears mid-story.
+_T = stats["total"]
+_M = stats["by_class"]
 CHAPTERS = [
+  {"h": 26, "p": -28, "r": 4200, "dwell": 9, "ground": 1.0, "slide": {
+     "eyebrow": "The project",
+     "title": "Elk Gold - Siwash North",
+     "body": "A drill-defined, high-grade gold system in British Columbia's Cariboo "
+             "District. Road-accessible, in an established mining region, and open at depth.",
+     "stats": [{"k": "Contained AuEq", "v": f"{_T['oz']/1e6:.2f} Moz"},
+               {"k": "Tonnes", "v": f"{_T['tonnes']/1e6:.2f} Mt"},
+               {"k": "Grade", "v": f"{_T['grade_gt']} g/t"},
+               {"k": "Vein domains", "v": str(len(VEINS))}]}},
   {"h": 28, "p": -26, "r": 3600, "cut": 0.1, "xray": True, "mode": "grade", "dwell": 9,
    "ground": 1.0, "title": "A high-grade gold system", "body": "The Elk Gold project sits in the Quesnel Highland of British Columbia's Cariboo District — a road-accessible, established mining region."},
   {"h": 30, "p": -22, "r": 2500, "cut": 0.1, "xray": True, "mode": "grade", "dwell": 9,
    "ground": 1.0, "title": "On real ground", "body": "Every block is placed at its true UTM position on real terrain — this is the actual mountain the deposit sits inside."},
   {"h": 44, "p": -34, "r": 1950, "cut": 0.1, "xray": True, "mode": "grade", "dwell": 10,
-   "ground": 1.0, "title": "The orebody", "body": "A multi-vein gold system, roughly 1,440 by 1,385 metres, coloured by gold-equivalent grade — cool blues low, hot reds high."},
+   "ground": 1.0, "title": "The orebody", "body": "A multi-vein gold system, roughly 1,440 by 1,385 metres, drawn as grade shells — green through orange and red to magenta as gold-equivalent grade climbs."},
   {"h": 66, "p": -30, "r": 1450, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 10,
-   "ground": 0.0, "title": "The high-grade core", "body": "Raising the cut-off to 1 g/t strips away the halo and reveals the bonanza vein shells that carry most of the metal."},
+   "ground": 0.0, "title": "The high-grade core", "body": "The richest fifth of the blocks carry 78% of the metal. Raising the cut-off strips the rest away and leaves the bonanza shells that actually matter."},
   {"h": 52, "p": -30, "r": 1700, "cut": 0.1, "xray": True, "mode": "class", "dwell": 11,
    "ground": 0.0, "title": "How well is it known?", "body": "Recoloured by resource classification. Confidence is not evenly distributed through a deposit — and this is the first question any technical reader asks."},
   # Cut-off lifted to 1.0 here so the low-grade halo stops burying the traces.
@@ -264,6 +278,16 @@ CHAPTERS = [
    "ground": 0.0, "title": "In profile", "body": "Turned on edge, the veins persist to roughly 475 metres below surface — and remain open at depth."},
   {"h": 26, "p": -27, "r": 3000, "cut": 0.15, "xray": True, "mode": "grade", "dwell": 10,
    "ground": 0.0, "title": "Explore it yourself", "body": "Forty-six vein domains, each one isolatable, each with its own grade and tonnage. Open Explore and interrogate the model directly."},
+  {"h": 30, "p": -26, "r": 3200, "dwell": 11, "ground": 1.0, "slide": {
+     "eyebrow": "Resource by confidence",
+     "title": "What is known, and how well",
+     "body": "Classification splits the deposit by how much drilling stands behind it. "
+             "Labels follow the usual MineSight convention and remain unconfirmed "
+             "against the Nov-2021 technical report.",
+     "table": [["Class", "Tonnes", "Grade", "Contained"]] +
+              [[stats["class_labels"][k], f"{v['tonnes']/1e6:.2f} Mt",
+                f"{v['grade_gt']} g/t", f"{v['oz']:,.0f} oz"]
+               for k, v in sorted(_M.items()) if v["tonnes"] > 0]}},
 ]
 
 HTML = r"""<!DOCTYPE html>
@@ -288,11 +312,15 @@ HTML = r"""<!DOCTYPE html>
   #brand .n{font-size:17px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;margin-top:5px;line-height:1}
 
   #rail{position:fixed;left:30px;top:96px;z-index:6;display:flex;flex-direction:column;gap:2px}
-  #rail .c{display:flex;align-items:baseline;gap:11px;padding:7px 0;cursor:pointer;opacity:.5;transition:opacity .3s}
+  #rail .c{display:flex;align-items:center;gap:10px;padding:4px 0;cursor:pointer;opacity:.55;transition:opacity .3s}
+  #rail .th{width:54px;height:32px;border-radius:3px;flex:0 0 auto;background-size:cover;background-position:center;
+            border:1px solid rgba(255,255,255,.16);background-color:#11161a}
+  #rail .th.isslide{background-image:linear-gradient(120deg,#1e242a,#0d1114)}
+  #rail .c.on .th{border-color:#C99A3A;box-shadow:0 0 0 1px rgba(201,154,58,.55)}
   #rail .c:hover{opacity:.85}
   #rail .c.on{opacity:1}
   #rail .num{font-family:'JetBrains Mono',monospace;font-size:10px;color:#C99A3A;width:20px}
-  #rail .t{font-size:12.5px;font-weight:500;letter-spacing:.01em;max-width:190px;line-height:1.25}
+  #rail .t{font-size:12px;font-weight:500;letter-spacing:.01em;max-width:150px;line-height:1.25}
   #rail .c.on .t{color:#fff}
 
   #bar{position:fixed;left:0;right:0;bottom:0;z-index:6;padding:70px 34px 26px;
@@ -382,6 +410,29 @@ HTML = r"""<!DOCTYPE html>
   .ibtn.on{background:#C99A3A;border-color:#C99A3A;color:#07090A}
   .isw{width:18px;height:18px;border-radius:50%;cursor:pointer;border:2px solid rgba(255,255,255,.25)}
   .isw.on{border-color:#fff;transform:scale(1.15)}
+  /* Slide chapters: a panel over the live 3D view rather than a separate mode,
+     so the model stays visible behind the narrative. */
+  #slide{position:fixed;inset:0;z-index:7;display:none;align-items:center;
+         background:linear-gradient(100deg,rgba(7,9,10,.96) 0%,rgba(7,9,10,.90) 46%,rgba(7,9,10,.30) 78%,rgba(7,9,10,0) 100%);
+         opacity:0;transition:opacity .55s ease}
+  #slide.on{display:flex;opacity:1}
+  #slide .sinner{max-width:620px;padding:0 60px}
+  #slide .sey{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.26em;
+              text-transform:uppercase;color:#C99A3A;margin-bottom:20px}
+  #slide h2{font-size:clamp(34px,4.2vw,58px);font-weight:800;letter-spacing:-.03em;line-height:1.02}
+  #slide p{font-family:Newsreader,Georgia,serif;font-size:19px;line-height:1.55;color:#C6CAC5;
+           margin-top:20px;text-wrap:pretty}
+  .sstats{display:flex;flex-wrap:wrap;gap:34px;margin-top:36px}
+  .sstats .k{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.16em;
+             text-transform:uppercase;color:#8E948E}
+  .sstats .v{font-size:28px;font-weight:700;letter-spacing:-.02em;color:#C99A3A;margin-top:5px}
+  .stab{margin-top:30px;border-collapse:collapse;width:100%;display:none}
+  .stab.on{display:table}
+  .stab th{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.16em;
+           text-transform:uppercase;color:#8E948E;text-align:left;padding:0 18px 9px 0;font-weight:500}
+  .stab td{font-family:'JetBrains Mono',monospace;font-size:14px;color:#EDEEEC;
+           padding:9px 18px 9px 0;border-top:1px solid rgba(255,255,255,.10)}
+  .stab td:first-child{color:#C6CAC5}
   #prog{position:fixed;left:0;top:0;height:2px;background:#C99A3A;width:0;z-index:8;transition:width .6s ease}
   #dwell{position:fixed;left:0;top:0;height:2px;background:rgba(201,154,58,.35);width:0;z-index:7}
 
@@ -537,6 +588,14 @@ HTML = r"""<!DOCTYPE html>
   </div>
 </div>
 
+<div id="slide"><div class="sinner">
+  <div class="sey" id="s_ey"></div>
+  <h2 id="s_t"></h2>
+  <p id="s_b"></p>
+  <div class="sstats" id="s_stats"></div>
+  <table class="stab" id="s_tab"></table>
+</div></div>
+
 <div id="intro">
   <div class="eyebrow">Orebody Present · Interactive 3D Story</div>
   <h1>Elk Gold<br>Siwash North</h1>
@@ -557,7 +616,7 @@ const DATA="__B64__", META="__META__", N=__N__, RAMPMAX=__RAMPMAX__,
       ZTOP=__ZTOP__, ZBOT=__ZBOT__;
 const CHAPTERS=__CHAPTERS__, RUNS=__RUNS__, BUCKETS=__BUCKETS__, VEINS=__VEINS__,
       LADDER=__LADDER__, CLASS_LABELS=__CLASS_LABELS__, CLASS_CONFIRMED=__CLASS_CONFIRMED__,
-      BY_CB=__BY_CB__, HOLES=__HOLES__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
+      THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
 proj4.defs('EPSG:26910','+proj=utm +zone=10 +datum=NAD83 +units=m +no_defs');
 const GEOID=-18, rad=Cesium.Math.toRadians, $=id=>document.getElementById(id);
 const setStat=t=>$('status').textContent=t;
@@ -933,6 +992,28 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     return {t:t,g:t?m/t:0,oz:m/G_PER_OZ,n:n};
   }
 
+  // ---- slide chapters ----
+  function paintSlide(c){
+    const s=c.slide, el=$('slide');
+    if(!s){ el.classList.remove('on'); return; }
+    $('s_ey').textContent=s.eyebrow||'';
+    $('s_t').textContent=s.title||'';
+    $('s_b').textContent=s.body||'';
+    const st=$('s_stats'); st.innerHTML='';
+    (s.stats||[]).forEach(x=>{
+      const d=document.createElement('div');
+      const k=document.createElement('div'); k.className='k'; k.textContent=x.k;
+      const v=document.createElement('div'); v.className='v'; v.textContent=x.v;
+      d.appendChild(k); d.appendChild(v); st.appendChild(d);});
+    const tab=$('s_tab'); tab.innerHTML=''; tab.classList.toggle('on',!!s.table);
+    (s.table||[]).forEach((row,ri)=>{
+      const tr=document.createElement('tr');
+      row.forEach(cell=>{ const td=document.createElement(ri?'td':'th');
+        td.textContent=cell; tr.appendChild(td); });
+      tab.appendChild(tr);});
+    el.classList.add('on');
+  }
+
   // ---- presenter ink ----
   // Live annotation over the 3D view: the thing a presenter reaches for when
   // someone asks "which part?". Strokes are stored in normalised coordinates
@@ -1103,9 +1184,17 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
 
   // ---- chapters ----
   const rail=$('rail');
-  CHAPTERS.forEach((c,i)=>{const d=document.createElement('div');d.className='c';
-    d.innerHTML='<span class="num">'+String(i+1).padStart(2,'0')+'</span><span class="t">'+c.title+'</span>';
-    d.onclick=()=>{stop();go(i);};rail.appendChild(d);});
+  CHAPTERS.forEach((c,i)=>{
+    const d=document.createElement('div'); d.className='c';
+    const num=document.createElement('span'); num.className='num';
+    num.textContent=String(i+1).padStart(2,'0');
+    const th=document.createElement('span'); th.className='th';
+    if(THUMBS[i]) th.style.backgroundImage='url('+THUMBS[i]+')';
+    if(c.slide) th.classList.add('isslide');
+    const tt=document.createElement('span'); tt.className='t';
+    tt.textContent=(c.slide?c.slide.title:c.title)||('Chapter '+(i+1));
+    d.appendChild(num); d.appendChild(th); d.appendChild(tt);
+    d.onclick=()=>{stop();go(i);}; rail.appendChild(d);});
   const railItems=[].slice.call(rail.children);
 
   function frameFor(c,animate){
@@ -1117,6 +1206,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   }
   function paintUI(){
     const c=CHAPTERS[cur];
+    paintSlide(c);
     $('cap').classList.remove('in');
     setTimeout(function(){
       $('cap_ey').textContent=String(cur+1).padStart(2,'0')+' / '+String(CHAPTERS.length).padStart(2,'0');
@@ -1131,8 +1221,11 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(i<0||i>=CHAPTERS.length) return;
     cur=i; const c=CHAPTERS[i];
     // A cut-off above the ladder must clamp to the most restrictive bin, not
-    // fall through to index 0 and reveal the entire model.
-    const ci=LADDER.findIndex(v=>v>=c.cut); setCut(ci<0?LADDER.length-1:ci);
+    // fall through to index 0 and reveal the entire model. A chapter that
+    // declares no cut-off at all (slide chapters) is a different case — it
+    // means "no opinion", not "hide everything", so fall back to the default.
+    const want=(c.cut===undefined||c.cut===null)?0.3:c.cut;
+    const ci=LADDER.findIndex(v=>v>=want); setCut(ci<0?LADDER.length-1:ci);
     setMode(c.mode||'grade');
     setDrills(!!c.drills);
     vein=-1; vsel.value='-1';
@@ -1427,6 +1520,11 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
 
 FONTS = (ROOT / "tools" / "assets" / "fonts.css").read_text()
 
+# Chapter thumbnails captured from a previous build by tools/capture_thumbs.py.
+# Absent on a first build; the rail falls back to plain tiles until then.
+_thumbs_p = ROOT / "tools" / "assets" / "thumbs.json"
+THUMBS = json.loads(_thumbs_p.read_text()) if _thumbs_p.exists() else {}
+
 
 def js(o):
     """JSON for embedding in a <script> block: '</' would close the tag early."""
@@ -1443,6 +1541,7 @@ for k, v in {
     "__RUNS__": js([{k2: r[k2] for k2 in ("c", "b", "d", "lo", "hi", "s", "n")} for r in RUNS]),
     "__BUCKETS__": js(BUCKETS),
     "__BY_CB__": js(BY_CB),
+    "__THUMBS__": js(THUMBS),
     "__VGROUP__": js(VGROUP),
     "__VGROUP_NAMES__": js(VGROUP_NAMES),
     "__VEINS__": js(VEINS),
