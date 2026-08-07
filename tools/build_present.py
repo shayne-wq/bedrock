@@ -312,8 +312,10 @@ HTML = r"""<!DOCTYPE html>
   #brand .w{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.34em;color:#C99A3A;text-transform:uppercase}
   #brand .n{font-size:17px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;margin-top:5px;line-height:1}
 
-  #rail{position:fixed;left:30px;top:96px;z-index:6;display:flex;flex-direction:column;gap:2px}
-  #rail .c{display:flex;align-items:center;gap:10px;padding:4px 0;cursor:pointer;opacity:.55;transition:opacity .3s}
+  #rail{position:fixed;left:30px;top:96px;z-index:6;display:flex;flex-direction:column;gap:2px;
+        background:rgba(7,9,10,.72);border:1px solid rgba(255,255,255,.08);border-radius:5px;
+        padding:8px 12px 8px 8px;backdrop-filter:blur(4px);max-height:calc(100vh - 260px);overflow-y:auto}
+  #rail .c{display:flex;align-items:center;gap:10px;padding:6px 4px;min-height:44px;cursor:pointer;opacity:.72;transition:opacity .3s}
   #rail .th{width:54px;height:32px;border-radius:3px;flex:0 0 auto;background-size:cover;background-position:center;
             border:1px solid rgba(255,255,255,.16);background-color:#11161a}
   #rail .th.isslide{background-image:linear-gradient(120deg,#1e242a,#0d1114)}
@@ -339,7 +341,7 @@ HTML = r"""<!DOCTYPE html>
   .btn:hover{border-color:#C99A3A;color:#C99A3A}
   .btn:disabled{opacity:.3;cursor:default}
   .btn.on{background:#C99A3A;border-color:#C99A3A;color:#07090A}
-  .btn.sm{padding:9px 12px;font-size:10px}
+  .btn.sm{padding:13px 14px;font-size:10px;min-height:44px}
   #nav .count{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:#8E948E;min-width:52px;text-align:center}
 
   #legend{position:fixed;right:34px;top:28px;z-index:6;display:flex;align-items:center;gap:9px;
@@ -372,7 +374,7 @@ HTML = r"""<!DOCTYPE html>
   .chip.on{color:#EDEEEC;border-color:rgba(255,255,255,.4)}
   .chip .sw{width:8px;height:8px;opacity:.35}
   .chip.on .sw{opacity:1}
-  #cutrow{display:flex;align-items:center;gap:11px}
+  .cutrow{display:flex;align-items:center;gap:11px}
   #cut{flex:1;accent-color:#C99A3A}
   #cutv{font-family:'JetBrains Mono',monospace;font-size:11px;color:#C99A3A;min-width:56px;text-align:right}
   select{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);border-radius:3px;
@@ -407,9 +409,9 @@ HTML = r"""<!DOCTYPE html>
   #inkbar.on{display:flex}
   .ibtn{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
         color:#C6CAC5;background:transparent;border:1px solid rgba(255,255,255,.18);border-radius:3px;
-        padding:11px 14px;min-height:38px;cursor:pointer}
+        padding:13px 16px;min-height:44px;cursor:pointer}
   .ibtn.on{background:#C99A3A;border-color:#C99A3A;color:#07090A}
-  .isw{width:30px;height:30px;border-radius:50%;cursor:pointer;border:2px solid rgba(255,255,255,.25);
+  .isw{width:34px;height:34px;border-radius:50%;cursor:pointer;border:2px solid rgba(255,255,255,.25);
        flex:0 0 auto}
   .isw.on{border-color:#fff;transform:scale(1.15)}
   /* Slide chapters: a panel over the live 3D view rather than a separate mode,
@@ -450,7 +452,8 @@ HTML = r"""<!DOCTYPE html>
   #begin{margin-top:40px;font-family:'JetBrains Mono',monospace;font-size:12.5px;letter-spacing:.18em;text-transform:uppercase;color:#07090A;background:#C99A3A;border:none;border-radius:3px;padding:16px 32px;cursor:pointer;transition:filter .2s}
   #begin:hover{filter:brightness(1.12)}
   #load{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:#07090A;font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.2em;color:#8E948E}
-  #status{position:fixed;right:14px;bottom:12px;z-index:4;font-family:'JetBrains Mono',monospace;font-size:10px;color:#8E948E}
+  #status{position:fixed;right:14px;bottom:12px;z-index:4;font-family:'JetBrains Mono',monospace;
+          font-size:10px;color:#C6CAC5;background:rgba(7,9,10,.7);padding:3px 7px;border-radius:3px}
   #status.fatal{color:#0d0f10;background:#D9584A;padding:7px 13px;border-radius:3px;font-size:11px;z-index:30;font-weight:600}
   #offline{position:fixed;left:30px;bottom:12px;z-index:9;display:none;
            font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.14em;
@@ -471,7 +474,9 @@ HTML = r"""<!DOCTYPE html>
      canonical vestibular trigger. Honour the OS setting: cut the flight to a
      snap, stop autoplay starting itself, and flatten the CSS transitions. */
   @media(prefers-reduced-motion:reduce){
-    #cap,#intro,#prog,#dwell,#bar,.btn,.seg button,.chip{transition:none!important}
+    #cap,#intro,#prog,#dwell,#bar,.btn,.seg button,.chip,#slide,#rail .c,.isw,#toast,#offline
+      {transition:none!important;animation:none!important}
+    .isw.on{transform:none}
     #dwell{display:none}
   }
   @media(max-width:900px){#rail{display:none}#panel{width:auto;left:16px;right:16px}#cap h2{font-size:23px}#cap p{font-size:16px}}
@@ -514,7 +519,7 @@ HTML = r"""<!DOCTYPE html>
   </div>
 
   <h3>Mine plan timeline</h3>
-  <div id="cutrow"><input type="range" id="stage" min="-1" max="3" step="1" value="-1"><span id="stagev" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#C99A3A;min-width:96px;text-align:right">none</span></div>
+  <div class="cutrow"><input type="range" id="stage" min="-1" max="3" step="1" value="-1"><span id="stagev" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#C99A3A;min-width:96px;text-align:right">none</span></div>
 
   <h3>Site features</h3>
   <div class="seg" id="siteseg">
@@ -529,7 +534,7 @@ HTML = r"""<!DOCTYPE html>
   </div>
 
   <h3>Ground over deposit</h3>
-  <div id="cutrow"><input type="range" id="ground" min="0" max="100" step="5" value="0"><span id="groundv">cut away</span></div>
+  <div class="cutrow"><input type="range" id="ground" min="0" max="100" step="5" value="0"><span id="groundv">cut away</span></div>
 
   <h3>Vertical exaggeration</h3>
   <div class="seg" id="exagseg">
@@ -539,7 +544,7 @@ HTML = r"""<!DOCTYPE html>
   </div>
 
   <h3>Cut-off grade</h3>
-  <div id="cutrow"><input type="range" id="cut" min="0" max="14" step="1" value="1"><span id="cutv"></span></div>
+  <div class="cutrow" id="cutrow"><input type="range" id="cut" min="0" max="14" step="1" value="1"><span id="cutv"></span></div>
 
   <h3>Resource class</h3>
   <div class="chips" id="clschips"></div>
@@ -626,7 +631,7 @@ HTML = r"""<!DOCTYPE html>
         integrity="sha384-BIsA8GBrihzaRmijjpqTCihj8D5Vox3hyBFg9sJiTGAEOv6KusZ8QOCKbTFEAfhm"
         crossorigin="anonymous"></script>
 <script>
-const DATA="__B64__", META="__META__", N=__N__, RAMPMAX=__RAMPMAX__,
+const DATA="__B64__", META="__META__", N=__N__,
       EMIN=__EMIN__, NMIN=__NMIN__, CE=__CE__, CN=__CN__, CZ=__CZ__, EX=__EX__, EY=__EY__,
       ZTOP=__ZTOP__, ZBOT=__ZBOT__;
 const CHAPTERS=__CHAPTERS__, RUNS=__RUNS__, BUCKETS=__BUCKETS__, VEINS=__VEINS__,
@@ -672,13 +677,12 @@ const TIER_SCALE=[0.5,1.0,1.0,1.0,1.0];
 // Depth darkens rather than dissolves. On solid shells a fade would only bring
 // the fog back; a graded shift toward the cold background still reads as "this
 // is further into the rock" while every shell stays legible.
-const DEPTH_ALPHA=[1.00,1.00,1.00,1.00,1.00,1.00];
 const DEPTH_MIX  =[0.00,0.13,0.26,0.38,0.50,0.60];
 const HAZE={r:0.055,g:0.075,b:0.105};
-function depthShade(col,d,fade){
-  const k=DEPTH_MIX[d]||0, a=DEPTH_ALPHA[d]||1;
+function depthShade(col,d){
+  const k=DEPTH_MIX[d]||0;
   return new Cesium.Color(col.red*(1-k)+HAZE.r*k, col.green*(1-k)+HAZE.g*k,
-                          col.blue*(1-k)+HAZE.b*k, col.alpha*(fade?a:Math.max(0.55,a)));
+                          col.blue*(1-k)+HAZE.b*k, col.alpha);
 }
 function tierOf(g){let k=0;for(let i=0;i<TIERS.length;i++) if(g>=TIERS[i].lo) k=i; return k;}
 function ramp(g,fade){const T=TIERS[tierOf(g)];
@@ -770,7 +774,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       if(r.prim) viewer.scene.primitives.remove(r.prim);
       const idx=[]; for(let i=r.s;i<r.s+r.n;i++) idx.push(i);
       r.mid=r.hi===null?r.lo*1.4:(r.lo+r.hi)/2;
-      r.prim=makePrim(idx,depthShade(ramp(r.mid,fade),r.d||0,fade),r.mid);
+      r.prim=makePrim(idx,depthShade(ramp(r.mid,fade),r.d||0),r.mid);
       viewer.scene.primitives.add(r.prim);
     });
   }
@@ -787,7 +791,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       (byKey[k]=byKey[k]||{c:r.c,b:r.b,d:r.d,lo:r.lo,mid:r.mid,idx:[]}).idx.push(i);
     }
     const set=Object.values(byKey).map(g=>{
-      const p=makePrim(g.idx,depthShade(ramp(g.mid,fade),g.d||0,fade),g.mid); p.show=false;
+      const p=makePrim(g.idx,depthShade(ramp(g.mid,fade),g.d||0),g.mid); p.show=false;
       viewer.scene.primitives.add(p); return Object.assign({},g,{prim:p});
     });
     veinPrims[v]=set; return set;
@@ -816,7 +820,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         material:new Cesium.Color(0.87,0.89,0.87,0.55),
         outline:false}}));
       h.segs.forEach(s=>{ if(s.g<0.1) return;
-        const col=depthShade(ramp(s.g,false),s.d||0,true);
+        const col=depthShade(ramp(s.g,false),s.d||0);
         // assayed interval as a fat rod
         drillEnts.push(viewer.entities.add({polylineVolume:{
           positions:[P(s.a),P(s.b)], shape:ORE, material:col}}));
@@ -874,7 +878,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       siteEnts.push(viewer.entities.add({polyline:{positions:[base,tip],width:1,
         material:Cesium.Color.WHITE.withAlpha(.42),arcType:Cesium.ArcType.NONE}}));
       siteEnts.push(viewer.entities.add({position:tip,
-        label:{text:l.name,font:'500 13px Archivo, system-ui, sans-serif',
+        label:{text:l.name+(SITE_SYNTHETIC?'  (conceptual)':''),
+          font:'500 13px Archivo, system-ui, sans-serif',
           fillColor:Cesium.Color.WHITE,showBackground:true,
           backgroundColor:new Cesium.Color(0.03,0.04,0.05,0.82),
           backgroundPadding:new Cesium.Cartesian2(9,6),
@@ -898,15 +903,15 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         acc.push(ll[0],ll[1]);return acc;},[]);
       const ents=[];
       // benches: concentric rings stepping down, the way a pit actually reads
-      const N=5;
-      for(let b=1;b<=N;b++){
-        const z=ZTOP+GEOID-(st.depth*b/N);
-        const shrink=1-(b/N)*0.62;
+      const NB=5;
+      for(let b=1;b<=NB;b++){
+        const z=ZTOP+GEOID-(st.depth*b/NB);
+        const shrink=1-(b/NB)*0.62;
         const pos=[];
+        const mx=st.ring.reduce((s,q)=>s+q[0],0)/st.ring.length;
+        const my=st.ring.reduce((s,q)=>s+q[1],0)/st.ring.length;
         for(let i=0;i<st.ring.length;i++){
           const c=st.ring[i];
-          const mx=st.ring.reduce((s,q)=>s+q[0],0)/st.ring.length;
-          const my=st.ring.reduce((s,q)=>s+q[1],0)/st.ring.length;
           const ll=proj4('EPSG:26910','WGS84',[mx+(c[0]-mx)*shrink, my+(c[1]-my)*shrink]);
           pos.push(Cesium.Cartesian3.fromDegrees(ll[0],ll[1],EXAG===1?z:(CZ+GEOID+(z-CZ-GEOID)*EXAG)));
         }
@@ -983,7 +988,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       (by[k]=by[k]||{g:VGROUP[M[i*2+1]],b:r.b,d:r.d,lo:r.lo,mid:r.mid,idx:[]}).idx.push(i);
     }
     vgPrims=Object.values(by).map(o=>{
-      const pr=makePrim(o.idx,depthShade(Cesium.Color.fromCssColorString(VEIN_COLORS[o.g]).withAlpha(fade?0.85:1),o.d,fade),o.mid);
+      const pr=makePrim(o.idx,depthShade(Cesium.Color.fromCssColorString(VEIN_COLORS[o.g]).withAlpha(fade?0.85:1),o.d),o.mid);
       pr.show=false; viewer.scene.primitives.add(pr); return Object.assign({},o,{prim:pr});
     });
     return vgPrims;
@@ -1018,7 +1023,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(veinMode){
       buildVeinGroups().forEach(o=>{ o.prim.show = vein===-1 && o.lo>=cut-1e-9 && !(haloHidden() && isHalo(o));
         o.prim.appearance.material.uniforms.color=depthShade(
-          Cesium.Color.fromCssColorString(VEIN_COLORS[o.g]).withAlpha(fade?0.85:1),o.d||0,fade); });
+          Cesium.Color.fromCssColorString(VEIN_COLORS[o.g]).withAlpha(fade?0.85:1),o.d||0); });
     } else if(vgPrims){ vgPrims.forEach(o=>o.prim.show=false); }
     if(vein!==-1) buildVein(vein).forEach(g=>{ g.prim.show=vis(g);
       g.prim.appearance.material.uniforms.color=colorOf(g); });
@@ -1047,6 +1052,11 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       if(LADDER[b.b]<cut-1e-9) continue;
       if(!clsOn[b.c]) continue;
       if(vein!==-1 && b.v!==vein) continue;
+      // Hiding the halo removes blocks from the scene, so it must remove them
+      // from the number too. Without this the readout over-reported the drawn
+      // model by 0.92 Mt at the default view — and the whole claim of this tool
+      // is that the figure matches the picture under every filter.
+      if(haloHidden() && LADDER[b.b] < TIERS[1].lo) continue;
       n+=b.n; t+=b.t; m+=b.m;
     }
     $('r_t').textContent=t?fmt(t):'—';
@@ -1086,6 +1096,56 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         td.textContent=cell; tr.appendChild(td); });
       tab.appendChild(tr);});
     el.classList.add('on');
+  }
+
+  // Mirrors the #slide CSS onto a canvas so exports carry the same content the
+  // audience saw. Hand-drawn rather than via a DOM-rasteriser to keep the build
+  // dependency-free and offline-capable.
+  function drawSlide(x,W,H,s){
+    const S=W/1440;
+    const g=x.createLinearGradient(0,0,W,0);
+    g.addColorStop(0,'rgba(7,9,10,.96)'); g.addColorStop(.46,'rgba(7,9,10,.90)');
+    g.addColorStop(.78,'rgba(7,9,10,.30)'); g.addColorStop(1,'rgba(7,9,10,0)');
+    x.fillStyle=g; x.fillRect(0,0,W,H);
+    const L=60*S; let y=H*0.30;
+    const wrap=(txt,font,fill,size,lh,maxW)=>{
+      x.font=font; x.fillStyle=fill;
+      const words=String(txt||'').split(' '); let line='';
+      for(const w of words){
+        const test=line?line+' '+w:w;
+        if(x.measureText(test).width>maxW && line){ x.fillText(line,L,y); y+=lh; line=w; }
+        else line=test;
+      }
+      if(line){ x.fillText(line,L,y); y+=lh; }
+    };
+    x.textBaseline='alphabetic';
+    if(s.eyebrow){
+      x.font='500 '+(11*S)+'px "JetBrains Mono", monospace';
+      x.fillStyle='#C99A3A';
+      x.fillText(String(s.eyebrow).toUpperCase(),L,y); y+=34*S;
+    }
+    wrap(s.title,'800 '+(52*S)+'px Archivo, sans-serif','#EDEEEC',52*S,58*S,620*S);
+    y+=16*S;
+    wrap(s.body,''+(19*S)+'px Newsreader, Georgia, serif','#C6CAC5',19*S,30*S,600*S);
+    y+=22*S;
+    (s.stats||[]).forEach((st,i)=>{
+      const cx=L+i*(170*S);
+      x.font='500 '+(9.5*S)+'px "JetBrains Mono", monospace'; x.fillStyle='#8E948E';
+      x.fillText(String(st.k).toUpperCase(),cx,y);
+      x.font='700 '+(28*S)+'px Archivo, sans-serif'; x.fillStyle='#C99A3A';
+      x.fillText(st.v,cx,y+32*S);
+    });
+    if(s.table){
+      let ty=y+10*S;
+      s.table.forEach((row,ri)=>{
+        row.forEach((cell,ci)=>{
+          x.font=(ri?'':'500 ')+(ri?14*S:9.5*S)+'px "JetBrains Mono", monospace';
+          x.fillStyle=ri?(ci?'#EDEEEC':'#C6CAC5'):'#8E948E';
+          x.fillText(ri?String(cell):String(cell).toUpperCase(),L+ci*(150*S),ty);
+        });
+        ty+=(ri?26:22)*S;
+      });
+    }
   }
 
   // ---- presenter ink ----
@@ -1155,7 +1215,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   function readHash(){
     const h=new URLSearchParams(location.hash.slice(1));
     if(!h.has('c')) return null;
-    return {c:+h.get('c')||0, m:h.get('m')==='class'?'class':'grade', k:Math.max(0,Math.min(LADDER.length-1,+h.get('k')||0)),
+    return {c:+h.get('c')||0, m:(['class','vein'].indexOf(h.get('m'))>=0?h.get('m'):'grade'), k:Math.max(0,Math.min(LADDER.length-1,+h.get('k')||0)),
             v:+h.get('v'), s:h.has('s')?h.get('s'):'0123', d:h.get('d')==='1'};
   }
 
@@ -1219,7 +1279,11 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       delete veinPrims[v]; });
     if(drillEnts){ drillEnts.forEach(e=>viewer.entities.remove(e)); drillEnts=null; }
     if(depthEnts){ depthEnts.forEach(e=>viewer.entities.remove(e)); depthEnts=null; }
-    buildBase(); apply(); setStat('');});
+    // These bake EXAG into static Cartesians at build time, so they detach from
+    // the stretched terrain unless they are rebuilt too.
+    if(siteEnts){ siteEnts.forEach(e=>viewer.entities.remove(e)); siteEnts=null; }
+    if(stageEnts){ stageEnts.forEach(es=>es.forEach(e=>viewer.entities.remove(e))); stageEnts=null; }
+    buildBase(); apply(); if(stageIdx>=0) showStage(stageIdx); setStat('');});
   $('drillseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{setDrills(b.dataset.d==='1');apply();});
   // Legends are built from the same tables that colour the geometry, so they
   // cannot drift out of step with what is on screen.
@@ -1227,9 +1291,17 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     '"></span><span>'+label+'</span></div>';
   $('gradeleg').innerHTML='<span>AuEq g/t</span>'+TIERS.map(T=>key(T.css,T.label)).join('');
   $('veinleg').innerHTML='<span>Domain</span>'+VGROUP_NAMES.map((n,i)=>key(VEIN_COLORS[i],n)).join('');
-  $('depthleg').innerHTML='<span>Depth</span>'+DEPTH_ALPHA.map(a=>
-    '<div class="k"><span class="sw" style="background:#8fd6cf;opacity:'+a+'"></span></div>').join('')+
-    '<span>0 \u2192 350 m</span>';
+  // Built from DEPTH_MIX, which is what actually shades the blocks. It used to
+  // map DEPTH_ALPHA — all 1.0 since shells went solid — so it rendered six
+  // identical swatches and decoded nothing.
+  const hazeMix=k=>{const b={r:0x8f,g:0xd6,b:0xcf};
+    const m=c=>Math.round(c*(1-k)+ (k===0?c:[14,19,27][0])*0);
+    const r=Math.round(b.r*(1-k)+0.055*255*k), gg=Math.round(b.g*(1-k)+0.075*255*k),
+          bb=Math.round(b.b*(1-k)+0.105*255*k);
+    return 'rgb('+r+','+gg+','+bb+')';};
+  $('depthleg').innerHTML='<span>Depth</span>'+DEPTH_MIX.map(k=>
+    '<div class="k"><span class="sw" style="background:'+hazeMix(k)+'"></span></div>').join('')+
+    '<span>0 \u2192 '+(DEPTH_MIX.length*70)+' m</span>';
   const chips=$('clschips');
   Object.keys(CLASS_LABELS).map(Number).sort().forEach(c=>{
     const d=document.createElement('div'); d.className='chip on'; d.dataset.c=c;
@@ -1260,13 +1332,17 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // look around, rather than always orbiting it from the air. Rendered from the
   // same real terrain, so it is a view of the actual place, not stand-in
   // photography of somewhere else.
-  let ground3d=false, savedFrame=null;
+  var ground3d=false, savedFrame=null;
   $('sitebtn').onclick=()=>{
     ground3d=!ground3d;
     $('sitebtn').classList.toggle('on',ground3d);
     if(ground3d){
       stop();
       savedFrame=cur;
+      if(!siteOn){ siteOn=true;
+        document.querySelectorAll('#siteseg button').forEach(x=>
+          x.classList.toggle('on',x.dataset.s==='1'));
+        apply(); }
       viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
       const ll=proj4('EPSG:26910','WGS84',[EMIN-160,NMIN-160]);
       viewer.camera.flyTo({
@@ -1333,6 +1409,9 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     chips.querySelectorAll('.chip').forEach(el=>el.classList.add('on'));
     inkClearAll();
     if(stageIdx>=0){ showStage(-1); $('stage').value=-1; }
+    // Navigating away ends the ground view; leaving the flag set made the Site
+    // button jump the user to a chapter they never asked for.
+    if(ground3d){ ground3d=false; $('sitebtn').classList.remove('on'); }
     viewer.scene.globe.depthTestAgainstTerrain=true;
     // Cutting the ground away is a deliberate beat, not a permanent state:
     // overhead shots read better with the mountain intact and the deposit shown
@@ -1448,6 +1527,11 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
             for(let i=1;i<s.pts.length;i++) x.lineTo(s.pts[i][0]*c.width,s.pts[i][1]*c.height);
             x.stroke(); }
         }
+        // Slide chapters are a DOM overlay, so the WebGL grab misses them
+        // entirely — the two most numerically loaded slides were exporting as
+        // bare terrain. Draw them into the bitmap.
+        const chNow=CHAPTERS[cur];
+        if(chNow && chNow.slide) drawSlide(x,c.width,c.height,chNow.slide);
         const S=c.width/1440, pad=Math.round(22*S);
         const disc=(CLASS_CONFIRMED?'':'Resource class labels unconfirmed. ')+
                    'Illustrative visualization — not a mineral resource statement.';
@@ -1524,7 +1608,12 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       for(let i=0;i<CHAPTERS.length;i++){
         go(i); await sleep(3200);
         const s=readout();
-        shots.push({title:CHAPTERS[i].title,body:CHAPTERS[i].body,img:await grab(),stats:s});
+        const ch=CHAPTERS[i];
+      // Slide chapters carry their text under .slide; passing undefined here
+      // threw jsPDF on the first iteration and killed the whole PDF export.
+      shots.push({title:(ch.slide?ch.slide.title:ch.title)||'',
+                  body:(ch.slide?ch.slide.body:ch.body)||'',
+                  img:await grab(), stats:s});
         toast('Capturing '+(i+1)+' / '+CHAPTERS.length,1500);
       }
     } finally {
@@ -1620,7 +1709,15 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     frameFor(CHAPTERS[0],true); if(EMBED&&!REDUCED) play();};
   // ---- offline ----
   if('serviceWorker' in navigator && location.protocol!=='file:'){
-    navigator.serviceWorker.register('sw.js').then(()=>{
+    navigator.serviceWorker.register('sw.js').then(reg=>{
+      // Cache-first means a returning viewer would otherwise run the previous
+      // build for the whole session — bad on a tool that quotes tonnage.
+      reg.addEventListener('updatefound',()=>{
+        const w=reg.installing;
+        if(w) w.addEventListener('statechange',()=>{
+          if(w.state==='installed'&&navigator.serviceWorker.controller)
+            toast('Updated build available — reload to apply',7000);});
+      });
       const paint=()=>{ const on=navigator.onLine;
         $('offline').textContent=on?'':'Offline — running from cache';
         $('offline').classList.toggle('on',!on); };
@@ -1687,17 +1784,29 @@ self.addEventListener('install',e=>{self.skipWaiting();});
 self.addEventListener('activate',e=>{e.waitUntil(
   caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k))))
     .then(()=>self.clients.claim()));});
+// Tiles are effectively unbounded, so the cache is capped and trimmed FIFO.
+// Opaque responses are NOT cached: their status is always 0, so an opaque 404
+// would be stored as a permanent success that can never be corrected, and they
+// are padding-inflated against the storage quota.
+const MAX_ENTRIES=1200;
+let writes=0;
+async function trim(){
+  const c=await caches.open(CACHE);
+  const ks=await c.keys();
+  if(ks.length<=MAX_ENTRIES) return;
+  for(const k of ks.slice(0, ks.length-MAX_ENTRIES)) await c.delete(k);
+}
 self.addEventListener('fetch',e=>{
   const r=e.request;
   if(r.method!=='GET') return;
-  const url=new URL(r.url);
-  // Terrain and imagery tiles are unbounded; cache only what has been seen.
   e.respondWith(caches.match(r).then(hit=>{
     if(hit) return hit;
     return fetch(r).then(res=>{
-      if(res && (res.status===200||res.type==='opaque')){
+      if(res && res.status===200 && res.type!=='opaque'){
         const copy=res.clone();
-        caches.open(CACHE).then(c=>c.put(r,copy)).catch(()=>{});
+        caches.open(CACHE).then(c=>c.put(r,copy)).then(()=>{
+          if(++writes%200===0) return trim();
+        }).catch(()=>{});
       }
       return res;
     }).catch(()=>hit);

@@ -12,7 +12,7 @@ rendered on real Esri terrain.
 
 - **168,013 mineralized blocks** — 8,985,428 t @ 3.80 g/t AuEq = **1,097,747 oz**
 - **46 vein domains**, each isolatable with its own grade-tonnage
-- Resource classification colouring, live cut-off, 9 narrated chapters
+- Resource classification colouring, live cut-off, 11-chapter deck
 
 ## Stack
 
@@ -57,12 +57,17 @@ two-pass because they are pictures of the built page.
 
 Rendering and reporting are deliberately decoupled.
 
-Geometry is bucketed by `(class, grade-bin)` into ~59 uniform-colour primitives,
+Geometry is bucketed by `(class, grade-bin, depth-band)` into 268 uniform-colour primitives,
 so changing the cut-off, toggling a class, or recolouring is a handful of
 primitive toggles rather than a rebuild of 168k boxes. But the figures in the
 readout are **not** derived from what is drawn — they are summed from exact
 rollups computed over every mineralized block at build time. Filter the view
 however you like; the tonnage does not drift.
+
+The corollary matters just as much: every filter that removes geometry must also
+remove it from the sum. Hiding the low-grade halo once changed the picture and
+not the number, over-reporting the drawn model by 0.92 Mt. The readout applies
+the same predicate the renderer does.
 
 Two rollup tables exist, and picking the wrong one is the trap:
 
