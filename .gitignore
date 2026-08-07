@@ -9,3 +9,6 @@ node_modules
 # large native/source exports — keep out of git
 *_BM_*.csv
 Siwash_North_BM_Nov_2021.csv
+
+# local hydration fixtures — generated, never committed
+.fixtures/

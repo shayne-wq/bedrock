@@ -136,8 +136,17 @@ quoting this list):
   terrain sampled in the browser, plus a 26-second sweep of the full horizon.
   Deliberately NOT synthetic photography: see the note at the end of this list.
 
+- **Decks as data** — `?t=<token>` hydrates the viewer from the `deck` edge
+  function and the customer's uploaded block model instead of the baked demo.
+  Until this landed the console wrote artifacts nobody could read.
+- **Presenter-drawn areas** — polygons clamped to terrain, coloured, labelled,
+  persisted, and exportable as GeoJSON. Distinct from the ink tool, which is
+  screen-space and cleared on every chapter change. Styled apart from the
+  surveyed tenure lines, and counted in the export footer.
+
 **Still open:**
-1. **Multi-deposit decks** — structure supports it, data does not.
+1. **Switching deposits inside one deck** — a second deposit is now a second
+   project and share link, not a code change, but one deck holds one model.
 2. **Synced multi-device sessions** — needs a realtime backend.
 3. **Underground 360° imagery** — no equivalent; there is no terrain model of a
    heading, so nothing honest to render.

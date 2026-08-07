@@ -778,6 +778,12 @@ HTML = r"""<!DOCTYPE html>
   .isw{width:34px;height:34px;border-radius:50%;cursor:pointer;border:2px solid rgba(255,255,255,.25);
        flex:0 0 auto}
   .isw.on{border-color:#fff;transform:scale(1.15)}
+  #areabar{position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:11;
+           display:none;align-items:center;gap:8px;padding:8px 12px;border-radius:5px;
+           background:rgba(12,15,16,.94);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(8px)}
+  #areabar.on{display:flex}
+  #areaHint{border-color:transparent;background:transparent;color:#8C948C;cursor:default;
+            min-width:150px;text-align:center}
   /* Slide chapters: a panel over the live 3D view rather than a separate mode,
      so the model stays visible behind the narrative. */
   /* The right two-thirds of the slide gradient is fully transparent, so it must
@@ -875,6 +881,7 @@ HTML = r"""<!DOCTYPE html>
   <button id="provbtn" class="btn sm" title="Audit trail — where every number comes from">Audit</button>
   <button id="sitebtn" class="btn sm" title="Ground-level site view">Site</button>
   <button id="drawbtn" class="btn sm" title="Annotate (D)">Draw</button>
+  <button id="areabtn" class="btn sm" title="Outline an area on the ground (G)">Areas</button>
   <button id="sharebtn" class="btn sm" title="Copy a link to this exact view">Link</button>
   <button id="embedbtn" class="btn sm" title="Put this deck on your own website">Embed</button>
   <button id="xbtn" class="btn">Explore ▸</button>
@@ -1034,6 +1041,21 @@ HTML = r"""<!DOCTYPE html>
   <button class="ibtn" id="inkClear">Clear</button>
 </div>
 
+<!-- Areas. Deliberately its own bar rather than a mode of the ink tool: ink is
+     screen-space and is wiped on every chapter change, and an area a presenter
+     drew round a target has to stay on that ground when the camera moves. -->
+<div id="areabar">
+  <span class="ibtn on" id="areaHint">Click the ground</span>
+  <span class="isw asw" data-c="#38BDF8" style="background:#38BDF8"></span>
+  <span class="isw asw" data-c="#A78BFA" style="background:#A78BFA"></span>
+  <span class="isw asw" data-c="#4ADE80" style="background:#4ADE80"></span>
+  <span class="isw asw" data-c="#FB7185" style="background:#FB7185"></span>
+  <button class="ibtn" id="areaDone">Finish</button>
+  <button class="ibtn" id="areaUndo">Undo point</button>
+  <button class="ibtn" id="areaGeo" title="Download the areas as GeoJSON">GeoJSON</button>
+  <button class="ibtn" id="areaClear">Clear all</button>
+</div>
+
 <main id="datamode" aria-hidden="true"></main>
 
 <div id="emb"><div class="pinner">
@@ -1135,8 +1157,8 @@ HTML = r"""<!DOCTYPE html>
 
 <div id="intro">
   <div class="eyebrow">Orebody Present · Interactive 3D Story</div>
-  <h1>Elk Gold<br>Siwash North</h1>
-  <div class="sub">A high-grade gold system in British Columbia's Nicola region — presented in three dimensions, on real terrain.</div>
+  <h1 id="intro_t">Elk Gold<br>Siwash North</h1>
+  <div class="sub" id="intro_s">A high-grade gold system in British Columbia's Nicola region — presented in three dimensions, on real terrain.</div>
   <button id="begin">Begin the walkthrough ▸</button>
 </div>
 <div id="offline"></div>
@@ -1149,14 +1171,26 @@ HTML = r"""<!DOCTYPE html>
         integrity="sha384-BIsA8GBrihzaRmijjpqTCihj8D5Vox3hyBFg9sJiTGAEOv6KusZ8QOCKbTFEAfhm"
         crossorigin="anonymous"></script>
 <script>
-const DATA="__B64__", META="__META__", N=__N__,
+// `let`, not `const`, for everything the model determines.
+//
+// This file used to be a hard-coded Elk Gold deck with a chapter list stapled
+// on. A customer could push a block model through the console and still had no
+// way to look at it — the console wrote artifacts nobody read. Opening the deck
+// with ?t=<share token> now replaces every value below from the `deck` edge
+// function before the scene is built. Bake-time values are the demo's defaults,
+// not the viewer's assumptions; do not re-freeze them.
+let DATA="__B64__", META="__META__", N=__N__,
       EMIN=__EMIN__, NMIN=__NMIN__, CE=__CE__, CN=__CN__, CZ=__CZ__, EX=__EX__, EY=__EY__,
       ZTOP=__ZTOP__, ZBOT=__ZBOT__;
-const CHAPTERS=__CHAPTERS__, RUNS=__RUNS__, BUCKETS=__BUCKETS__, VEINS=__VEINS__,
+let CHAPTERS=__CHAPTERS__, RUNS=__RUNS__, BUCKETS=__BUCKETS__, VEINS=__VEINS__,
       LADDER=__LADDER__, CLASS_LABELS=__CLASS_LABELS__, CLASS_CONFIRMED=__CLASS_CONFIRMED__,
       PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, REAL_CLAIMS=__REAL_CLAIMS__, CLAIMS_ATTRIB=__CLAIMS_ATTRIB__, GEOPHYS=__GEOPHYS__, GEOPHYS_SYNTHETIC=__GEOPHYS_SYNTHETIC__, STATIONS=__STATIONS__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
 proj4.defs('EPSG:26910','+proj=utm +zone=10 +datum=NAD83 +units=m +no_defs');
-const TONNES_PER_BLOCK=675;   // 10 x 5 x 5 m at 2.7 t/m3
+// 10 x 5 x 5 m at 2.7 t/m3 for the demo. A hydrated deck takes its own value
+// from stats.tonnes_per_block — a customer's model is not on this lattice, and
+// carrying the demo's number across would misreport every tonne on screen.
+let TONNES_PER_BLOCK=675;
+let BLOCKS_SYNTHETIC=false;   // set only by a hydrated deck; see hydrate()
 const GEOID=-18, rad=Cesium.Math.toRadians, $=id=>document.getElementById(id);
 const setStat=t=>$('status').textContent=t;
 const QS=new URLSearchParams(location.search);
@@ -1265,7 +1299,256 @@ const REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches;
 if(EMBED) document.body.classList.add('embed');
 
 function unb64(b){const s=atob(b);const u=new Uint8Array(s.length);for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i);return u;}
-const F=new Float32Array(unb64(DATA).buffer), M=unb64(META);
+// F is [x,y,z,grade,orefraction] x N; M is [class,vein] x N. Both are filled by
+// bootData() — baked from base64 for the demo, rebuilt from the customer's
+// artifact for a hydrated deck.
+let F=null, M=null;
+
+// ---- reading a customer's block model -----------------------------------
+// OREB v1 — the exact bytes dashboard/lib/extract.js pack() writes and
+// ingest.js uploads. Parsed rather than re-derived: the artifact the customer's
+// browser produced is the artifact this reads, so there is no second
+// implementation of the extraction to drift out of step with the first.
+function unpackOreb(buf){
+  const dv=new DataView(buf);
+  if(dv.byteLength<16||dv.getUint32(0,false)!==0x4f524542)
+    throw new Error('that artifact is not an Orebody block model');
+  if(dv.getUint32(4,true)!==1)
+    throw new Error('block model format v'+dv.getUint32(4,true)+' is newer than this viewer');
+  const hlen=dv.getUint32(8,true), base=dv.getUint32(12,true);
+  const head=JSON.parse(new TextDecoder().decode(new Uint8Array(buf,16,hlen)));
+  const T={Float32Array:Float32Array,Uint8Array:Uint8Array,Uint16Array:Uint16Array};
+  const cols={n:head.n, origin:head.origin};
+  head.arrays.forEach(a=>{
+    const C=T[a.type];
+    if(!C) throw new Error('unsupported column type '+a.type);
+    cols[a.name]=new C(buf, base+a.offset, a.count);});
+  ['x','y','z','g','p','c','v'].forEach(k=>{
+    if(!cols[k]) throw new Error('block model is missing the "'+k+'" column');});
+  return cols;
+}
+
+// Rebuild the render buckets the Python build precomputes. Same key and same
+// order — (class, grade bin, depth band) — because RUNS are index ranges into
+// F, so the sort here and the runs must agree exactly or every primitive draws
+// the wrong blocks.
+function buildModel(cols, stats){
+  const dims=(stats.block_dims&&stats.block_dims.length===3)?stats.block_dims:[10,5,5];
+  const ox=cols.origin[0], oy=cols.origin[1], oz=cols.origin[2];
+  const n=cols.n;
+  // Depth below the top of each block's own column, on the model's OWN lattice
+  // rather than the demo's 10x5 footprint — the band drives the aerial fade,
+  // and a wrong cell size collapses every column into one bucket.
+  const tops=new Map();
+  const key=i=>Math.round((cols.x[i]+ox)/dims[0])+'|'+Math.round((cols.y[i]+oy)/dims[1]);
+  for(let i=0;i<n;i++){ const k=key(i), z=cols.z[i]+oz;
+    const t=tops.get(k); if(t===undefined||z>t) tops.set(k,z); }
+  const DEPTH_BAND_M=70, N_BANDS=6;
+  const band=i=>{ const t=tops.get(key(i)); const z=cols.z[i]+oz;
+    return Math.max(0,Math.min(N_BANDS-1,Math.floor(((t===undefined?z:t)-z)/DEPTH_BAND_M))); };
+  const binOf=g=>{ let b=0; while(b+1<LADDER.length&&LADDER[b+1]<=g) b++; return b; };
+
+  const idx=new Int32Array(n); for(let i=0;i<n;i++) idx[i]=i;
+  const bins=new Uint8Array(n), bands=new Uint8Array(n);
+  for(let i=0;i<n;i++){ bins[i]=binOf(cols.g[i]); bands[i]=band(i); }
+  // Vein is the last key in the Python sort but does not enter the run key, so
+  // it only has to be stable, not ordered — sorting on it anyway keeps a
+  // hydrated deck's primitive order reproducible between loads.
+  const order=Array.prototype.slice.call(idx).sort((a,b)=>
+    cols.c[a]-cols.c[b] || bins[a]-bins[b] || bands[a]-bands[b] || cols.v[a]-cols.v[b]);
+
+  const f=new Float32Array(n*5), m=new Uint8Array(n*2);
+  for(let k=0;k<n;k++){ const i=order[k];
+    f[k*5]=cols.x[i]; f[k*5+1]=cols.y[i]; f[k*5+2]=cols.z[i]+oz;
+    f[k*5+3]=cols.g[i]; f[k*5+4]=cols.p[i];
+    m[k*2]=cols.c[i];
+    // META packs vein into a byte, as the build asserts. A model with more than
+    // 256 domains would silently alias one onto another, so say so instead.
+    if(cols.v[i]>255) throw new Error('this model has more than 256 vein domains');
+    m[k*2+1]=cols.v[i]; }
+
+  const runs=[];
+  let s=0;
+  const rk=k=>{ const i=order[k]; return cols.c[i]+'|'+bins[i]+'|'+bands[i]; };
+  for(let k=1;k<=n;k++){
+    if(k===n||rk(k)!==rk(s)){
+      const i=order[s];
+      runs.push({c:cols.c[i], b:bins[i], d:bands[i], lo:LADDER[bins[i]],
+                 hi:bins[i]+1<LADDER.length?LADDER[bins[i]+1]:null, s:s, n:k-s});
+      s=k; }
+  }
+  return {F:f, M:m, RUNS:runs, N:n};
+}
+
+// A chapter authored in the console is rows in a table; the walkthrough wants
+// one flat object per beat. `layers` carries whatever the author set, so it is
+// spread rather than enumerated — a layer added to the console should not need
+// a matching change here to reach the deck.
+function mapChapter(c){
+  const cam=c.camera||{};
+  const out=Object.assign({}, c.layers||{});
+  out.h=cam.h!==undefined?cam.h:30;
+  out.p=cam.p!==undefined?cam.p:-26;
+  out.r=cam.r!==undefined?cam.r:3000;
+  out.section=c.section||null;
+  out.title=c.title||'';
+  out.body=c.body||'';
+  out.dwell=Math.max(3,(c.dwell_ms||9000)/1000);
+  if(c.slide) out.slide=c.slide;
+  return out;
+}
+
+// Somewhere to start when a deck has a model but nobody has written chapters
+// yet. Three beats, no claims — the alternative is a blank rail and a viewer
+// that looks broken.
+function defaultChapters(title){
+  return [
+    {h:30,p:-26,r:3200,ground:1.0,mode:'grade',dwell:9,section:'Overview',
+     title:title||'The deposit', body:'The block model on real terrain, at its true position.'},
+    {h:52,p:-24,r:2600,ground:0.0,mode:'grade',dwell:10,section:'Overview',
+     title:'Grade', body:'Coloured by grade, with the ground cut away.'},
+    {h:40,p:-30,r:2800,ground:0.0,mode:'class',dwell:10,section:'Overview',
+     title:'Confidence', body:'Recoloured by resource classification.'}];
+}
+
+// ---- hydrate from a share token ----------------------------------------
+// The whole point of the backend, and the reason the console was not yet worth
+// anything to a customer. Everything the baked demo hard-codes is replaced here
+// before the scene exists.
+//
+// This path FAILS rather than degrades. A viewer that renders a deposit but
+// quietly reports the demo's tonnage, or draws a fabricated model with no
+// banner, is worse than one that says it cannot open the deck.
+async function hydrate(token){
+  if(!API) throw new Error('this build has no API configured, so it cannot open a shared deck');
+  setStat('opening deck…');
+  let passcode=QS.get('passcode')||'';
+  let payload=null;
+  for(let attempt=0; attempt<4; attempt++){
+    const u=API+'/deck?t='+encodeURIComponent(token)+
+            (passcode?'&passcode='+encodeURIComponent(passcode):'')+
+            (EMBED?'&embed=1':'');
+    const r=await fetch(u,{credentials:'omit'});
+    const body=await r.json().catch(()=>({}));
+    if(r.ok){ payload=body; break; }
+    if(r.status===401&&body.needs_passcode){
+      const given=prompt(attempt?'Incorrect passcode. Try again:':'This deck needs a passcode:');
+      if(given===null) throw new Error('a passcode is required to open this deck');
+      passcode=given; continue;
+    }
+    throw new Error(body.error||('the deck could not be opened ('+r.status+')'));
+  }
+  if(!payload) throw new Error('incorrect passcode');
+
+  const blocks=(payload.assets||[]).find(a=>a.kind==='blocks');
+  if(!blocks||!blocks.url) throw new Error('this deck has no block model attached');
+  // Refuse rather than guess. The readout sums share-weighted rollups because
+  // 10.9% of blocks in a typical vein model straddle two domains — deriving
+  // vein tonnage from the dominant-domain column instead overstates some veins
+  // by a third while the deposit total still reconciles, which is precisely the
+  // error that is invisible once published.
+  if(!blocks.buckets_url)
+    throw new Error('this deck is missing its bucket rollups, so its tonnages cannot be shown');
+
+  setStat('loading block model…');
+  const [buf,bj]=await Promise.all([
+    fetch(blocks.url).then(r=>{ if(!r.ok) throw new Error('the block model could not be downloaded'); return r.arrayBuffer(); }),
+    fetch(blocks.buckets_url).then(r=>{ if(!r.ok) throw new Error('the bucket rollups could not be downloaded'); return r.json(); })]);
+
+  const stats=blocks.stats||{};
+  if(!stats.total) throw new Error('this block model carries no totals');
+  if(bj.share_weighted===false && (stats.veins||[]).length>1)
+    throw new Error('the rollups for this model are not share-weighted, so per-vein tonnage would be wrong');
+
+  LADDER=bj.ladder||LADDER;
+  BUCKETS=bj.buckets||[];
+  BY_CB=bj.by_cb||[];
+
+  const cols=unpackOreb(buf);
+  const model=buildModel(cols,stats);
+  F=model.F; M=model.M; RUNS=model.RUNS; N=model.N;
+
+  const b=stats.bounds||{x:[0,1],y:[0,1],z:[0,1]};
+  EMIN=cols.origin[0]; NMIN=cols.origin[1];
+  EX=b.x[1]-b.x[0]; EY=b.y[1]-b.y[0];
+  CE=(b.x[0]+b.x[1])/2; CN=(b.y[0]+b.y[1])/2; CZ=(b.z[0]+b.z[1])/2;
+  ZTOP=b.z[1]; ZBOT=b.z[0];
+  // A per-block density model has no single tonnes-per-block. Rather than
+  // inventing one, fall back to the deposit total divided by its block count,
+  // which is exact in aggregate and is all the readout uses it for.
+  TONNES_PER_BLOCK=stats.tonnes_per_block ||
+                   (stats.total.blocks?stats.total.tonnes/stats.total.blocks:675);
+
+  VEINS=stats.veins||[];
+  // No curated vein grouping for a hydrated deck: colour by domain index and
+  // let the palette wrap. Inventing groupings for someone else's domains would
+  // be asserting a geological interpretation nobody made.
+  VGROUP={}; VGROUP_NAMES=VEINS.slice(0,9);
+  VEINS.forEach((v,i)=>{VGROUP[i]=i%9;});
+
+  const p=payload.project||{};
+  if(p.epsg && +p.epsg!==26910)
+    throw new Error('this project is in EPSG:'+p.epsg+'; this viewer is built for EPSG:26910');
+
+  PROV={
+    source:blocks.label||null,
+    scanned_rows:stats.scanned_rows,
+    mineralized_blocks:stats.total.blocks,
+    dropped_blocks:stats.dropped_blocks||0,
+    straddlers:stats.blocks_straddling_multiple_domains||0,
+    block_m3:stats.block_m3, density:stats.density,
+    tonnes_per_block:stats.tonnes_per_block,
+    total:stats.total, by_class:stats.by_class||{},
+    // Nobody has checked a hydrated deck's class mapping against a technical
+    // report, and the viewer must not imply otherwise.
+    class_confirmed:false,
+    drills_synthetic:false, site_synthetic:false, geophys_synthetic:false,
+    blocks_synthetic:!!blocks.synthetic,
+  };
+  CLASS_CONFIRMED=false;
+  CLASS_LABELS=Object.keys(stats.by_class||{}).reduce((o,k)=>{o[k]='Class '+k;return o;},{});
+  // The gravest fabricated layer there is: if the model itself is synthetic,
+  // every number in the readout is invented, not just a decoration on top of
+  // real ones. It joins the same five paths as the rest.
+  BLOCKS_SYNTHETIC=!!blocks.synthetic;
+
+  // A hydrated deck has none of the demo's side artifacts yet. Empty, not
+  // inherited — showing Elk Gold's drill holes over someone else's deposit
+  // would be the worst bug this viewer could have.
+  HOLES=[]; HIGHLIGHTS=[]; SITE={}; SITE_SYNTHETIC=false;
+  REAL_CLAIMS=[]; CLAIMS_ATTRIB=''; GEOPHYS={}; GEOPHYS_SYNTHETIC=false;
+  THUMBS=[]; STATIONS=[];
+
+  const chs=(payload.chapters||[]).map(mapChapter);
+  CHAPTERS=chs.length?chs:defaultChapters((payload.deck||{}).title);
+  if(payload.deck&&payload.deck.title){
+    document.title=payload.deck.title+' · Orebody Present';
+    // Built as nodes, not innerHTML. Deck and project names are tenant-authored
+    // strings arriving over the wire; the one place they must never land is a
+    // markup sink.
+    const bn=document.querySelector('#brand .n');
+    if(bn){ bn.textContent=payload.deck.title;
+      if(p.name){ bn.appendChild(document.createElement('br'));
+                  bn.appendChild(document.createTextNode(p.name)); } }
+    // The opening card is baked marketing copy for the demo. Left alone it
+    // greeted a hydrated deck with another company's deposit name and a claim
+    // about a gold system in the Nicola region — over someone else's model.
+    const it=$('intro_t'), is=$('intro_s');
+    if(it) it.textContent=payload.deck.title;
+    if(is) is.textContent=payload.deck.subtitle ||
+      [p.name,p.location].filter(Boolean).join(' — ') ||
+      'Presented in three dimensions, on real terrain.';
+  }
+  setStat('');
+}
+
+// One entry point for both worlds, so the scene below never has to ask which
+// it is looking at.
+async function bootData(){
+  const t=QS.get('t');
+  if(!t){ F=new Float32Array(unb64(DATA).buffer); M=unb64(META); return; }
+  await hydrate(t);
+}
 
 // Discrete grade tiers, not a continuous ramp. Half the model sits under
 // 1 g/t; smoothly interpolating across it renders as fog, whereas stepped
@@ -1322,6 +1605,9 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   clearTimeout(toast._t);toast._t=setTimeout(()=>$('toast').classList.remove('on'),ms||2600);}
 
 (async()=>{
+  // Before anything is built. A hydrated deck replaces the model, the extents,
+  // the rollups and the chapters, and every line below reads those.
+  await bootData();
   let imagery, terrain;
   try{ imagery=await Cesium.ArcGisMapServerImageryProvider.fromUrl('https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer'); }
   catch(e){ imagery=new Cesium.UrlTemplateImageryProvider({url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',maximumLevel:19,credit:'© OpenStreetMap'}); }
@@ -1666,6 +1952,11 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       if(assetSaved.geo) geoShow(assetSaved.geo);
       assetSaved=null;
     }
+    // Asset-only means the orebody and nothing else, and a presenter's markup
+    // is very much something else. It comes back on exit rather than being
+    // discarded — this is a view mode, not an eraser.
+    if(on&&areaMode) setAreaMode(false);
+    areaEnts.forEach(e=>e.show=!on);
     syncOverlayControls();
     $('assetbtn').classList.toggle('on',on);
     $('assetbtn').textContent=on?'Asset \u2713':'Asset';
@@ -1840,6 +2131,11 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     L.push('  against the Nov-2021 technical report.');
     if(PROV.drills_synthetic) L.push('  Drill holes are FABRICATED. Not real results.');
     if(PROV.site_synthetic)   L.push('  Site features and pit stages are FABRICATED. Not a mine plan.');
+    if(PROV.blocks_synthetic){
+      L.push('  THE BLOCK MODEL ITSELF IS FABRICATED. Every tonne, grade and');
+      L.push('  ounce in this report is invented. Nothing here describes a real');
+      L.push('  deposit.');
+    }
     if(PROV.geophys_synthetic){
       L.push('  Geophysics is FABRICATED. No survey was flown and no published');
       L.push('  geophysical data was used; the field was synthesised FROM this');
@@ -1935,8 +2231,20 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   }
   viewer.screenSpaceEventHandler.setInputAction(m=>{
     if(inking) return;
+    // Drawing an area takes the click entirely: opening the block inspector on
+    // every vertex would bury the ground you are trying to trace.
+    if(areaMode){
+      const ll=groundAt(m.position);
+      if(!ll){ toast('Click on the terrain',2200); return; }
+      areaPts.push(ll[0],ll[1]); areaLive();
+      return;
+    }
     showPick(pickAt(m.position));
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+  // Double-click closes the polygon, the way every map tool does it.
+  viewer.screenSpaceEventHandler.setInputAction(()=>{
+    if(areaMode) areaFinish();
+  }, Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
 
   // ---- exact statistics at an arbitrary cut-off ----
   // The bucket tables are keyed to the ladder, so they can only answer ladder
@@ -2503,6 +2811,9 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(siteOn&&SITE_SYNTHETIC) parts.push('site features');
     if(stageIdx>=0&&SITE_SYNTHETIC) parts.push('pit stages');
     if(geoKey&&GEOPHYS_SYNTHETIC) parts.push('geophysics');
+    // Unconditional: a fabricated block model is not a layer you can switch
+    // off, it is every tonne and every gram on screen.
+    if(BLOCKS_SYNTHETIC) parts.unshift('block model');
     const el=$('synwarn');
     el.classList.toggle('on',parts.length>0);
     if(parts.length) el.textContent='Synthetic '+parts.join(' + ')+
@@ -2785,7 +3096,10 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     .then(()=>toast('Audit trail copied'),()=>toast('Copy failed'));
   addEventListener('keydown',e=>{ if(e.key==='Escape'){$('prov').classList.remove('on');
     $('emb').classList.remove('on');
-    $('inspect').classList.remove('on');} });
+    $('inspect').classList.remove('on');
+    // Abandon a half-drawn area rather than leaving a dangling outline the
+    // presenter has no obvious way to get rid of.
+    if(areaMode&&areaPts.length){ areaPts=[]; areaLive(); }} });
   $('i_close').onclick=()=>$('inspect').classList.remove('on');
   $('inkPen').onclick=()=>setInking(!inking);
   $('drawbtn').onclick=()=>setInking(!inking);
@@ -2796,6 +3110,133 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     sw.onclick=()=>{inkColor=sw.dataset.c;
       document.querySelectorAll('.isw').forEach(x=>x.classList.toggle('on',x===sw));};});
   const inkClearAll=()=>{strokes=[];drawing=null;inkRedraw();};
+
+  // ---- areas: presenter-drawn polygons on the ground ---------------------
+  // "Point at the thing you are talking about" is most of what a presenter
+  // does, and the ink tool cannot do it: ink lives in screen space, so it
+  // slides off the target the moment the camera moves, and go() wipes it on
+  // every chapter. These are geometry — clamped to terrain, held in lon/lat,
+  // and they stay where they were drawn for the rest of the deck.
+  //
+  // They are ANNOTATIONS, not data, and are styled to say so: a translucent
+  // fill in a palette that shares nothing with the grade ramp, and a dashed
+  // outline, so nobody mistakes one for the solid gold tenure lines, which are
+  // surveyed. The export footer counts them for the same reason.
+  const AREA_KEY='orebody.areas.'+(document.title.split(' · ')[0]||'deck');
+  let areas=[], areaMode=false, areaPts=[], areaColor='#38BDF8', areaEnts=[], liveEnt=null;
+
+  function areaSave(){
+    try{ localStorage.setItem(AREA_KEY,JSON.stringify(areas)); }catch(e){}
+  }
+  function areaCentroid(ll){
+    let x=0,y=0; for(let i=0;i<ll.length;i+=2){x+=ll[i];y+=ll[i+1];}
+    return [x/(ll.length/2), y/(ll.length/2)];
+  }
+  function areaDraw(){
+    areaEnts.forEach(e=>viewer.entities.remove(e)); areaEnts=[];
+    areas.forEach(a=>{
+      const pos=Cesium.Cartesian3.fromDegreesArray(a.ll);
+      areaEnts.push(viewer.entities.add({polygon:{
+        hierarchy:pos,
+        material:Cesium.Color.fromCssColorString(a.color).withAlpha(0.28),
+        classificationType:Cesium.ClassificationType.TERRAIN}}));
+      areaEnts.push(viewer.entities.add({polyline:{
+        positions:pos.concat([pos[0]]), width:2.4, clampToGround:true,
+        material:new Cesium.PolylineDashMaterialProperty({
+          color:Cesium.Color.fromCssColorString(a.color), dashLength:20})}}));
+      if(a.label){
+        const c=areaCentroid(a.ll);
+        areaEnts.push(viewer.entities.add({
+          position:Cesium.Cartesian3.fromDegrees(c[0],c[1],ZTOP+GEOID+180),
+          label:{text:a.label,
+            font:'600 13px Archivo, system-ui, sans-serif',
+            fillColor:Cesium.Color.fromCssColorString(a.color),
+            showBackground:true,
+            backgroundColor:new Cesium.Color(0.03,0.04,0.05,0.86),
+            backgroundPadding:new Cesium.Cartesian2(9,6),
+            verticalOrigin:Cesium.VerticalOrigin.BOTTOM,
+            disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+      }
+    });
+    if(areaEnts.length) areaEnts.forEach(e=>e.show=!assetOnly);
+  }
+  function areaLive(){
+    if(liveEnt){ viewer.entities.remove(liveEnt); liveEnt=null; }
+    if(areaPts.length<2) { areaHintText(); return; }
+    liveEnt=viewer.entities.add({polyline:{
+      positions:Cesium.Cartesian3.fromDegreesArray(
+        areaPts.length>2?areaPts.concat(areaPts.slice(0,2)):areaPts),
+      width:2, clampToGround:true,
+      material:Cesium.Color.fromCssColorString(areaColor).withAlpha(0.9)}});
+    areaHintText();
+  }
+  function areaHintText(){
+    const n=areaPts.length/2;
+    $('areaHint').textContent = n===0 ? 'Click the ground'
+      : n<3 ? n+' point'+(n===1?'':'s')+' — need 3'
+      : n+' points — Finish';
+  }
+  // Terrain, not the deposit. globe.pick returns the ground intersection and
+  // ignores the block primitives, so an area drawn over the orebody still lands
+  // on the mountain rather than on whichever cube happened to be in front.
+  function groundAt(win){
+    const ray=viewer.camera.getPickRay(win);
+    if(!ray) return null;
+    const c=viewer.scene.globe.pick(ray,viewer.scene);
+    if(!c) return null;
+    const g=Cesium.Cartographic.fromCartesian(c);
+    return [Cesium.Math.toDegrees(g.longitude), Cesium.Math.toDegrees(g.latitude)];
+  }
+  function areaFinish(){
+    if(areaPts.length<6){ toast('An area needs at least three points',2600); return; }
+    const label=(prompt('Label this area:','')||'').trim();
+    areas.push({ll:areaPts.slice(), color:areaColor, label:label});
+    areaPts=[]; areaLive(); areaDraw(); areaSave();
+    toast(label?('Added "'+label+'"'):'Area added');
+  }
+  function setAreaMode(on){
+    areaMode=on;
+    $('areabar').classList.toggle('on',on);
+    $('areabtn').classList.toggle('on',on);
+    viewer.canvas.style.cursor=on?'crosshair':'';
+    if(!on){ areaPts=[]; areaLive(); }
+    else { if(inking) setInking(false); areaHintText(); }
+  }
+  $('areabtn').onclick=()=>setAreaMode(!areaMode);
+  $('areaDone').onclick=areaFinish;
+  $('areaUndo').onclick=()=>{ areaPts.splice(-2,2); areaLive(); };
+  $('areaClear').onclick=()=>{
+    if(!areas.length&&!areaPts.length) return;
+    if(!confirm('Remove all '+areas.length+' drawn area'+(areas.length===1?'':'s')+'?')) return;
+    areas=[]; areaPts=[]; areaLive(); areaDraw(); areaSave(); };
+  document.querySelectorAll('.asw').forEach(sw=>{
+    if(sw.dataset.c===areaColor) sw.classList.add('on');
+    sw.onclick=()=>{ areaColor=sw.dataset.c;
+      document.querySelectorAll('.asw').forEach(x=>x.classList.toggle('on',x===sw));
+      areaLive(); };});
+  // Georeferenced, so it leaves as georeferenced data rather than a picture.
+  // WGS84 because that is what the polygons are stored in; converting to the
+  // project's UTM here would be inventing a precision the click never had.
+  $('areaGeo').onclick=()=>{
+    if(!areas.length){ toast('No areas to export',2400); return; }
+    const fc={type:'FeatureCollection',
+      note:'Presenter annotations drawn in Orebody. Not surveyed boundaries.',
+      crs_note:'WGS84 (EPSG:4326)',
+      features:areas.map(a=>{
+        const ring=[]; for(let i=0;i<a.ll.length;i+=2) ring.push([a.ll[i],a.ll[i+1]]);
+        ring.push(ring[0]);
+        return {type:'Feature',
+          properties:{label:a.label||null, color:a.color, source:'presenter annotation'},
+          geometry:{type:'Polygon',coordinates:[ring]}};})};
+    dlText('orebody-areas.geojson',JSON.stringify(fc,null,2),'application/geo+json');
+    toast('GeoJSON saved');
+  };
+  // Areas survive a reload, unlike ink. A presenter who marked up a deck the
+  // night before should find the marks still there.
+  try{ const saved=JSON.parse(localStorage.getItem(AREA_KEY)||'[]');
+       if(Array.isArray(saved)) areas=saved.filter(a=>a&&Array.isArray(a.ll)&&a.ll.length>=6); }catch(e){}
+  areaDraw();
+
 
   // ---- deep links ----
   let hashTimer=null;
@@ -3132,7 +3573,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     // Static, not live state: an embed is interactive, so a viewer can switch
     // any of these on after the snippet is pasted. The disclosure has to cover
     // what the deck CAN show, not what happened to be visible when it was copied.
-    const f=[]; if(PROV.drills_synthetic) f.push('drill holes');
+    const f=[]; if(PROV.blocks_synthetic) f.push('block model');
+    if(PROV.drills_synthetic) f.push('drill holes');
     if(PROV.site_synthetic) f.push('site features','pit stages');
     if(PROV.geophys_synthetic) f.push('geophysics');
     return f;
@@ -3430,6 +3872,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     else if(e.key==='a'||e.key==='A') setAssetOnly(!assetOnly);
     else if(e.key==='r'||e.key==='R') rec?stopRec():startRec();
     else if(e.key==='d'||e.key==='D') setInking(!inking);
+    else if(e.key==='g'||e.key==='G') setAreaMode(!areaMode);
+    else if(e.key==='Enter'&&areaMode) areaFinish();
     else if((e.metaKey||e.ctrlKey)&&e.key==='z'){ strokes.pop(); inkRedraw(); }
   });
 
@@ -3479,8 +3923,13 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         const chNow=CHAPTERS[cur];
         if(chNow && chNow.slide) drawSlide(x,c.width,c.height,chNow.slide);
         const S=c.width/1440, pad=Math.round(22*S);
+        // Same clause as foot(): a drawn area is captured into the bitmap like
+        // any other geometry, and a labelled polygon in a still is otherwise
+        // indistinguishable from something the model produced.
         const disc=(CLASS_CONFIRMED?'':'Resource class labels unconfirmed. ')+
-                   'Illustrative visualization — not a mineral resource statement.';
+                   'Illustrative visualization — not a mineral resource statement.'+
+                   (areas.length?' '+areas.length+' area'+(areas.length===1?'':'s')+
+                                 ' drawn by the presenter.':'');
         x.font=Math.round(13*S)+'px ui-monospace, monospace';
         x.textBaseline='bottom';
         const w=x.measureText(disc).width, h=Math.round(24*S);
@@ -3490,7 +3939,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         x.fillText(disc, pad, c.height-pad-Math.round(6*S));
         const fabricated=(drills&&DRILL_SYNTHETIC)||(siteOn&&SITE_SYNTHETIC)||
                          (stageIdx>=0&&SITE_SYNTHETIC)||
-                         (geoKey&&GEOPHYS_SYNTHETIC);
+                         (geoKey&&GEOPHYS_SYNTHETIC)||BLOCKS_SYNTHETIC;
         if(fabricated){
           const warn=$('synwarn').textContent.toUpperCase();
           x.font='600 '+Math.round(15*S)+'px ui-monospace, monospace';
@@ -3586,9 +4035,16 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(siteOn&&SITE_SYNTHETIC) f.push('site features');
     if(stageIdx>=0&&SITE_SYNTHETIC) f.push('pit stages');
     if(geoKey&&GEOPHYS_SYNTHETIC) f.push('geophysics');
+    if(BLOCKS_SYNTHETIC) f.unshift('the block model itself');
+    // Areas are the presenter's own marks, not fabricated data, so they get a
+    // plain sentence rather than the red banner. They still get counted: a
+    // coloured polygon labelled "high-priority target" burned into a slide is
+    // otherwise indistinguishable from modelled geometry.
+    const marks=areas.length
+      ? ' '+areas.length+' area'+(areas.length===1?'':'s')+' drawn by the presenter.' : '';
     return (CLASS_CONFIRMED?'':'Resource class labels unconfirmed. ')+
       'Illustrative visualization — not a mineral resource statement.'+
-      (f.length?' SYNTHETIC, fabricated: '+f.join(', ')+'.':'');
+      (f.length?' SYNTHETIC, fabricated: '+f.join(', ')+'.':'')+marks;
   }
 
   $('expPptx').onclick=async()=>{

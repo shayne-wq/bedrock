@@ -40,7 +40,8 @@ exaggeration · ground cut-away over the deposit.
 boundary · conceptual pit, waste rock facility, heap leach pad and haul road ·
 named labels on leader lines · mine-plan timeline of stepped pit stages ·
 four ground-level vantages with a full-horizon sweep · fabricated magnetics
-(TMI / RTP / 1VD) draped on terrain · pinned scene captions.
+(TMI / RTP / 1VD) draped on terrain · pinned scene captions · presenter-drawn
+areas clamped to the ground, coloured, labelled and exportable as GeoJSON.
 
 ## Build
 
@@ -181,8 +182,17 @@ _Illustrative visualization — not a mineral resource statement._
 
 Phases 1–4 complete, plus the presentation and site layers above.
 
-Not built: **multi-device synced sessions** (needs a realtime backend) and
-**multi-deposit decks** (the structure supports it, the data does not).
+The viewer no longer only renders the baked demo. Opened as `?t=<share token>`
+it fetches a deck from the `deck` edge function and rebuilds itself from the
+customer's own uploaded block model — extents, rollups, vein domains, tonnes per
+block and chapters all come from the payload. Verified by hydrating the real Elk
+Gold artifact through `dashboard/lib/extract.js` and landing on the baked deck's
+totals to the tonne, from a different artifact and a different code path.
+
+Not built: **multi-device synced sessions** (needs a realtime backend), and
+**switching deposits inside one deck** — a second deposit is now a second
+project and a second share link rather than a code change, but one deck still
+holds one model.
 
 **True 360° site photography** is not built and will not be faked. The deck
 answers it with four ground-level vantages derived from the block model, each
