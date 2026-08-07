@@ -95,8 +95,11 @@ rows.sort(key=lambda r: (r[5], binof(r[3]), r[7], r[6]))
 
 buf = bytearray()
 meta = bytearray()
+# penv rides along so the viewer can total an arbitrary spatial selection (a
+# cross-section slab) exactly, rather than reporting the whole deposit while
+# showing a slice of it.
 for x, y, z, g, penv, cls, vein, dband in rows:
-    buf += struct.pack("<ffff", x - EMIN, y - NMIN, z, g)
+    buf += struct.pack("<fffff", x - EMIN, y - NMIN, z, g, penv)
     meta += struct.pack("<BB", cls, vein)
 b64 = base64.b64encode(bytes(buf)).decode()
 b64m = base64.b64encode(bytes(meta)).decode()
@@ -289,8 +292,18 @@ CHAPTERS = [
    "pin": {"at": [693500, 5525400], "dz": 520, "text": "Eight largest vein domains"}},
   {"h": 58, "p": -34, "r": 2450, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11,
    "ground": 0.0, "surfaces": "cores", "section": "The deposit", "title": "The high-grade core", "body": "The richest fifth of the blocks carry 78% of the metal. Raising the cut-off strips the rest away and leaves the bonanza shells that actually matter."},
+  # Cumulative reveal: Measured, then +Indicated, then +Inferred, the way a
+  # resource statement is actually presented rather than all at once.
+  {"h": 52, "p": -30, "r": 1900, "cut": 0.5, "xray": True, "mode": "class", "dwell": 9,
+   "ground": 0.0, "classes": [1], "section": "The deposit",
+   "title": "Measured only",
+   "body": "The part of the deposit with the most drilling behind it, on its own."},
+  {"h": 52, "p": -30, "r": 1900, "cut": 0.5, "xray": True, "mode": "class", "dwell": 9,
+   "ground": 0.0, "classes": [1, 2], "section": "The deposit",
+   "title": "Measured and Indicated",
+   "body": "Adding Indicated. This is the material a study would normally be built on."},
   {"h": 52, "p": -30, "r": 1700, "cut": 0.5, "xray": True, "mode": "class", "dwell": 11,
-   "ground": 0.0, "section": "The deposit", "title": "How well is it known?", "body": "Recoloured by resource classification. Confidence is not evenly distributed through a deposit — and this is the first question any technical reader asks."},
+   "ground": 0.0, "classes": [0, 1, 2, 3], "section": "The deposit", "title": "How well is it known?", "body": "Recoloured by resource classification. Confidence is not evenly distributed through a deposit — and this is the first question any technical reader asks."},
   # Cut-off lifted to 1.0 here so the low-grade halo stops burying the traces.
   {"h": 38, "p": -24, "r": 1900, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11, "drills": True,
    "ground": 0.0, "section": "Drilling & geometry", "title": "Drilled from surface", "body": "Drill traces coloured by assay grade, hung from their collars on the ridge above. These holes are synthetic — traced through the modelled grades to show how drilling reads against the block model."},
@@ -301,6 +314,14 @@ CHAPTERS = [
    "title": "Footprint in plan",
    "body": "Overhead, the body itself tells you nothing \u2014 you see the top of it and the ground disappears. So this is grade times thickness accumulated down every column, laid on the terrain: where the metal is, and how much of it, against the ground you would actually mine.",
    "pin": {"at": [693500, 5525900], "dz": 260, "text": "Grade \u00d7 thickness, g\u00b7m"}},
+  # Looking straight down the section line, so the slab is seen edge-on.
+  # Perpendicular to the slab and well above the ridge line — at a grazing
+  # pitch the camera sits below the topography and the hillside fills the frame.
+  {"h": 90, "p": -30, "r": 2700, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 12,
+   "ground": 0.0, "section3d": "ns", "sectionAt": 50,
+   "section": "Drilling & geometry", "title": "A section through it",
+   "body": "A 90-metre slab taken north\u2013south through the middle of the deposit and viewed edge-on. Everything outside the slice is removed, so the veins read in true relationship instead of overlapping in projection \u2014 the view a geologist actually works from.",
+   "pin": {"at": [693500, 5525400], "dz": 420, "text": "N\u2013S section, \u00b145 m"}},
   {"h": 4, "p": -4, "r": 2650, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 10,
    "ground": 0.0, "section": "Drilling & geometry", "title": "In profile", "body": "Turned on edge, the veins persist to roughly 475 metres below surface — and remain open at depth."},
   {"h": 44, "p": -18, "r": 1500, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 12,
@@ -573,6 +594,17 @@ HTML = r"""<!DOCTYPE html>
   <h3>Mine plan timeline</h3>
   <div class="cutrow"><input type="range" id="stage" min="-1" max="3" step="1" value="-1"><span id="stagev" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#C99A3A;min-width:96px;text-align:right">none</span></div>
 
+  <h3>Cross section</h3>
+  <div class="seg" id="sectseg">
+    <button data-x="" class="on">Off</button>
+    <button data-x="ns">N–S</button>
+    <button data-x="ew">E–W</button>
+  </div>
+  <div class="cutrow" style="margin-top:8px">
+    <input type="range" id="sect" min="0" max="100" step="2" value="50">
+    <span id="sectv" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#C99A3A;min-width:96px;text-align:right">off</span>
+  </div>
+
   <h3>Plan view</h3>
   <div class="seg" id="planseg">
     <button data-l="0" class="on">3D body</button>
@@ -710,6 +742,7 @@ const CHAPTERS=__CHAPTERS__, RUNS=__RUNS__, BUCKETS=__BUCKETS__, VEINS=__VEINS__
       LADDER=__LADDER__, CLASS_LABELS=__CLASS_LABELS__, CLASS_CONFIRMED=__CLASS_CONFIRMED__,
       THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
 proj4.defs('EPSG:26910','+proj=utm +zone=10 +datum=NAD83 +units=m +no_defs');
+const TONNES_PER_BLOCK=675;   // 10 x 5 x 5 m at 2.7 t/m3
 const GEOID=-18, rad=Cesium.Math.toRadians, $=id=>document.getElementById(id);
 const setStat=t=>$('status').textContent=t;
 const EMBED=new URLSearchParams(location.search).has('embed');
@@ -860,8 +893,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   let POS=new Array(N);
   function buildPositions(){
     for(let i=0;i<N;i++){
-      const z=F[i*4+2], h=EXAG===1?z:(CZ+(z-CZ)*EXAG);
-      POS[i]=toCart(F[i*4]+EMIN,F[i*4+1]+NMIN,h);
+      const z=F[i*5+2], h=EXAG===1?z:(CZ+(z-CZ)*EXAG);
+      POS[i]=toCart(F[i*5]+EMIN,F[i*5+1]+NMIN,h);
     }
   }
 
@@ -997,6 +1030,79 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   }
   const showHi=on=>{ if(on) buildHighlights(); if(hiEnts) hiEnts.forEach(e=>e.show=on); };
 
+  // ---- cross sections ----
+  // A slice through the deposit on a fixed bearing, which is how a geologist
+  // actually interrogates a vein system: everything outside a narrow slab is
+  // removed so the sheets read in true relationship instead of overlapping in
+  // projection. Cesium primitives do not take clipping planes, so the slab is
+  // built as its own geometry from the blocks inside it and cached per section.
+  let sectEnts=null, sectPrims=null, sectAxis=null, sectPos=0, sectStat=null;
+  const SECT_HALF=45;                       // slab half-width, metres
+  function clearSection(){
+    sectStat=null;
+    if(sectPrims){ sectPrims.forEach(o=>viewer.scene.primitives.remove(o.prim)); sectPrims=null; }
+    if(sectEnts){ sectEnts.forEach(e=>viewer.entities.remove(e)); sectEnts=null; }
+  }
+  function buildSection(){
+    clearSection();
+    if(!sectAxis) return;
+    const by={};
+    for(const r of RUNS){
+      if(r.lo<Math.max(cutVal(),GRADE_FLOOR)-1e-9) continue;
+      if(!clsOn[r.c]) continue;
+      for(let i=r.s;i<r.s+r.n;i++){
+        const v=sectAxis==='ns' ? F[i*5]+EMIN : F[i*5+1]+NMIN;
+        if(Math.abs(v-sectPos)>SECT_HALF) continue;
+        const k=r.c+'|'+r.b+'|'+r.d;
+        (by[k]=by[k]||{c:r.c,b:r.b,d:r.d,lo:r.lo,mid:r.mid,idx:[]}).idx.push(i);
+      }
+    }
+    // Exact totals for the slab, summed per block. The rollup tables have no
+    // spatial key, so a section cannot be answered from them — and reporting
+    // the whole deposit next to a picture of a slice is the divergence this
+    // build has been bitten by twice already.
+    sectStat={n:0,t:0,m:0};
+    Object.values(by).forEach(o=>o.idx.forEach(i=>{
+      const tn=TONNES_PER_BLOCK*F[i*5+4];
+      sectStat.n++; sectStat.t+=tn; sectStat.m+=tn*F[i*5+3];
+    }));
+    sectPrims=Object.values(by).map(o=>{
+      const pr=makePrim(o.idx,depthShade(ramp(o.mid,true),o.d||0),o.mid);
+      viewer.scene.primitives.add(pr); return Object.assign({},o,{prim:pr});
+    });
+    // frame of the slice, so the viewer can see where the cut was taken
+    sectEnts=[];
+    const a=sectAxis==='ns'
+      ? [[sectPos,NMIN-40],[sectPos,NMIN+EY+40]]
+      : [[EMIN-40,sectPos],[EMIN+EX+40,sectPos]];
+    [ZTOP+40, ZBOT-40].forEach(z=>{
+      const zz=EXAG===1?z:(CZ+(z-CZ)*EXAG);
+      sectEnts.push(viewer.entities.add({polyline:{
+        positions:a.map(c=>toCart(c[0],c[1],zz)), width:1.4,
+        arcType:Cesium.ArcType.NONE,
+        material:new Cesium.PolylineDashMaterialProperty({
+          color:Cesium.Color.WHITE.withAlpha(.5), dashLength:16})}}));
+    });
+    const lab=sectAxis==='ns'?('Section '+Math.round(sectPos)+' E'):('Section '+Math.round(sectPos)+' N');
+    sectEnts.push(viewer.entities.add({
+      position:toCart(a[0][0],a[0][1],(EXAG===1?ZTOP:(CZ+(ZTOP-CZ)*EXAG))+120),
+      label:{text:lab+'   \u00b1'+SECT_HALF+' m',
+        font:'500 13px "JetBrains Mono", monospace',fillColor:Cesium.Color.WHITE,
+        showBackground:true,backgroundColor:new Cesium.Color(0.03,0.04,0.05,0.85),
+        backgroundPadding:new Cesium.Cartesian2(10,7),
+        disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+  }
+  function setSection(axis,pos){
+    sectAxis=axis||null;
+    // CE/CN are the injected constants; cE/cN are Python-side names and do not
+    // exist in the browser — this threw on every navigation away from a section.
+    sectPos=pos!==undefined?pos:(axis==='ns'?CE:CN);
+    buildSection();
+    $('sectv').textContent=sectAxis
+      ? (sectAxis==='ns'?'N–S at '+Math.round(sectPos)+' E':'E–W at '+Math.round(sectPos)+' N')
+      : 'off';
+  }
+
   // ---- plan-view grade x thickness map ----
   // From directly overhead a block model is an opaque blanket: you see its top
   // surface and nothing else, so the terrain and any pit underneath vanish.
@@ -1030,9 +1136,9 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     const nx=Math.round(EX/10)+1, ny=Math.round(EY/5)+1;
     const acc=new Float32Array(nx*ny);
     for(let i=0;i<N;i++){
-      const g=F[i*4+3];
+      const g=F[i*5+3];
       if(g<planCutBuilt-1e-9 || g<GRADE_FLOOR-1e-9) continue;
-      const gx=Math.round(F[i*4]/10), gy=Math.round(F[i*4+1]/5);
+      const gx=Math.round(F[i*5]/10), gy=Math.round(F[i*5+1]/5);
       if(gx<0||gx>=nx||gy<0||gy>=ny) continue;
       acc[gy*nx+gx]+=g*5;                 // grade x 5 m block height
     }
@@ -1395,7 +1501,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     showPlan(planOn);
     // Surfaces or a plan map both replace the block cloud rather than layer on
     // top of it — leaving the cubes underneath is what made plan views blobby.
-    if(surfOn||planOn) RUNS.forEach(r=>{ if(r.prim) r.prim.show=false; });
+    if(surfOn||planOn||sectAxis) RUNS.forEach(r=>{ if(r.prim) r.prim.show=false; });
+    if(sectAxis) buildSection();
     syncWarn();
 
     readout(); syncHash();
@@ -1404,6 +1511,17 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // Numbers come from the exact per-bucket rollups, never from what is drawn.
   function readout(){
     const cut=cutVal(); let n=0,t=0,m=0;
+    if(sectAxis && sectStat){
+      $('r_t').textContent=sectStat.t?fmt(sectStat.t):'—';
+      $('r_g').textContent=sectStat.t?(sectStat.m/sectStat.t).toFixed(2)+' g/t':'—';
+      $('r_oz').textContent=sectStat.t?fmtoz(sectStat.m/G_PER_OZ):'—';
+      $('r_n').textContent=sectStat.n.toLocaleString();
+      $('r_nl').textContent='Blocks in slab';
+      $('veincav').textContent='Totals are for the '+(SECT_HALF*2)+
+        ' m section slab only, not the whole deposit.';
+      return {t:sectStat.t,g:sectStat.t?sectStat.m/sectStat.t:0,
+              oz:sectStat.m/G_PER_OZ,n:sectStat.n};
+    }
     // All veins: use the vein-free table so "Blocks" is a distinct count.
     // Summing the share-weighted table instead would tally a block once per
     // domain it straddles — correct for tonnage, wrong for a block count.
@@ -1658,6 +1776,14 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     apply();});
   $('stage').max=String(STAGES.length-1);
   $('stage').oninput=e=>showStage(+e.target.value);
+  const sectFrom=pct=>sectAxis==='ns' ? EMIN+EX*pct/100 : NMIN+EY*pct/100;
+  $('sectseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    $('sectseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    const ax=b.dataset.x||null;
+    sectAxis=ax;
+    setSection(ax, ax?sectFrom(+$('sect').value):undefined);
+    apply();});
+  $('sect').oninput=e=>{ if(!sectAxis) return; setSection(sectAxis,sectFrom(+e.target.value)); };
   $('planseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
     planOn=b.dataset.l==='1';
     $('planseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
@@ -1704,6 +1830,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(surfPrims){ surfPrims.forEach(s=>viewer.scene.primitives.remove(s.prim));
       surfPrims=null; utmCache.clear(); }
     if(depthEnts){ depthEnts.forEach(e=>viewer.entities.remove(e)); depthEnts=null; }
+    clearSection();
     // These bake EXAG into static Cartesians at build time, so they detach from
     // the stretched terrain unless they are rebuilt too.
     if(siteEnts){ siteEnts.forEach(e=>viewer.entities.remove(e)); siteEnts=null; }
@@ -1835,6 +1962,14 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     const ci=LADDER.findIndex(v=>v>=want); setCut(ci<0?LADDER.length-1:ci);
     setMode(c.mode||'grade');
     setDrills(!!c.drills);
+    if(c.section3d){
+      sectAxis=c.section3d;
+      const pct=c.sectionAt===undefined?50:c.sectionAt;
+      $('sect').value=pct;
+      setSection(sectAxis,sectFrom(pct));
+    } else if(sectAxis){ sectAxis=null; setSection(null); }
+    $('sectseg').querySelectorAll('button').forEach(x=>
+      x.classList.toggle('on',(x.dataset.x||null)===(sectAxis||null)));
     planOn=!!c.plan;
     $('planseg').querySelectorAll('button').forEach(x=>
       x.classList.toggle('on',(x.dataset.l==='1')===planOn));
@@ -1848,8 +1983,10 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     $('hiseg').querySelectorAll('button').forEach(x=>
       x.classList.toggle('on',(x.dataset.h==='1')===hiOn));
     vein=-1; vsel.value='-1';
-    Object.keys(clsOn).forEach(k=>{clsOn[k]=true;});
-    chips.querySelectorAll('.chip').forEach(el=>el.classList.add('on'));
+    // Reset first, THEN honour any per-chapter selection — the reset used to run
+    // afterwards and silently undid it, so every reveal step showed all classes.
+    Object.keys(clsOn).forEach(k=>{clsOn[k]=!c.classes || c.classes.indexOf(+k)>=0;});
+    chips.querySelectorAll('.chip').forEach(el=>el.classList.toggle('on',clsOn[el.dataset.c]));
     inkClearAll();
     setPin(c.pin);
     if(stageIdx>=0){ showStage(-1); $('stage').value=-1; }
