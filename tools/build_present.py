@@ -282,13 +282,13 @@ CHAPTERS = [
   {"h": 30, "p": -22, "r": 2500, "cut": 0.1, "xray": True, "mode": "grade", "dwell": 9,
    "ground": 1.0, "section": "The ground", "title": "On real ground", "body": "Every block is placed at its true UTM position on real terrain — this is the actual mountain the deposit sits inside."},
   {"h": 44, "p": -34, "r": 1950, "cut": 0.1, "xray": True, "mode": "grade", "dwell": 10,
-   "ground": 1.0, "section": "The ground", "title": "The orebody", "body": "A multi-vein gold system, roughly 1,440 by 1,385 metres, drawn as grade shells — green through orange and red to magenta as gold-equivalent grade climbs."},
-  {"h": 50, "p": -26, "r": 1750, "cut": 0.3, "xray": True, "mode": "grade", "dwell": 12,
-   "ground": 0.0, "surfaces": True, "section": "The deposit",
+   "ground": 1.0, "section": "The ground", "title": "The orebody", "body": "Forty-six vein domains threading the ridge. Blocks here, because at this scale the whole system is the point; the individual sheets come next."},
+  {"h": 50, "p": -22, "r": 2100, "cut": 0.3, "xray": True, "mode": "grade", "dwell": 12,
+   "ground": 0.0, "surfaces": "veins", "section": "The deposit",
    "title": "The veins as bodies", "body": "The same domains drawn as solid geological surfaces rather than blocks \u2014 the hull of each vein, extracted face by face from the model so nothing is invented between the data points.",
    "pin": {"at": [693500, 5525400], "dz": 520, "text": "Eight largest vein domains"}},
-  {"h": 66, "p": -30, "r": 1450, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 10,
-   "ground": 0.0, "section": "The deposit", "title": "The high-grade core", "body": "The richest fifth of the blocks carry 78% of the metal. Raising the cut-off strips the rest away and leaves the bonanza shells that actually matter."},
+  {"h": 58, "p": -34, "r": 2450, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11,
+   "ground": 0.0, "surfaces": "cores", "section": "The deposit", "title": "The high-grade core", "body": "The richest fifth of the blocks carry 78% of the metal. Raising the cut-off strips the rest away and leaves the bonanza shells that actually matter."},
   {"h": 52, "p": -30, "r": 1700, "cut": 0.1, "xray": True, "mode": "class", "dwell": 11,
    "ground": 0.0, "section": "The deposit", "title": "How well is it known?", "body": "Recoloured by resource classification. Confidence is not evenly distributed through a deposit — and this is the first question any technical reader asks."},
   # Cut-off lifted to 1.0 here so the low-grade halo stops burying the traces.
@@ -587,8 +587,9 @@ HTML = r"""<!DOCTYPE html>
 
   <h3>Vein surfaces</h3>
   <div class="seg" id="surfseg">
-    <button data-f="0" class="on">Blocks</button>
-    <button data-f="1">Surfaces</button>
+    <button data-f="" class="on">Blocks</button>
+    <button data-f="veins">Veins</button>
+    <button data-f="cores">Cores</button>
   </div>
 
   <h3>Property highlight</h3>
@@ -1092,12 +1093,19 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     catch(e){ setStat(''); surfLoading=false; toast('Vein surfaces unavailable',4000); return null; }
     const unb=s=>{const b=atob(s);const u=new Uint8Array(b.length);
       for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u.buffer;};
+    // The 3 g/t shell is translucent so the 8 g/t bonanza core reads INSIDE it.
+    // Two opaque nested shells would show only the outer one, which is the same
+    // mistake as hulling a low-grade envelope.
+    const SHELL_COLOR={s30:'#E8433C', s80:'#E05CC8'};
+    const SHELL_ALPHA={s30:0.50, s80:1.0};
     surfPrims=Object.keys(data).map((name,i)=>{
       const d=data[name];
-      const vs=new Float32Array(unb(d.v)), ix=new Uint32Array(unb(d.i));
+      // int16 lattice offsets, exact because every vertex sits on a 2.5 m grid
+      const vs=new Int16Array(unb(d.v));
+      const ix=d.w?new Uint32Array(unb(d.i)):new Uint16Array(unb(d.i));
       const pos=new Float64Array(d.nv*3);
       for(let k=0;k<d.nv;k++){
-        const c=utm2cart(vs[k*3],vs[k*3+1],vs[k*3+2]);
+        const c=utm2cart(d.o[0]+vs[k*3]*d.q, d.o[1]+vs[k*3+1]*d.q, d.o[2]+vs[k*3+2]*d.q);
         pos[k*3]=c.x; pos[k*3+1]=c.y; pos[k*3+2]=c.z;
       }
       let geom=new Cesium.Geometry({
@@ -1114,18 +1122,28 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         appearance:new Cesium.MaterialAppearance({
           flat:false, translucent:true, faceForward:true, closed:false,
           material:Cesium.Material.fromType('Color',{
-            color:Cesium.Color.fromCssColorString(VEIN_COLORS[i%VEIN_COLORS.length])
-              .withAlpha(0.42)})})});
+            color:d.kind==='shell'
+              ? Cesium.Color.fromCssColorString(SHELL_COLOR[name]||'#E8433C')
+                  .withAlpha(SHELL_ALPHA[name]||0.6)
+              : Cesium.Color.fromCssColorString(VEIN_COLORS[i%VEIN_COLORS.length]).withAlpha(0.55)
+            })})});
       viewer.scene.primitives.add(prim);
-      return {name:name, prim:prim, oz:d.oz, tonnes:d.tonnes, grade:d.grade, nt:d.nt};
+      return {name:name, kind:d.kind, prim:prim, oz:d.oz, tonnes:d.tonnes,
+              grade:d.grade, nt:d.nt};
     });
     surfLoading=false; setStat('');
     return surfPrims;
   }
-  async function showSurfaces(on){
-    if(on) await buildSurfaces();
-    if(surfPrims) surfPrims.forEach(s=>{
-      s.prim.show = on && (vein===-1 || VEINS[vein]===s.name);
+  // 'veins' shows the sheeted structure, 'cores' the compact high-grade bodies.
+  // There is deliberately no low-grade envelope shell: hulling the outer surface
+  // of a 46-sheet deposit produces a smoother blob, not a clearer picture.
+  async function showSurfaces(mode){
+    if(mode) await buildSurfaces();
+    if(!surfPrims) return;
+    surfPrims.forEach(s=>{
+      if(!mode){ s.prim.show=false; return; }
+      if(mode==='cores') s.prim.show = s.kind==='shell';
+      else s.prim.show = s.kind==='vein' && (vein===-1 || VEINS[vein]===s.name);
     });
   }
 
@@ -1640,7 +1658,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     $('planseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
     apply();});
   $('surfseg').querySelectorAll('button').forEach(b=>b.onclick=async()=>{
-    surfOn=b.dataset.f==='1';
+    surfOn=b.dataset.f||'';
     $('surfseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
     apply();});
   $('popseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
@@ -1828,9 +1846,9 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(c.site!==undefined){ siteOn=!!c.site;
       $('siteseg').querySelectorAll('button').forEach(x=>
         x.classList.toggle('on',(x.dataset.s==='1')===siteOn)); }
-    surfOn=!!c.surfaces;
+    surfOn=c.surfaces||'';
     $('surfseg').querySelectorAll('button').forEach(x=>
-      x.classList.toggle('on',(x.dataset.f==='1')===surfOn));
+      x.classList.toggle('on',(x.dataset.f||'')===surfOn));
     hiOn=!!c.highlights;
     $('hiseg').querySelectorAll('button').forEach(x=>
       x.classList.toggle('on',(x.dataset.h==='1')===hiOn));

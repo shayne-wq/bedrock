@@ -31,6 +31,20 @@ STATS = ROOT / "data" / "elk_stats.json"
 OUT = ROOT / "data" / "elk_surfaces.json"
 N_VEINS = int(sys.argv[1]) if len(sys.argv) > 1 else 8
 
+# Grade shells, CUMULATIVE: each is the hull of everything at or above its
+# threshold, so they nest. Exclusive bands were tried first and are speckled —
+# a band scattered through the deposit has enormous surface area, and the five
+# of them came to 414k triangles and 11 MB. Nested shells are contiguous
+# volumes, hull cheaply, and render the way grade shells are meant to: a
+# translucent envelope with solid high-grade cores visible inside it.
+# Only the HIGH-grade shells are shipped. A 0.3 or 1.0 g/t envelope hulls to
+# 114k and 95k triangles respectively, and — more to the point — an envelope is
+# exactly the outer surface that made the block rendering look like a blob.
+# Hulling it does not fix that, it just smooths it. The compact 3 g/t and 8 g/t
+# cores are what a surface rendering has something useful to say about; the
+# sheeted structure is carried by the per-vein hulls instead.
+SHELLS = [(3.0, "s30"), (8.0, "s80")]
+
 DX, DY, DZ = 10.0, 5.0, 5.0          # block dimensions on the source grid
 
 # (neighbour offset, four corner offsets of the face) in half-block units
@@ -54,16 +68,25 @@ def main():
     want_id = {veins.index(n) for n in want}
 
     cells = defaultdict(set)          # vein id -> {(ix,iy,iz)}
+    tiers = defaultdict(set)          # shell key -> {(ix,iy,iz)}
+    tstat = defaultdict(lambda: [0, 0.0, 0.0])
     for r in csv.DictReader(open(SRC, newline="")):
+        cell = (round(float(r["x"]) / DX), round(float(r["y"]) / DY),
+                round(float(r["z"]) / DZ))
+        g = float(r["aueq"])
+        tn = 675.0 * float(r["penv"])
+        for thr, key in SHELLS:
+            if g >= thr:
+                tiers[key].add(cell)
+                e = tstat[key]; e[0] += 1; e[1] += tn; e[2] += tn * g
         v = int(r["vein"])
-        if v not in want_id:
-            continue
-        cells[v].add((round(float(r["x"]) / DX), round(float(r["y"]) / DY),
-                      round(float(r["z"]) / DZ)))
+        if v in want_id:
+            cells[v].add(cell)
 
     out = {}
-    for v, occ in cells.items():
-        name = veins[v]
+    todo = [(veins[v], occ, "vein") for v, occ in cells.items()]
+    todo += [(k, occ, "shell") for k, occ in tiers.items()]
+    for name, occ, kind in todo:
         verts, idx, vmap = [], [], {}
 
         def vid(p):
@@ -119,18 +142,36 @@ def main():
                         q = [vid(pt) for pt in quad]
                         idx.extend([q[0], q[1], q[2], q[0], q[2], q[3]])
 
-        s = stats["by_vein"][name]
+        if kind == "vein":
+            s = stats["by_vein"][name]
+        else:
+            e = tstat[name]
+            s = {"blocks": e[0], "tonnes": round(e[1], 1),
+                 "grade_gt": round(e[2] / e[1], 3) if e[1] else 0.0,
+                 "oz": round(e[2] / 31.10348, 0)}
+        # Every vertex lies on a 2.5 m lattice, so int16 offsets from the local
+        # origin are EXACT, not lossy — and halve the payload.
+        ox = min(verts[0::3]); oy = min(verts[1::3]); oz = min(verts[2::3])
+        q = []
+        for k in range(0, len(verts), 3):
+            q.append(int(round((verts[k] - ox) / 2.5)))
+            q.append(int(round((verts[k + 1] - oy) / 2.5)))
+            q.append(int(round((verts[k + 2] - oz) / 2.5)))
+        assert max(q) < 32767, f"{name}: lattice overflow"
+        wide = (len(verts) // 3) > 65535
         out[name] = {
-            "v": base64.b64encode(struct.pack("<%df" % len(verts), *verts)).decode(),
-            "i": base64.b64encode(struct.pack("<%dI" % len(idx), *idx)).decode(),
+            "kind": kind, "o": [ox, oy, oz], "q": 2.5, "w": 1 if wide else 0,
+            "v": base64.b64encode(struct.pack("<%dh" % len(q), *q)).decode(),
+            "i": base64.b64encode(struct.pack(
+                ("<%dI" if wide else "<%dH") % len(idx), *idx)).decode(),
             "nv": len(verts) // 3, "nt": len(idx) // 3,
             "blocks": s["blocks"], "tonnes": s["tonnes"],
             "grade": s["grade_gt"], "oz": s["oz"]}
-        print(f"  {name:<10} {len(occ):>7,} cells -> {len(idx)//3:>7,} triangles")
+        print(f"  {kind:<5} {name:<10} {len(occ):>7,} cells -> {len(idx)//3:>7,} triangles")
 
     OUT.write_text(json.dumps(out, separators=(",", ":")))
     tri = sum(o["nt"] for o in out.values())
-    print(f"wrote {OUT.relative_to(ROOT)} — {len(out)} domains, {tri:,} triangles, "
+    print(f"wrote {OUT.relative_to(ROOT)} — {len(out)} meshes, {tri:,} triangles, "
           f"{OUT.stat().st_size/1e6:.1f} MB")
 
 
