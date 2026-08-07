@@ -157,6 +157,18 @@ quoting this list):
   `segs` that draw the traces, so the ledger cannot quote an intercept the
   geometry does not show.
 
+- **Property columns** — one vertical bar per 40 m cell across the whole land
+  package, height and colour carrying accumulated grade x thickness, every
+  deposit at once, with each deposit labelled on a leader line. It is the plan
+  map's own accumulator extruded, so the two views cannot disagree about where
+  the metal is.
+- **Blackout** — imagery dropped to black while terrain GEOMETRY stays, so
+  collars still sit on the real surface. Changes what you see, not where
+  anything is.
+- **Intercept callouts** — cards parked in the left and right gutters with SVG
+  leader lines to the projected position of each intercept, packed per column so
+  they cannot overlap.
+
 **Still open:**
 1. **Synced multi-device sessions** — needs a realtime backend.
 3. **Underground 360° imagery** — no equivalent; there is no terrain model of a

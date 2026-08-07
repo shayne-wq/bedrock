@@ -521,6 +521,19 @@ CHAPTERS = [
    "section": "Drilling & geometry", "title": "The intercepts behind it", "body": "The headline hits, each labelled where it sits in three dimensions \u2014 the drill-release table, put back in the ground it came out of."},
   {"h": 26, "p": -27, "r": 3000, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 10,
    "ground": 0.0, "section": "Appendix", "title": "Explore it yourself", "body": "Forty-six vein domains, each one isolatable, each with its own grade and tonnage. Open Explore and interrogate the model directly."},
+  # Property scale. Grade x thickness as a column per 40 m cell across the whole
+  # land package, every deposit at once — the orientation shot that no
+  # per-deposit view can give. Blacked out, because once the ground has been
+  # established it only competes with the thing being measured.
+  {"h": 18, "p": -27, "r": 6000, "cut": 0.5, "mode": "grade", "dwell": 13,
+   "ground": 1.0, "property": True, "black": True, "blocks": False,
+   "section": "The property", "title": "Where the metal is",
+   "body": "One column per 40 m cell, across the whole property. Height and colour carry accumulated grade × thickness — gram-metres, the same quantity the plan-view map colours — so a tall bar is a long, rich intersection under that ground. Both deposits are in this view, and one of them is fabricated."},
+  {"h": 26, "p": -18, "r": 4200, "cut": 0.5, "mode": "grade", "dwell": 13,
+   "ground": 1.0, "property": True, "black": True, "blocks": False,
+   "drills": True, "highlights": True, "callouts": True,
+   "section": "The property", "title": "And where it was drilled",
+   "body": "The same columns with the drill traces beneath them, assays as beads on each trace, and the headline intercepts called out to the edge of the frame. The holes are synthetic; the columns above them are not, except where they come from the fabricated deposit."},
   # The multi-deposit beat. Both chapters name the fabrication in their own
   # copy — the banner fires too, but a presenter reads the body text aloud and
   # the banner is not read aloud by anyone.
@@ -628,6 +641,27 @@ HTML = r"""<!DOCTYPE html>
   #gtleg .sw{width:16px;height:10px;border-radius:1px}
   #geoleg{display:none;gap:3px!important;align-items:center}
   #geoleg .sw{width:16px;height:10px;border-radius:1px}
+  #propleg{display:none;gap:3px!important;align-items:center}
+  #propleg .sw{width:16px;height:10px;border-radius:1px}
+  #assayleg{display:none;gap:7px!important;align-items:center}
+  #assayleg .sw{width:12px;height:12px;border-radius:2px}
+
+  /* Callout cards. The SVG sits under the cards and over the canvas, and
+     neither takes pointer events — the scene stays draggable through them. */
+  #calloutsvg{position:fixed;inset:0;z-index:7;pointer-events:none;display:none}
+  #callouts{position:fixed;inset:0;z-index:8;pointer-events:none;display:none}
+  body.calloutson #calloutsvg,body.calloutson #callouts{display:block}
+  .cocard{position:absolute;background:rgba(12,15,16,.93);
+          border:1px solid rgba(255,255,255,.16);border-radius:5px;
+          padding:7px 11px;max-width:230px;backdrop-filter:blur(6px)}
+  .cocard .coid{font-family:'JetBrains Mono',monospace;font-size:11px;
+                letter-spacing:.06em;color:#EDEEEC;text-align:right}
+  .cocard .cov{font-size:12px;color:#C6CAC5;text-align:right;margin-top:2px}
+  .cocard .cov b{color:#F2C14E;font-weight:600}
+  .cocard .coincl{font-size:11px;color:#8C948C;text-align:right;margin-top:2px}
+  .cocard.left .coid,.cocard.left .cov,.cocard.left .coincl{text-align:left}
+  .cocard .cosyn{font-family:'JetBrains Mono',monospace;font-size:8.5px;
+                 letter-spacing:.1em;color:#D9584A;text-transform:uppercase;margin-top:3px}
   /* Red, and in the label rather than under it — a fabricated layer should not
      be selectable without reading the word. */
   .syntag{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.08em;
@@ -941,7 +975,15 @@ HTML = r"""<!DOCTYPE html>
   <div id="depthleg" style="display:flex"></div>
   <div id="gtleg"></div>
   <div id="geoleg"></div>
+  <div id="propleg"></div>
+  <div id="assayleg"></div>
 </div>
+
+<!-- Intercept callouts, parked in the gutters rather than floated in the
+     scene. Leader lines are drawn to the projected position of each intercept,
+     so the card can sit somewhere readable while still pointing at the rock. -->
+<svg id="calloutsvg" aria-hidden="true"></svg>
+<div id="callouts"></div>
 
 <div id="tools">
   <button id="recbtn" class="btn sm" title="Record a walkthrough to video (R)"><span id="recdot"></span>Rec<span id="rectime"></span></button>
@@ -952,6 +994,9 @@ HTML = r"""<!DOCTYPE html>
   <button id="drawbtn" class="btn sm" title="Annotate (D)">Draw</button>
   <button id="areabtn" class="btn sm" title="Outline an area on the ground (G)">Areas</button>
   <button id="ledgbtn" class="btn sm" title="Drill hole ledger (H)">Holes</button>
+  <button id="cobtn" class="btn sm" title="Intercept callout cards (C)">Calls</button>
+  <button id="blackbtn" class="btn sm" title="Drop the imagery to black (B)">Black</button>
+  <button id="propbtn" class="btn sm" title="Property-wide grade columns (P)">Property</button>
   <button id="sharebtn" class="btn sm" title="Copy a link to this exact view">Link</button>
   <button id="embedbtn" class="btn sm" title="Put this deck on your own website">Embed</button>
   <button id="xbtn" class="btn">Explore ▸</button>
@@ -2656,6 +2701,167 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     });
   }
 
+  // ---- property columns --------------------------------------------------
+  // The orientation view: one vertical bar per cell of a coarse grid over the
+  // WHOLE property, height and colour carrying accumulated grade x thickness,
+  // with every deposit labelled on a leader line. It answers "where is the
+  // metal on this land package" in one frame, which no per-deposit view can.
+  //
+  // It is the plan map's accumulator extruded, not a new number: buildPlanMap
+  // already sums grade x thickness x ore-fraction down each column to colour a
+  // raster. Same quantity, same floor, shown as height instead of hue — so the
+  // two views cannot disagree about where the metal is.
+  //
+  // Gram-metres is the honest unit here. It is NOT tonnes: a tall bar means a
+  // long, rich intercept under that cell, and comparing bars compares
+  // intersections rather than resources. The legend says so, because a bar
+  // chart with no scale is decoration.
+  const PROP_CELL=40;            // m of ground per column
+  const PROP_MAXH=520;           // m of bar at the top of the scale
+  const PROP_RAMP=['#2C5FA8','#3B82D6','#5EC8E8','#9B7BE8','#D053B8','#F472B6'];
+  let propOn=false, propPrims=null, propLabelEnts=null, propMax=0,
+      propSyn=false, propBusy=false;
+
+  async function buildProperty(){
+    if(propPrims||propBusy) return propPrims;
+    propBusy=true; setStat('building property columns…');
+    try{
+      // Every deposit contributes, including ones not currently loaded. The
+      // active one is read live rather than from its cached snapshot, so a
+      // deposit the presenter just switched to is not one edit stale.
+      const parts=[];
+      for(const d of DEPOSITS){
+        const st=(d.key===depKey)?modelState():await depState(d);
+        parts.push({d:d,st:st});
+        if(d.synthetic) propSyn=true;
+      }
+      let W=Infinity,S=Infinity,E=-Infinity,Nn=-Infinity;
+      parts.forEach(p=>{const s=p.st;
+        W=Math.min(W,s.EMIN); S=Math.min(S,s.NMIN);
+        E=Math.max(E,s.EMIN+s.EX); Nn=Math.max(Nn,s.NMIN+s.EY);});
+      const nx=Math.ceil((E-W)/PROP_CELL)+1, ny=Math.ceil((Nn-S)/PROP_CELL)+1;
+      const acc=new Float64Array(nx*ny);
+      const top=new Float64Array(nx*ny).fill(-1e9);
+      parts.forEach(p=>{
+        const s=p.st, th=s.BLOCK_DIMS[2];
+        for(let i=0;i<s.N;i++){
+          const g=s.F[i*5+3];
+          if(g<GRADE_FLOOR-1e-9) continue;
+          const gx=Math.round((s.F[i*5]+s.EMIN-W)/PROP_CELL);
+          const gy=Math.round((s.F[i*5+1]+s.NMIN-S)/PROP_CELL);
+          if(gx<0||gx>=nx||gy<0||gy>=ny) continue;
+          const k=gy*nx+gx;
+          // grade x thickness x ore fraction — the same product the plan map
+          // accumulates, so a cell reads identically in both views.
+          acc[k]+=g*th*s.F[i*5+4];
+          const z=s.F[i*5+2];
+          if(z>top[k]) top[k]=z;
+        }
+      });
+      // Percentile-clipped, like the plan map: a couple of extreme columns
+      // would otherwise flatten every other bar to nothing.
+      const vals=[]; for(let k=0;k<acc.length;k++) if(acc[k]>0) vals.push(acc[k]);
+      vals.sort((a,b)=>a-b);
+      if(!vals.length){ setStat(''); propBusy=false; return null; }
+      propMax=vals[Math.floor(vals.length*0.98)]||vals[vals.length-1];
+
+      // One primitive per colour band rather than per column: 4,000 separate
+      // primitives is 4,000 draw calls, and the bands are what the legend
+      // decodes anyway.
+      const bands=PROP_RAMP.map(()=>[]);
+      for(let k=0;k<acc.length;k++){
+        const v=acc[k]; if(v<=0) continue;
+        const u=Math.min(1,v/propMax);
+        const bi=Math.min(PROP_RAMP.length-1,Math.floor(u*PROP_RAMP.length));
+        const gx=k%nx, gy=(k-gx)/nx;
+        // Height on a gentle curve so the low tail stays visible rather than
+        // collapsing onto the ground.
+        const h=Math.max(18,PROP_MAXH*Math.pow(u,0.7));
+        bands[bi].push({e:W+gx*PROP_CELL, n:S+gy*PROP_CELL,
+                        base:top[k], h:h});
+      }
+      propPrims=[];
+      bands.forEach((cells,bi)=>{
+        if(!cells.length) return;
+        const inst=cells.map(c=>{
+          const geom=Cesium.BoxGeometry.fromDimensions({
+            vertexFormat:Cesium.PerInstanceColorAppearance.VERTEX_FORMAT,
+            dimensions:new Cesium.Cartesian3(PROP_CELL*0.72,PROP_CELL*0.72,c.h)});
+          const zc=c.base+c.h/2;
+          return new Cesium.GeometryInstance({geometry:geom,
+            modelMatrix:Cesium.Transforms.eastNorthUpToFixedFrame(
+              toCart(c.e,c.n,EXAG===1?zc:(CZ+(zc-CZ)*EXAG)))});
+        });
+        const prim=new Cesium.Primitive({geometryInstances:inst,asynchronous:true,
+          show:false,
+          appearance:new Cesium.MaterialAppearance({flat:false,translucent:true,
+            material:Cesium.Material.fromType('Color',{
+              color:Cesium.Color.fromCssColorString(PROP_RAMP[bi]).withAlpha(0.92)})})});
+        viewer.scene.primitives.add(prim);
+        propPrims.push(prim);
+      });
+
+      // One leader-line label per deposit, at its own centroid — the thing the
+      // reference decks do that turns a field of bars into a map you can talk
+      // over.
+      propLabelEnts=[];
+      parts.forEach(p=>{
+        const s=p.st;
+        const e=s.EMIN+s.EX/2, n=s.NMIN+s.EY/2;
+        const base=toCart(e,n,s.ZTOP);
+        const tip=toCart(e,n,s.ZTOP+PROP_MAXH+260);
+        propLabelEnts.push(viewer.entities.add({polyline:{positions:[base,tip],
+          width:1,material:Cesium.Color.WHITE.withAlpha(.42),
+          arcType:Cesium.ArcType.NONE}}));
+        propLabelEnts.push(viewer.entities.add({position:tip,
+          label:{text:p.d.name+(p.d.synthetic?'  (fabricated)':''),
+            font:'600 14px Archivo, system-ui, sans-serif',
+            fillColor:p.d.synthetic?Cesium.Color.fromCssColorString('#D9584A')
+                                   :Cesium.Color.WHITE,
+            showBackground:true,
+            backgroundColor:new Cesium.Color(0.03,0.04,0.05,0.86),
+            backgroundPadding:new Cesium.Cartesian2(10,6),
+            verticalOrigin:Cesium.VerticalOrigin.BOTTOM,
+            // Labels shrink with distance but never vanish, so the property
+            // view stays readable from the altitude it is meant to be seen at.
+            scaleByDistance:new Cesium.NearFarScalar(1500,1.0,14000,0.55),
+            disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+      });
+      setStat('');
+      return propPrims;
+    } finally { propBusy=false; }
+  }
+
+  async function showProperty(on){
+    if(on) await buildProperty();
+    if(propPrims) propPrims.forEach(p=>p.show=on);
+    if(propLabelEnts) propLabelEnts.forEach(e=>e.show=on);
+    $('propleg').style.display=on?'flex':'none';
+    if(on&&propMax){
+      $('propleg').innerHTML='<span>Grade &times; thickness</span>'+
+        PROP_RAMP.map(c=>'<div class="k"><span class="sw" style="background:'+c+
+          '"></span></div>').join('')+
+        '<span>0 → '+Math.round(propMax).toLocaleString()+' g·m</span>';
+    }
+  }
+  // Frame the whole land package rather than one orebody.
+  function frameProperty(){
+    if(!propPrims) return;
+    let W=Infinity,S=Infinity,E=-Infinity,Nn=-Infinity,zt=-Infinity;
+    DEPOSITS.forEach(d=>{
+      const s=(d.key===depKey)?modelState():d._state||(d.baked?bakedSnap:null);
+      if(!s) return;
+      W=Math.min(W,s.EMIN); S=Math.min(S,s.NMIN);
+      E=Math.max(E,s.EMIN+s.EX); Nn=Math.max(Nn,s.NMIN+s.EY);
+      zt=Math.max(zt,s.ZTOP);});
+    if(!isFinite(W)) return;
+    const c=toCart((W+E)/2,(S+Nn)/2,zt);
+    const r=Math.max(E-W,Nn-S)*0.75+PROP_MAXH;
+    viewer.camera.flyToBoundingSphere(new Cesium.BoundingSphere(c,r),
+      {duration:REDUCED?0:2.2,
+       offset:new Cesium.HeadingPitchRange(rad(18),rad(-27),r*2.6)});
+  }
+
   // ---- site features: claims, infrastructure, roads, labels ----
   // Clamped to terrain rather than floated at a guessed elevation, so they sit
   // on the actual ground the deposit is under.
@@ -2936,6 +3142,10 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     // Unconditional: a fabricated block model is not a layer you can switch
     // off, it is every tonne and every gram on screen.
     if(BLOCKS_SYNTHETIC) parts.unshift('block model');
+    // The property view sums every deposit, so if any of them is invented the
+    // columns on screen are part invention — even when the deposit currently
+    // loaded is the real one.
+    if(propOn&&propSyn&&!BLOCKS_SYNTHETIC) parts.push('one deposit in the property view');
     const el=$('synwarn');
     el.classList.toggle('on',parts.length>0);
     if(parts.length) el.textContent='Synthetic '+parts.join(' + ')+
@@ -2977,9 +3187,25 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     showSite(siteOn);
     showSurfaces(surfOn);
     showPlan(planOn);
-    // Surfaces or a plan map both replace the block cloud rather than layer on
-    // top of it — leaving the cubes underneath is what made plan views blobby.
-    if(surfOn||planOn||sectAxis) RUNS.forEach(r=>{ if(r.prim) r.prim.show=false; });
+    // Async because the other deposit's model may still need fetching. Not
+    // awaited — the rest of the frame applies now and the columns land when
+    // they land — but the rejection must be caught or a failed fetch becomes a
+    // silent unhandled rejection.
+    showProperty(propOn).catch(e=>toast('Property view unavailable: '+e.message,5000));
+    // The callouts read HIGHLIGHTS and the current projection, so they have to
+    // repaint whenever anything that moves them changes.
+    calloutQueue();
+    // The assay legend belongs to the traces, so it lives and dies with them.
+    $('assayleg').style.display=drills?'flex':'none';
+    if(drills) $('assayleg').innerHTML=
+      '<span>Drill assay g/t Au</span>'+
+      TIERS.map(T=>'<div class="k"><span class="sw" style="background:'+T.css+
+        '"></span><span>'+T.label+'</span></div>').join('')+
+      (DRILL_SYNTHETIC?'<span style="color:#D9584A">FABRICATED</span>':'');
+    // Surfaces, a plan map or the property columns all replace the block cloud
+    // rather than layer on top of it — leaving the cubes underneath is what
+    // made plan views blobby, and at property scale it is worse.
+    if(surfOn||planOn||sectAxis||propOn) RUNS.forEach(r=>{ if(r.prim) r.prim.show=false; });
     if(sectAxis) buildSection();
     if(sectPrims) sectPrims.forEach(o=>o.prim.show=blocksOn);
     syncWarn();
@@ -3238,6 +3464,129 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     sw.onclick=()=>{inkColor=sw.dataset.c;
       document.querySelectorAll('.isw').forEach(x=>x.classList.toggle('on',x===sw));};});
   const inkClearAll=()=>{strokes=[];drawing=null;inkRedraw();};
+
+  // ---- blackout -----------------------------------------------------------
+  // Once the deposit has been shown, the ground has done its job. Dropping the
+  // imagery to black leaves the drilling and the columns as the only lit things
+  // in the frame, which is the difference between a map with holes on it and a
+  // picture of a drill programme.
+  //
+  // Terrain GEOMETRY stays — collars still sit on the real surface and holes
+  // still descend from it. Only the imagery goes, so this changes what you see
+  // and not where anything is.
+  let blackout=false, savedPop=null;
+  function setBlackout(on){
+    blackout=on;
+    const base=viewer.imageryLayers.get(0);
+    if(base) base.show=!on;
+    if(on){ savedPop=popOn; if(maskLayer) maskLayer.show=false; }
+    else if(savedPop!==null){ setPop(savedPop); savedPop=null; }
+    viewer.scene.globe.baseColor=on?Cesium.Color.fromCssColorString('#07090A')
+                                   :Cesium.Color.fromCssColorString('#101418');
+    viewer.scene.skyAtmosphere.show=!on;
+    viewer.scene.globe.showGroundAtmosphere=!on;
+    if(viewer.scene.skyBox) viewer.scene.skyBox.show=!on;
+    viewer.scene.backgroundColor=on?Cesium.Color.fromCssColorString('#07090A')
+                                   :Cesium.Color.BLACK;
+    $('blackbtn').classList.toggle('on',on);
+  }
+  $('blackbtn').onclick=()=>setBlackout(!blackout);
+
+  // ---- intercept callouts in the gutters ---------------------------------
+  // The reference decks park each intercept in a card at the edge of the frame
+  // and run a leader line to the rock. That beats a label floating at the
+  // intercept: the cards can be read in a column, they never sit on top of the
+  // geometry they describe, and a dozen of them stay legible.
+  //
+  // Cards are DOM, leaders are SVG, positions come from projecting the
+  // intercept's world position each frame. Left half of the screen parks left,
+  // right half parks right, and each column is packed top-down so two cards
+  // cannot overlap.
+  let calloutsOn=false;
+  const CO_W=232, CO_GAP=8, CO_TOP=112, CO_EDGE=26;
+  function calloutClear(){
+    $('callouts').innerHTML=''; $('calloutsvg').innerHTML='';
+    document.body.classList.remove('calloutson');
+  }
+  function calloutPaint(){
+    if(!calloutsOn||!HIGHLIGHTS.length||!hiOn){ calloutClear(); return; }
+    const host=$('callouts'), svg=$('calloutsvg');
+    const W=innerWidth, H=innerHeight;
+    svg.setAttribute('viewBox','0 0 '+W+' '+H);
+    svg.setAttribute('width',W); svg.setAttribute('height',H);
+    // Project first, then lay out — a card's side depends on where its
+    // intercept actually landed on screen this frame.
+    const items=[];
+    HIGHLIGHTS.forEach(hl=>{
+      const z=EXAG===1?hl.at[2]:(CZ+(hl.at[2]-CZ)*EXAG);
+      const win=toWindow(viewer.scene,toCart(hl.at[0],hl.at[1],z));
+      if(!win||win.x<0||win.x>W||win.y<0||win.y>H) return;
+      items.push({hl:hl,x:win.x,y:win.y,side:win.x<W/2?'left':'right'});
+    });
+    if(!items.length){ calloutClear(); return; }
+    host.innerHTML=''; svg.innerHTML='';
+    document.body.classList.add('calloutson');
+    const cursor={left:CO_TOP,right:CO_TOP};
+    items.sort((a,b)=>a.y-b.y);
+    items.forEach(it=>{
+      const card=document.createElement('div');
+      card.className='cocard'+(it.side==='left'?' left':'');
+      const id=document.createElement('div'); id.className='coid';
+      id.textContent=it.hl.id;
+      const v=document.createElement('div'); v.className='cov';
+      v.appendChild(document.createTextNode(it.hl.g.toFixed(2)+' g/t Au over '));
+      const b=document.createElement('b'); b.textContent=it.hl.len.toFixed(1)+' m';
+      v.appendChild(b);
+      card.appendChild(id); card.appendChild(v);
+      if(it.hl.incl){
+        const inc=document.createElement('div'); inc.className='coincl';
+        inc.textContent='incl. '+it.hl.incl.g.toFixed(2)+' g/t over '+
+                        it.hl.incl.len.toFixed(1)+' m';
+        card.appendChild(inc);
+      }
+      if(DRILL_SYNTHETIC){
+        const s=document.createElement('div'); s.className='cosyn';
+        s.textContent='fabricated'; card.appendChild(s);
+      }
+      card.style.width=CO_W+'px';
+      // Packed top-down per column so cards never overlap, and never below the
+      // nav bar.
+      const y=Math.min(H-150,Math.max(cursor[it.side],it.y-26));
+      card.style.top=y+'px';
+      if(it.side==='left') card.style.left=CO_EDGE+'px';
+      else card.style.right=CO_EDGE+'px';
+      host.appendChild(card);
+      const h=card.offsetHeight||54;
+      cursor[it.side]=y+h+CO_GAP;
+      // Leader from the card's inner edge to the intercept.
+      const ax=it.side==='left'?(CO_EDGE+CO_W):(W-CO_EDGE-CO_W);
+      const ay=y+h/2;
+      const line=document.createElementNS('http://www.w3.org/2000/svg','path');
+      line.setAttribute('d','M '+ax+' '+ay+' L '+it.x.toFixed(1)+' '+it.y.toFixed(1));
+      line.setAttribute('stroke','rgba(255,255,255,.55)');
+      line.setAttribute('stroke-width','1');
+      line.setAttribute('fill','none');
+      svg.appendChild(line);
+      const dot=document.createElementNS('http://www.w3.org/2000/svg','circle');
+      dot.setAttribute('cx',it.x.toFixed(1)); dot.setAttribute('cy',it.y.toFixed(1));
+      dot.setAttribute('r','3.5'); dot.setAttribute('fill','#E8433C');
+      svg.appendChild(dot);
+    });
+  }
+  let coTimer=null;
+  function calloutQueue(){
+    if(!calloutsOn) return;
+    clearTimeout(coTimer); coTimer=setTimeout(calloutPaint,120);
+  }
+  function setCallouts(on){
+    calloutsOn=on;
+    $('cobtn').classList.toggle('on',on);
+    if(on) calloutPaint(); else calloutClear();
+  }
+  $('cobtn').onclick=()=>setCallouts(!calloutsOn);
+  viewer.camera.changed.addEventListener(calloutQueue);
+  viewer.camera.moveEnd.addEventListener(calloutQueue);
+  addEventListener('resize',calloutQueue);
 
   // ---- drill ledger ------------------------------------------------------
   // A drill release is a table, and a 3D deck that shows holes without one
@@ -4165,6 +4514,10 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   const railItems=[].slice.call(rail.querySelectorAll('.c'));
 
   function frameFor(c,animate){
+    // A property chapter frames the land package, not the orebody — `center`
+    // and RADIUS belong to whichever deposit is loaded and would put the
+    // camera inside one corner of the view.
+    if(c.property){ frameProperty(); return; }
     const hpr=new Cesium.HeadingPitchRange(rad(c.h),rad(c.p),c.r);
     viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
     if(animate&&!REDUCED) viewer.camera.flyToBoundingSphere(new Cesium.BoundingSphere(center,RADIUS),
@@ -4213,6 +4566,13 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     $('sectseg').querySelectorAll('button').forEach(x=>
       x.classList.toggle('on',(x.dataset.x||null)===(sectAxis||null)));
     planOn=assetOnly?false:!!c.plan;
+    // Property columns, blackout and callouts are chapter state like anything
+    // else — a chapter that does not ask for them turns them off, so none of
+    // the three leaks forward into a slide whose copy never mentions it.
+    propOn=assetOnly?false:!!c.property;
+    $('propbtn').classList.toggle('on',propOn);
+    if(!assetOnly) setBlackout(!!c.black); else if(blackout) setBlackout(false);
+    setCallouts(assetOnly?false:!!c.callouts);
     $('planseg').querySelectorAll('button').forEach(x=>
       x.classList.toggle('on',(x.dataset.l==='1')===planOn));
     if(c.site!==undefined && !assetOnly){ siteOn=!!c.site;
@@ -4347,6 +4707,10 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     else if(e.key==='d'||e.key==='D') setInking(!inking);
     else if(e.key==='g'||e.key==='G') setAreaMode(!areaMode);
     else if(e.key==='h'||e.key==='H'){ if(HOLES.length) setLedger(!ledgerOn); }
+    else if(e.key==='c'||e.key==='C') setCallouts(!calloutsOn);
+    else if(e.key==='b'||e.key==='B') setBlackout(!blackout);
+    else if(e.key==='p'||e.key==='P'){ propOn=!propOn; showProperty(propOn)
+      .then(()=>{ if(propOn) frameProperty(); apply(); }); }
     else if(e.key==='Enter'&&areaMode) areaFinish();
     else if((e.metaKey||e.ctrlKey)&&e.key==='z'){ strokes.pop(); inkRedraw(); }
   });

@@ -43,7 +43,9 @@ four ground-level vantages with a full-horizon sweep · fabricated magnetics
 (TMI / RTP / 1VD) draped on terrain · pinned scene captions · presenter-drawn
 areas clamped to the ground, coloured, labelled and exportable as GeoJSON ·
 a drill ledger of the holes in view with downhole grade graphs · a deposit
-switcher carrying a second, fabricated orebody.
+switcher carrying a second, fabricated orebody · property-wide grade x thickness
+columns across every deposit · blackout mode · intercept callout cards parked in
+the gutters on leader lines.
 
 ## Build
 
