@@ -2595,10 +2595,17 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // itself AND into the JSON — the deck also carries its own on-screen banner,
   // so stripping the caption still cannot produce an unlabelled embed.
   const DECK=document.title.split(' \u00b7 ')[0];
+  // Served from a real host, the deck knows its own address. Served from
+  // localhost it does not, and a snippet pointing at 127.0.0.1 is useless to
+  // everyone but its author — so fall back to the published alias. That is
+  // orebody-FAWN, not orebody.vercel.app: the bare name belongs to an unrelated
+  // project, and defaulting to it would have handed users a snippet that
+  // embedded a stranger's website.
+  const PUBLISHED='https://orebody-fawn.vercel.app/';
   function embBase(){
     const u=location.origin+location.pathname;
     return /^https?:\/\/(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(u)
-      ? 'https://orebody.vercel.app/' : u;
+      ? PUBLISHED : u;
   }
   function embFabricated(){
     const f=[]; if(PROV.drills_synthetic) f.push('drill holes');
