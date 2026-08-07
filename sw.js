@@ -16,9 +16,28 @@ async function trim(){
   if(ks.length<=MAX_ENTRIES) return;
   for(const k of ks.slice(0, ks.length-MAX_ENTRIES)) await c.delete(k);
 }
+// What this cache must NOT touch.
+//
+// The worker is registered at the site root, so its scope is everything —
+// including the authoring console at /dashboard/ and every API call the console
+// makes. Cache-first over that scope is actively harmful: the console would
+// serve users the JavaScript from whichever deploy they first visited, forever,
+// and authenticated Supabase GETs would be stored and replayed as though the
+// data had never changed. Tiles are the only thing here worth caching
+// aggressively, so everything else is passed straight to the network.
+function bypass(r){
+  const u=new URL(r.url);
+  if(u.origin===location.origin && u.pathname.startsWith('/dashboard/')) return true;
+  // Supabase (or any) API surface — data, auth and edge functions.
+  if(/\/(rest|auth|functions|storage)\/v\d/.test(u.pathname)) return true;
+  // Anything carrying credentials is per-user and must never be shared.
+  if(r.headers.get('authorization')||r.headers.get('apikey')) return true;
+  return false;
+}
 self.addEventListener('fetch',e=>{
   const r=e.request;
   if(r.method!=='GET') return;
+  if(bypass(r)) return;
   e.respondWith(caches.match(r).then(hit=>{
     if(hit) return hit;
     return fetch(r).then(res=>{

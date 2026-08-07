@@ -1,0 +1,286 @@
+/* Orebody console — the authoring half of the product.
+ *
+ * Deliberately the same instrument as the viewer: identical base (#07090A),
+ * identical gold (#C99A3A), identical type stack. Someone moving from editing a
+ * deck to presenting it should not feel they changed applications.
+ *
+ * Radius scale is locked at 3px for controls and 6px for panels, matching the
+ * viewer's buttons and dialogs. Numbers are mono and tabular everywhere — this
+ * is a tool for people who compare tonnages down a column. */
+
+:root {
+  --bg:      #07090A;
+  --panel:   #0D1114;
+  --raised:  #121719;
+  --line:    rgba(255,255,255,.14);
+  --line-2:  rgba(255,255,255,.08);
+  --ink:     #EDEEEC;
+  --ink-2:   #C6CAC5;
+  --mute:    #8E948E;
+  --gold:    #C99A3A;
+  --gold-dim:#7d6026;
+  --live:    #6FCF57;
+  --warn:    #E3BE79;
+  --danger:  #E8433C;
+  --r-ctl:   3px;
+  --r-pan:   6px;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --sans: Archivo, system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--sans); -webkit-font-smoothing: antialiased;
+  font-size: 14px; line-height: 1.5;
+}
+a { color: var(--gold); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Every numeral in this product lines up under the one above it. */
+.mono, td.n, th.n, .stat b, input, select, textarea {
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+}
+
+.eyebrow {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .22em;
+  text-transform: uppercase; color: var(--mute);
+}
+
+/* ------------------------------------------------------------ app shell -- */
+#app { display: grid; grid-template-columns: 248px 1fr; min-height: 100dvh; }
+@media (max-width: 860px) {
+  #app { grid-template-columns: 1fr; }
+  #rail { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+}
+
+#rail {
+  position: sticky; top: 0; height: 100dvh; overflow-y: auto;
+  background: var(--panel); border-right: 1px solid var(--line);
+  padding: 18px 0; display: flex; flex-direction: column;
+}
+#rail .brand { padding: 0 18px 18px; }
+#rail .brand b { font-size: 15px; letter-spacing: -.01em; font-weight: 600; }
+#rail .brand .w {
+  display: block; font-family: var(--mono); font-size: 9px;
+  letter-spacing: .34em; color: var(--gold); text-transform: uppercase;
+  margin-top: 3px;
+}
+#rail nav { padding: 0 10px; display: flex; flex-direction: column; gap: 1px; }
+#rail nav a {
+  display: flex; align-items: center; gap: 9px; padding: 8px 9px;
+  border-radius: var(--r-ctl); color: var(--ink-2); font-size: 13px;
+  transition: background .15s, color .15s;
+}
+#rail nav a:hover { background: rgba(255,255,255,.05); text-decoration: none; }
+#rail nav a.on { background: rgba(201,154,58,.13); color: var(--ink); }
+#rail nav a .k {
+  font-family: var(--mono); font-size: 10px; color: var(--mute);
+  margin-left: auto;
+}
+#rail .sec {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .24em;
+  text-transform: uppercase; color: var(--mute); padding: 18px 19px 7px;
+}
+#rail .foot { margin-top: auto; padding: 14px 18px 0; border-top: 1px solid var(--line-2); }
+#rail .foot .who { font-size: 12px; color: var(--mute); word-break: break-all; }
+
+main { padding: 30px 34px 64px; max-width: 1180px; }
+@media (max-width: 640px) { main { padding: 22px 18px 48px; } }
+
+header.page { margin-bottom: 26px; }
+header.page h1 {
+  margin: 6px 0 0; font-size: clamp(22px, 3vw, 30px); font-weight: 600;
+  letter-spacing: -.02em; text-wrap: balance;
+}
+header.page p { margin: 8px 0 0; color: var(--mute); max-width: 68ch; text-wrap: pretty; }
+header.page .row { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+header.page .row .grow { flex: 1; min-width: 240px; }
+
+/* ---------------------------------------------------------------- panel -- */
+.panel {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--r-pan); padding: 20px;
+}
+.panel + .panel { margin-top: 16px; }
+.panel > h2 {
+  margin: 0 0 14px; font-size: 13px; font-weight: 600; letter-spacing: -.005em;
+  display: flex; align-items: center; gap: 10px;
+}
+.panel > h2 .hint { font-weight: 400; color: var(--mute); font-size: 12px; }
+
+.grid { display: grid; gap: 16px; }
+.grid.two { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.grid.three { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+
+/* --------------------------------------------------------------- controls */
+.btn {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--ink);
+  background: rgba(255,255,255,.06); border: 1px solid var(--line);
+  border-radius: var(--r-ctl); padding: 10px 16px; cursor: pointer;
+  transition: background .15s, border-color .15s, transform .06s;
+}
+.btn:hover:not(:disabled) { background: rgba(255,255,255,.11); border-color: rgba(255,255,255,.24); }
+/* Physical press. */
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn:disabled { opacity: .42; cursor: not-allowed; }
+.btn.primary {
+  background: var(--gold); border-color: var(--gold); color: #17130A; font-weight: 600;
+}
+.btn.primary:hover:not(:disabled) { background: #d8a942; border-color: #d8a942; }
+.btn.danger { color: var(--danger); border-color: rgba(232,67,60,.4); }
+.btn.danger:hover:not(:disabled) { background: rgba(232,67,60,.12); }
+.btn.sm { padding: 7px 11px; font-size: 10px; }
+.btn:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+.field { margin-bottom: 14px; }
+/* Label above input, always — a placeholder is not a label. */
+.field label {
+  display: block; font-family: var(--mono); font-size: 9.5px;
+  letter-spacing: .16em; text-transform: uppercase; color: var(--mute);
+  margin-bottom: 5px;
+}
+input[type=text], input[type=email], input[type=password], input[type=number],
+input[type=date], select, textarea {
+  width: 100%; background: var(--bg); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--r-ctl);
+  padding: 9px 10px; font-size: 12.5px; font-family: var(--mono);
+}
+textarea { font-family: var(--sans); font-size: 13.5px; line-height: 1.55; resize: vertical; }
+/* Placeholders must clear 4.5:1 like any other text. */
+::placeholder { color: #7f857f; opacity: 1; }
+input:disabled, select:disabled { opacity: .5; }
+.checkline { display: flex; align-items: center; gap: 8px; margin: 9px 0; font-size: 13px; }
+.checkline input { width: auto; accent-color: var(--gold); }
+.hintline { font-size: 12px; color: var(--mute); margin-top: 5px; text-wrap: pretty; }
+
+.row-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* --------------------------------------------------------------- tables -- */
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line-2); }
+th {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--mute); font-weight: 400;
+}
+td { font-size: 13px; }
+td.n, th.n { text-align: right; }
+tbody tr:hover { background: rgba(255,255,255,.03); }
+tbody tr:last-child td { border-bottom: 0; }
+.tablewrap { overflow-x: auto; }
+
+/* ---------------------------------------------------------------- stats -- */
+.stat { display: flex; flex-direction: column; gap: 4px; }
+.stat .l {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--mute);
+}
+.stat b { font-size: 21px; font-weight: 500; letter-spacing: -.01em; }
+.stat .sub { font-size: 11.5px; color: var(--mute); }
+
+/* ---------------------------------------------------------------- chips -- */
+.chip {
+  display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono);
+  font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase;
+  padding: 3px 7px; border-radius: var(--r-ctl); border: 1px solid var(--line);
+  color: var(--ink-2);
+}
+.chip.live   { color: var(--live);   border-color: rgba(111,207,87,.38);  background: rgba(111,207,87,.09); }
+.chip.draft  { color: var(--mute); }
+.chip.warn   { color: var(--warn);   border-color: rgba(227,190,121,.4);  background: rgba(227,190,121,.09); }
+.chip.danger { color: var(--danger); border-color: rgba(232,67,60,.4);    background: rgba(232,67,60,.09); }
+
+/* ------------------------------------------------------------- messages -- */
+.note {
+  border: 1px solid var(--line); border-left-width: 1px;
+  border-radius: var(--r-pan); padding: 13px 15px; font-size: 13px;
+  color: var(--ink-2); background: var(--raised); text-wrap: pretty;
+}
+.note.warn   { border-color: rgba(227,190,121,.36); background: rgba(227,190,121,.07); color: var(--warn); }
+.note.danger { border-color: rgba(232,67,60,.36);   background: rgba(232,67,60,.07);   color: #f3a19c; }
+.note b { color: inherit; }
+.note + .note { margin-top: 10px; }
+
+/* Empty states are an invitation, not a blank rectangle. */
+.empty { padding: 40px 22px; text-align: center; border: 1px dashed var(--line); border-radius: var(--r-pan); }
+.empty h3 { margin: 0 0 7px; font-size: 15px; font-weight: 600; }
+.empty p { margin: 0 auto 16px; color: var(--mute); max-width: 46ch; text-wrap: pretty; }
+
+/* Skeletons mirror the shape of what is coming, so the page does not jump. */
+.skel { background: rgba(255,255,255,.055); border-radius: var(--r-ctl); height: 12px; animation: pulse 1.5s ease-in-out infinite; }
+.skel.row { height: 34px; margin-bottom: 8px; }
+.skel.big { height: 56px; }
+@keyframes pulse { 0%,100% { opacity: .45 } 50% { opacity: .85 } }
+
+#toast {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(12px);
+  background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-pan);
+  padding: 11px 17px; font-family: var(--mono); font-size: 11.5px; letter-spacing: .05em;
+  opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 60;
+  max-width: min(560px, 90vw); text-align: center;
+}
+#toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.bad { border-color: rgba(232,67,60,.5); color: #f3a19c; }
+
+/* ---------------------------------------------------------------- modal -- */
+.modal {
+  position: fixed; inset: 0; z-index: 50; display: none;
+  align-items: center; justify-content: center; padding: 24px;
+  background: rgba(4,7,9,.74);
+}
+.modal.on { display: flex; }
+.modal .inner {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-pan);
+  width: min(680px, 100%); max-height: 88vh; overflow-y: auto; padding: 22px;
+}
+.modal h2 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+.modal .sub { color: var(--mute); font-size: 13px; margin: 0 0 18px; text-wrap: pretty; }
+
+/* ---------------------------------------------------- the ingest ledger -- */
+/* The signature of this console. An upload elsewhere is a progress bar; here it
+ * is a run log that ends by proving its own arithmetic reconciles. That proof
+ * is the product's entire claim, so it is shown rather than asserted. */
+.ledger {
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.85;
+  background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-pan);
+  padding: 15px 17px; max-height: 320px; overflow-y: auto;
+}
+.ledger .ln { display: flex; gap: 12px; }
+.ledger .ln .k { color: var(--mute); min-width: 186px; }
+.ledger .ln .v { color: var(--ink); font-variant-numeric: tabular-nums; }
+.ledger .ln.ok  .v { color: var(--live); }
+.ledger .ln.bad .v { color: var(--danger); }
+.ledger .rule { height: 1px; background: var(--line-2); margin: 9px 0; }
+
+.bar { height: 3px; background: rgba(255,255,255,.08); border-radius: 2px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--gold); width: 0; transition: width .25s linear; }
+
+/* Drop target for the block model. */
+.drop {
+  border: 1px dashed var(--line); border-radius: var(--r-pan);
+  padding: 34px 20px; text-align: center; transition: border-color .15s, background .15s;
+}
+.drop.over { border-color: var(--gold); background: rgba(201,154,58,.07); }
+.drop p { margin: 6px 0 0; color: var(--mute); font-size: 13px; }
+
+/* ------------------------------------------------------------- analytics */
+/* Bars rather than a charting library: two dozen chapters of dwell time is a
+ * bar chart, and a dependency for that would be larger than the whole page. */
+.funnel { display: flex; flex-direction: column; gap: 7px; }
+.funnel .f { display: grid; grid-template-columns: 30px 1fr 96px; gap: 11px; align-items: center; }
+.funnel .f .o { font-family: var(--mono); font-size: 10px; color: var(--mute); text-align: right; }
+.funnel .f .t { font-size: 12.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.funnel .f .m { font-family: var(--mono); font-size: 11px; color: var(--mute); text-align: right; }
+.funnel .f .track { height: 20px; background: rgba(255,255,255,.05); border-radius: 2px; position: relative; overflow: hidden; }
+.funnel .f .track > i { position: absolute; inset: 0 auto 0 0; background: rgba(201,154,58,.5); }
+.funnel .f .track > span { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); font-family: var(--mono); font-size: 10.5px; color: var(--ink); }
+
+.spark { display: flex; align-items: flex-end; gap: 2px; height: 46px; }
+.spark i { flex: 1; background: rgba(201,154,58,.42); border-radius: 1px 1px 0 0; min-height: 1px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}

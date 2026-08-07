@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orebody console</title>
+<meta name="description" content="Author, publish and measure interactive 3D geological presentations.">
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="/assets/fonts.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<div id="app">
+  <aside id="rail">
+    <div class="brand">
+      <b>Orebody</b>
+      <span class="w">Console</span>
+    </div>
+    <nav id="nav"></nav>
+    <div class="foot">
+      <div class="who" id="who"></div>
+      <button class="btn sm" id="signout" style="margin-top:10px">Sign out</button>
+    </div>
+  </aside>
+  <main id="view"></main>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<div class="modal" id="modal"><div class="inner" id="modalinner"></div></div>
+
+<script src="vendor/supabase.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>

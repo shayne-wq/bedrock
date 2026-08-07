@@ -1,0 +1,394 @@
+// Orebody console — shell, auth and routing.
+//
+// Vanilla ES modules on purpose. The viewer is a single static file with no
+// build step; splitting the product across a bundled framework app and an
+// unbundled viewer would mean maintaining two toolchains for one thing.
+
+import {
+  db, state, CONFIGURED, $, esc, fmtT, fmtOz, fmtInt, fmtDate, slugify,
+  toast, fail, modal, closeModal, skeleton, wire,
+} from "./lib/ui.js";
+import { ingestWizard } from "./ingest.js";
+import { renderDeck } from "./deck.js";
+
+const view = $("view");
+
+// ------------------------------------------------------------------ boot ---
+let booted = false;
+async function boot() {
+  if (!CONFIGURED) return renderSetup();
+  view.innerHTML = skeleton(4);
+
+  // Render from the auth listener so the first paint reflects a restored
+  // session rather than the moment before it lands. Worth being precise about
+  // the failure this guards against: RLS answers an unauthenticated read with an
+  // empty set, not an error, so anything that queries too early looks like a
+  // brand new account rather than a broken one.
+  db.auth.onAuthStateChange(() => { booted = true; route(); });
+
+  // INITIAL_SESSION always fires, but never leave the console on a skeleton if
+  // it somehow does not.
+  setTimeout(() => { if (!booted) route(); }, 2000);
+}
+
+function chromeOff() {
+  document.querySelector("#rail nav").innerHTML = "";
+  $("who").textContent = "";
+  $("signout").style.display = "none";
+}
+
+function renderSetup() {
+  chromeOff();
+  view.innerHTML = `
+    <header class="page">
+      <span class="eyebrow">Setup</span>
+      <h1>Connect a Supabase project</h1>
+      <p>The console needs somewhere to keep projects, decks and view analytics.
+         Create a Supabase project, apply the migrations in
+         <code>supabase/migrations</code>, then paste its URL and anon key below.
+         Step-by-step instructions are in <code>docs/BACKEND.md</code>.</p>
+    </header>
+    <div class="panel" style="max-width:560px">
+      <div class="field">
+        <label for="su">Project URL</label>
+        <input type="text" id="su" placeholder="https://xxxxxxxx.supabase.co" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="sk">Anon key</label>
+        <input type="text" id="sk" placeholder="eyJhbGciOi…" spellcheck="false">
+      </div>
+      <p class="hintline">The anon key belongs in a browser — every table denies
+         it by default. Never paste the service role key here.</p>
+      <button class="btn primary" id="sv" style="margin-top:12px">Connect</button>
+    </div>`;
+  $("sv").onclick = () => {
+    const u = $("su").value.trim(), k = $("sk").value.trim();
+    if (!u || !k) return toast("Both fields are required.", true);
+    window.orebodyUse(u, k);
+  };
+}
+
+function renderAuth() {
+  chromeOff();
+  view.innerHTML = `
+    <header class="page">
+      <span class="eyebrow">Orebody</span>
+      <h1>Sign in</h1>
+      <p>We email you a link. There is no password to choose, forget or reuse.</p>
+    </header>
+    <div class="panel" style="max-width:420px">
+      <div class="field">
+        <label for="em">Work email</label>
+        <input type="email" id="em" autocomplete="email" placeholder="you@company.com">
+      </div>
+      <button class="btn primary" id="send">Email me a link</button>
+      <p class="hintline" id="authmsg"></p>
+    </div>`;
+  const send = async () => {
+    const email = $("em").value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      return toast("That does not look like an email address.", true);
+    }
+    $("send").disabled = true; $("send").textContent = "Sending…";
+    const { error } = await db.auth.signInWithOtp({
+      email, options: { emailRedirectTo: location.origin + location.pathname },
+    });
+    $("send").disabled = false; $("send").textContent = "Email me a link";
+    if (error) return fail("Sign in", error);
+    $("authmsg").textContent = `Link sent to ${email}. It expires in an hour.`;
+  };
+  $("send").onclick = send;
+  $("em").onkeydown = (e) => { if (e.key === "Enter") send(); };
+}
+
+$("signout").onclick = async () => { await db.auth.signOut(); location.hash = ""; };
+
+// ---------------------------------------------------------------- router ---
+// No re-entrancy guard. Collapsing overlapping runs behind a flag was tried and
+// removed: a run that never settles leaves the flag raised and freezes the
+// console on whatever rendered last, which is a far worse failure than the brief
+// double render it avoids. Renders here are a handful of DOM writes.
+async function route() {
+  if (!CONFIGURED) return renderSetup();
+  // The client is the authority on whether we are signed in, not a cached copy.
+  const { data: sess } = await db.auth.getSession();
+  state.session = sess.session;
+  if (!state.session) return renderAuth();
+  $("signout").style.display = "";
+  $("who").textContent = state.session.user.email;
+
+  // Auth redirects come back as "#access_token=…", which is not a route. Only
+  // a hash that starts with "#/" is one; anything else is home. Without this the
+  // console renders a blank page the first time a user ever signs in, which is
+  // the worst possible moment for it.
+  const raw = location.hash.startsWith("#/") ? location.hash.slice(2) : "";
+  const h = raw.split("/");                        // "#/p/<id>" -> ["p", id]
+  await loadOrgs();
+  document.querySelector("#rail nav").innerHTML =
+    `<a href="#/" class="${!h[0] ? "on" : ""}">Projects</a>`;
+  try {
+    if (h[0] === "p" && h[1]) return await renderProject(h[1]);
+    if (h[0] === "d" && h[1]) return await renderDeck(h[1], view);
+    return await renderHome();
+  } catch (e) { fail("Load", e); }
+}
+addEventListener("hashchange", route);
+
+async function loadOrgs() {
+  const { data, error } = await db.from("orgs").select("id, name, slug").order("name");
+  // Assign either way. Returning early on error left the previous value in
+  // place, so a single failed load could strand the console showing "create
+  // your first organisation" to someone who already had one.
+  state.orgs = data || [];
+  if (error) fail("Organisations", error);
+}
+
+// ------------------------------------------------------------------ home ---
+async function renderHome() {
+  view.innerHTML = `<header class="page"><span class="eyebrow">Orebody</span>
+    <h1>Projects</h1></header>${skeleton(4)}`;
+
+  if (!state.orgs.length) return renderFirstOrg();
+
+  const { data: projects, error } = await db
+    .from("projects")
+    .select("id, name, commodity, location, created_at, decks(id)")
+    .order("created_at", { ascending: false });
+  if (error) return fail("Projects", error);
+
+  view.innerHTML = `
+    <header class="page"><div class="row">
+      <div class="grow">
+        <span class="eyebrow">${esc(state.orgs[0].name)}</span>
+        <h1>Projects</h1>
+      </div>
+      <button class="btn primary" id="newp">New project</button>
+    </div></header>
+    ${!projects.length ? `
+      <div class="empty">
+        <h3>No projects yet</h3>
+        <p>A project holds one deposit: its block model, its drilling, and the
+           decks you build from them.</p>
+        <button class="btn primary" id="newp2">Create the first one</button>
+      </div>` : `
+      <div class="panel"><div class="tablewrap"><table>
+        <thead><tr><th>Project</th><th>Commodity</th><th>Location</th>
+          <th class="n">Decks</th><th class="n">Created</th></tr></thead>
+        <tbody>${projects.map((p) => `
+          <tr style="cursor:pointer" data-go="#/p/${p.id}">
+            <td><b>${esc(p.name)}</b></td>
+            <td>${esc(p.commodity || "—")}</td>
+            <td>${esc(p.location || "—")}</td>
+            <td class="n mono">${p.decks?.length || 0}</td>
+            <td class="n mono">${fmtDate(p.created_at)}</td>
+          </tr>`).join("")}</tbody>
+      </table></div></div>`}`;
+
+  wire(view);
+  for (const id of ["newp", "newp2"]) if ($(id)) $(id).onclick = newProject;
+}
+
+function renderFirstOrg() {
+  view.innerHTML = `
+    <header class="page">
+      <span class="eyebrow">Welcome</span>
+      <h1>Create your organisation</h1>
+      <p>Projects, decks, share links and view analytics all belong to an
+         organisation. You will be its owner.</p>
+    </header>
+    <div class="panel" style="max-width:460px">
+      <div class="field">
+        <label for="on">Organisation name</label>
+        <input type="text" id="on" placeholder="Northern Gold Corp">
+      </div>
+      <button class="btn primary" id="mk">Create organisation</button>
+    </div>`;
+  $("mk").onclick = async () => {
+    const name = $("on").value.trim();
+    if (!name) return toast("Give it a name first.", true);
+    $("mk").disabled = true;
+    // Slugs are globally unique; suffix rather than make the user resolve a
+    // collision with a company they cannot see.
+    const { error } = await db.from("orgs").insert({
+      name, slug: slugify(name) + "-" + Math.random().toString(36).slice(2, 6),
+    });
+    $("mk").disabled = false;
+    if (error) return fail("Create organisation", error);
+    await loadOrgs();
+    route();
+  };
+}
+
+function newProject() {
+  modal(`
+    <h2>New project</h2>
+    <p class="sub">One deposit per project.</p>
+    <div class="field"><label for="pn">Name</label>
+      <input type="text" id="pn" placeholder="Siwash North"></div>
+    <div class="grid two">
+      <div class="field"><label for="pc">Commodity</label>
+        <input type="text" id="pc" placeholder="Gold"></div>
+      <div class="field"><label for="pl">Location</label>
+        <input type="text" id="pl" placeholder="Cariboo, British Columbia"></div>
+    </div>
+    <div class="field"><label for="pe">Coordinate system (EPSG)</label>
+      <input type="number" id="pe" value="26910">
+      <p class="hintline">The projection your block model is in — 26910 is UTM
+         zone 10N (NAD83). Data is stored in its native system and reprojected
+         for display, so this is not a conversion you can lose precision to.</p>
+    </div>
+    <div class="row-actions" style="margin-top:16px">
+      <button class="btn primary" id="pgo">Create project</button>
+      <button class="btn" id="pcancel">Cancel</button>
+    </div>`);
+  $("pcancel").onclick = closeModal;
+  $("pgo").onclick = async () => {
+    const name = $("pn").value.trim();
+    if (!name) return toast("A project needs a name.", true);
+    $("pgo").disabled = true;
+    const { data, error } = await db.from("projects").insert({
+      org_id: state.orgs[0].id, name, slug: slugify(name),
+      commodity: $("pc").value.trim() || null,
+      location: $("pl").value.trim() || null,
+      epsg: Number($("pe").value) || 26910,
+    }).select("id").single();
+    $("pgo").disabled = false;
+    if (error) return fail("Create project", error);
+    closeModal();
+    location.hash = `#/p/${data.id}`;
+  };
+}
+
+// --------------------------------------------------------------- project ---
+async function renderProject(id) {
+  view.innerHTML = skeleton(5);
+  const { data: p, error } = await db.from("projects")
+    .select("id, name, commodity, location, epsg, org_id").eq("id", id).maybeSingle();
+  if (error) return fail("Project", error);
+  if (!p) {
+    view.innerHTML = `<div class="empty"><h3>Project not found</h3>
+      <p>It may have been deleted, or it belongs to an organisation you are not
+         a member of.</p>
+      <a class="btn" href="#/">Back to projects</a></div>`;
+    return;
+  }
+
+  const [{ data: datasets }, { data: decks }] = await Promise.all([
+    db.from("datasets").select("*").eq("project_id", id).order("created_at"),
+    db.from("decks").select("id, title, status, updated_at, chapters(id)")
+      .eq("project_id", id).order("updated_at", { ascending: false }),
+  ]);
+
+  const blocks = (datasets || []).find((d) => d.kind === "blocks");
+  const st = blocks?.stats?.total;
+  const fabricated = (datasets || []).filter((d) => d.synthetic);
+
+  view.innerHTML = `
+    <header class="page"><div class="row">
+      <div class="grow">
+        <span class="eyebrow"><a href="#/">Projects</a> / ${esc(p.commodity || "Project")}</span>
+        <h1>${esc(p.name)}</h1>
+        <p>${esc(p.location || "No location set")} · EPSG ${p.epsg}</p>
+      </div>
+      <button class="btn primary" id="newdeck" ${blocks ? "" : "disabled"}>New deck</button>
+    </div></header>
+
+    ${fabricated.length ? `<div class="note warn" style="margin-bottom:16px">
+      <b>This project contains fabricated data.</b>
+      ${esc(fabricated.map((d) => d.kind).join(", "))} —
+      ${esc(fabricated[0].synthetic_note || "not real")}.
+      Every deck built from it carries the warning on screen and in exports.
+    </div>` : ""}
+
+    ${st ? `<div class="panel"><div class="grid three">
+      <div class="stat"><span class="l">Tonnage</span><b>${fmtT(st.tonnes)}</b>
+        <span class="sub">${fmtInt(st.blocks)} blocks above cut-off</span></div>
+      <div class="stat"><span class="l">Grade</span><b>${st.grade_gt} g/t</b>
+        <span class="sub">${blocks.stats.share_weighted
+          ? "domains share-weighted" : "single domain column"}</span></div>
+      <div class="stat"><span class="l">Contained metal</span><b>${fmtOz(st.oz)}</b>
+        <span class="sub">${(blocks.stats.veins || []).length} domains</span></div>
+    </div></div>` : ""}
+
+    <div class="panel">
+      <h2>Block model ${blocks ? `<span class="chip live">Loaded</span>` : ""}</h2>
+      ${blocks ? `
+        <div class="tablewrap"><table>
+          <thead><tr><th>Artifact</th><th class="n">Rows read</th><th class="n">Blocks</th>
+            <th class="n">Size</th><th class="n">Added</th><th></th></tr></thead>
+          <tbody>${datasets.map((d) => `<tr>
+            <td>${esc(d.label || d.kind)}
+              ${d.synthetic ? `<span class="chip warn">Fabricated</span>` : ""}</td>
+            <td class="n mono">${fmtInt(d.stats?.scanned_rows || 0)}</td>
+            <td class="n mono">${fmtInt(d.stats?.total?.blocks || 0)}</td>
+            <td class="n mono">${((d.bytes || 0) / 1e6).toFixed(1)} MB</td>
+            <td class="n mono">${fmtDate(d.created_at)}</td>
+            <td class="n"><button class="btn sm danger" data-del="${d.id}">Remove</button></td>
+          </tr>`).join("")}</tbody>
+        </table></div>
+        <div class="row-actions" style="margin-top:14px">
+          <button class="btn" id="reingest">Replace block model</button>
+        </div>` : `
+        <div class="empty">
+          <h3>No block model yet</h3>
+          <p>Point the console at your block-model export. It is read here in
+             your browser — the file itself never leaves this machine, only the
+             few megabytes of geometry and rollups a deck needs.</p>
+          <button class="btn primary" id="ingest">Load a block model</button>
+        </div>`}
+    </div>
+
+    <div class="panel">
+      <h2>Decks</h2>
+      ${!decks?.length ? `
+        <div class="empty">
+          <h3>No decks yet</h3>
+          <p>${blocks ? "A deck is the walkthrough you present, share and embed."
+                      : "Load a block model first — a deck has nothing to show without one."}</p>
+          ${blocks ? `<button class="btn primary" id="newdeck2">Create a deck</button>` : ""}
+        </div>` : `
+        <div class="tablewrap"><table>
+          <thead><tr><th>Deck</th><th>Status</th><th class="n">Chapters</th>
+            <th class="n">Updated</th></tr></thead>
+          <tbody>${decks.map((d) => `
+            <tr style="cursor:pointer" data-go="#/d/${d.id}">
+              <td><b>${esc(d.title)}</b></td>
+              <td><span class="chip ${d.status === "published" ? "live" : "draft"}">${esc(d.status)}</span></td>
+              <td class="n mono">${d.chapters?.length || 0}</td>
+              <td class="n mono">${fmtDate(d.updated_at)}</td>
+            </tr>`).join("")}</tbody>
+        </table></div>`}
+    </div>`;
+
+  wire(view);
+  view.querySelectorAll("[data-del]").forEach((b) => {
+    b.onclick = async () => {
+      if (!confirm("Remove this artifact? Decks built on it will stop rendering.")) return;
+      const { error: e2 } = await db.from("datasets").delete().eq("id", b.dataset.del);
+      if (e2) return fail("Remove", e2);
+      toast("Artifact removed");
+      route();
+    };
+  });
+  for (const k of ["ingest", "reingest"]) if ($(k)) $(k).onclick = () => ingestWizard(p, route);
+  for (const k of ["newdeck", "newdeck2"]) if ($(k)) $(k).onclick = () => newDeck(p);
+}
+
+async function newDeck(p) {
+  const { data, error } = await db.from("decks")
+    .insert({ project_id: p.id, title: p.name, status: "draft" })
+    .select("id").single();
+  if (error) return fail("Create deck", error);
+  // A deck with no chapters cannot be previewed at all, so seed one.
+  await db.from("chapters").insert({
+    deck_id: data.id, ord: 0, kind: "scene", section: "Overview",
+    title: p.name, body: "Set the scene here.", camera: {}, layers: { blocks: true },
+  });
+  location.hash = `#/d/${data.id}`;
+}
+
+$("modal").addEventListener("click", (e) => { if (e.target.id === "modal") closeModal(); });
+addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+
+export { route };
+boot();
