@@ -994,9 +994,9 @@ HTML = r"""<!DOCTYPE html>
   <button id="drawbtn" class="btn sm" title="Annotate (D)">Draw</button>
   <button id="areabtn" class="btn sm" title="Outline an area on the ground (G)">Areas</button>
   <button id="ledgbtn" class="btn sm" title="Drill hole ledger (H)">Holes</button>
-  <button id="cobtn" class="btn sm" title="Intercept callout cards (C)">Calls</button>
+  <button id="cobtn" class="btn sm" title="Intercept callout cards (I)">Calls</button>
   <button id="blackbtn" class="btn sm" title="Drop the imagery to black (B)">Black</button>
-  <button id="propbtn" class="btn sm" title="Property-wide grade columns (P)">Property</button>
+  <button id="propbtn" class="btn sm" title="Property-wide grade columns (O)">Property</button>
   <button id="sharebtn" class="btn sm" title="Copy a link to this exact view">Link</button>
   <button id="embedbtn" class="btn sm" title="Put this deck on your own website">Embed</button>
   <button id="xbtn" class="btn">Explore ▸</button>
@@ -4707,10 +4707,15 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     else if(e.key==='d'||e.key==='D') setInking(!inking);
     else if(e.key==='g'||e.key==='G') setAreaMode(!areaMode);
     else if(e.key==='h'||e.key==='H'){ if(HOLES.length) setLedger(!ledgerOn); }
-    else if(e.key==='c'||e.key==='C') setCallouts(!calloutsOn);
+    // I, B, O — NOT C or P. C returns early above (copy camera for the deck
+    // editor) and P is autoplay, so binding either here produced a shortcut
+    // that silently never fired.
+    else if(e.key==='i'||e.key==='I') setCallouts(!calloutsOn);
     else if(e.key==='b'||e.key==='B') setBlackout(!blackout);
-    else if(e.key==='p'||e.key==='P'){ propOn=!propOn; showProperty(propOn)
-      .then(()=>{ if(propOn) frameProperty(); apply(); }); }
+    else if(e.key==='o'||e.key==='O'){ propOn=!propOn;
+      $('propbtn').classList.toggle('on',propOn);
+      showProperty(propOn).then(()=>{ if(propOn) frameProperty(); apply(); })
+        .catch(err=>toast('Property view unavailable: '+err.message,5000)); }
     else if(e.key==='Enter'&&areaMode) areaFinish();
     else if((e.metaKey||e.ctrlKey)&&e.key==='z'){ strokes.pop(); inkRedraw(); }
   });
