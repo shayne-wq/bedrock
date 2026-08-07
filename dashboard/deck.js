@@ -9,6 +9,7 @@ import {
   db, $, esc, fmtInt, fmtDur, fmtDate, fmtT, fmtOz,
   toast, fail, modal, closeModal, skeleton, wire,
 } from "./lib/ui.js";
+import { CONFIG } from "./config.js";
 
 const VIEWER = "/index.html";
 let deck = null, chapters = [], project = null, links = [];
@@ -325,7 +326,13 @@ function editChapter(c) {
 // ---------------------------------------------------------------- sharing --
 function shareUrl(token, embed) {
   const base = location.origin + VIEWER;
-  return `${base}?t=${encodeURIComponent(token)}${embed ? "&embed=1" : ""}`;
+  // The viewer is a static file with no idea which Supabase project it belongs
+  // to, so the share link carries it. Without this an embedded deck renders
+  // perfectly and reports nothing, and the Audience panel stays empty for the
+  // one case it exists to measure.
+  const api = `${CONFIG.url.replace(/\/$/, "")}/functions/v1`;
+  return `${base}?t=${encodeURIComponent(token)}` +
+         `&api=${encodeURIComponent(api)}${embed ? "&embed=1" : ""}`;
 }
 
 function renderShares() {

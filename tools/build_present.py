@@ -928,6 +928,104 @@ const GEOID=-18, rad=Cesium.Math.toRadians, $=id=>document.getElementById(id);
 const setStat=t=>$('status').textContent=t;
 const QS=new URLSearchParams(location.search);
 const EMBED=QS.has('embed');
+
+// ---- audience telemetry -------------------------------------------------
+// Reports engagement for decks opened through a share link, including — in
+// fact especially — when the deck is running in an iframe on a customer's own
+// website. That is the case the console exists to measure and the one where no
+// ordinary web analytics can see anything, because the page belongs to someone
+// else.
+//
+// What is deliberately not collected: no cookies, no cross-site identifier, no
+// IP (a country is derived at the edge and the address discarded), and no query
+// string off the embedding page — which is where tracking parameters and the
+// occasional email address live. The session id lives in sessionStorage, so it
+// is per TAB, not per person: closing the tab ends it and nothing links two
+// visits together.
+const API=(QS.get('api')||window.OREBODY_API||'').replace(/\/$/,'');
+const TOKEN=QS.get('t')||'';
+const TRACKING=Boolean(API&&TOKEN);
+const TRK={s:null,watch:0,seen:new Set(),done:false,q:[],since:0,chapAt:0,chap:null};
+try{ TRK.s=sessionStorage.getItem('orebody.s.'+TOKEN)||null; }catch(e){}
+
+// Watch time counts only while the deck is actually visible. Wall-clock since
+// the page opened would count a tab someone left open over lunch, which is the
+// number that makes engagement dashboards worthless.
+function trkTick(){
+  const now=performance.now();
+  if(TRK.since && document.visibilityState==='visible') TRK.watch+=now-TRK.since;
+  TRK.since=document.visibilityState==='visible'?now:0;
+}
+function trkEvent(kind,extra){
+  if(!TRACKING) return;
+  trkTick();
+  TRK.q.push(Object.assign({kind:kind,t_ms:Math.round(TRK.watch)},extra||{}));
+  if(TRK.q.length>=12) trkFlush();
+}
+// Close off the chapter being left, so dwell is time actually spent on it.
+function trkChapter(i){
+  if(!TRACKING) return;
+  trkTick();
+  if(TRK.chap!==null && TRK.chap!==i){
+    trkEvent('chapter',{chapter_ord:TRK.chap,
+                        dwell_ms:Math.round(TRK.watch-TRK.chapAt)});
+  }
+  if(TRK.chap!==i){ TRK.chap=i; TRK.chapAt=TRK.watch; TRK.seen.add(i); }
+  if(i===CHAPTERS.length-1 && !TRK.done){ TRK.done=true; trkEvent('complete'); }
+}
+function trkBody(){
+  trkTick();
+  return JSON.stringify({
+    t:TOKEN, s:TRK.s, embed:EMBED,
+    ref:document.referrer||null,
+    watch_ms:Math.round(TRK.watch),
+    chapters_seen:TRK.seen.size,
+    completed:TRK.done,
+    events:TRK.q.splice(0,200)});
+}
+function trkFlush(){
+  if(!TRACKING) return;
+  const body=trkBody();
+  fetch(API+'/track',{method:'POST',headers:{'content-type':'application/json'},
+                      body:body,keepalive:true})
+    .then(r=>r.json()).then(j=>{
+      if(j&&j.s&&!TRK.s){ TRK.s=j.s;
+        try{ sessionStorage.setItem('orebody.s.'+TOKEN,j.s); }catch(e){} }
+    }).catch(()=>{});
+}
+// The last flush must survive the page going away, so it goes out as a beacon.
+// A normal fetch is cancelled on unload and the final — most interesting —
+// chapter of every session would be lost.
+function trkFinal(){
+  if(!TRACKING) return;
+  if(TRK.chap!==null){
+    trkTick();
+    TRK.q.push({kind:'chapter',t_ms:Math.round(TRK.watch),chapter_ord:TRK.chap,
+                dwell_ms:Math.round(TRK.watch-TRK.chapAt)});
+    TRK.chap=null;
+  }
+  TRK.q.push({kind:'close',t_ms:Math.round(TRK.watch)});
+  const body=trkBody();
+  if(navigator.sendBeacon){
+    navigator.sendBeacon(API+'/track',new Blob([body],{type:'application/json'}));
+  } else {
+    fetch(API+'/track',{method:'POST',body:body,keepalive:true,
+                        headers:{'content-type':'application/json'}}).catch(()=>{});
+  }
+}
+if(TRACKING){
+  TRK.since=document.visibilityState==='visible'?performance.now():0;
+  trkEvent(EMBED?'embed_view':'open');
+  trkFlush();
+  setInterval(trkFlush,20000);
+  addEventListener('visibilitychange',()=>{
+    trkTick();
+    if(document.visibilityState==='hidden') trkFlush();
+  });
+  // pagehide rather than unload: unload does not fire on iOS, which is a large
+  // share of the people who open an investor deck from a phone.
+  addEventListener('pagehide',trkFinal);
+}
 // Embedded decks autostart, unless the embed snippet asked them not to.
 const EMBED_AUTOPLAY=QS.get('autoplay')!=='0';
 const REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -2757,6 +2855,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   function go(i,initial){
     if(i<0||i>=CHAPTERS.length) return;
     cur=i; const c=CHAPTERS[i];
+    trkChapter(i);
     // A cut-off above the ladder must clamp to the most restrictive bin, not
     // fall through to index 0 and reveal the entire model. A chapter that
     // declares no cut-off at all (slide chapters) is a different case — it
@@ -2864,6 +2963,21 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     // Space on a focused <select> or the slider must not also advance the deck.
     const el=document.activeElement, tag=el&&el.tagName;
     if(tag==='SELECT'||tag==='INPUT'||tag==='TEXTAREA') return;
+    // Capture the current camera for the deck editor. Typing five numbers out
+    // of a 3D scene by hand is not something anyone should be asked to do.
+    if(e.key==='c'||e.key==='C'){
+      const p=viewer.camera.positionCartographic;
+      const cam={lon:+Cesium.Math.toDegrees(p.longitude).toFixed(6),
+                 lat:+Cesium.Math.toDegrees(p.latitude).toFixed(6),
+                 h:Math.round(p.height),
+                 heading:+Cesium.Math.toDegrees(viewer.camera.heading).toFixed(1),
+                 pitch:+Cesium.Math.toDegrees(viewer.camera.pitch).toFixed(1)};
+      const s=JSON.stringify(cam);
+      navigator.clipboard.writeText(s).then(
+        ()=>toast('Camera copied \u2014 paste it into the chapter'),
+        ()=>toast('Camera: '+s,8000));
+      return;
+    }
     if(e.key==='ArrowRight'||e.key===' '){stop();go(cur+1);}
     else if(e.key==='ArrowLeft'){stop();go(cur-1);}
     // In embed mode the panel is display:none, so toggling it would only hide
