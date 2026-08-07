@@ -270,7 +270,7 @@ _M = stats["by_class"]
 CHAPTERS = [
   {"h": 26, "p": -28, "r": 4200, "dwell": 9, "ground": 1.0, "slide": {
      "eyebrow": "The project",
-     "title": "Elk Gold - Siwash North",
+     "section": "The project", "title": "Elk Gold - Siwash North",
      "body": "A drill-defined, high-grade gold system in British Columbia's Cariboo "
              "District. Road-accessible, in an established mining region, and open at depth.",
      "stats": [{"k": "Contained AuEq", "v": f"{_T['oz']/1e6:.2f} Moz"},
@@ -278,28 +278,45 @@ CHAPTERS = [
                {"k": "Grade", "v": f"{_T['grade_gt']} g/t"},
                {"k": "Vein domains", "v": str(len(VEINS))}]}},
   {"h": 28, "p": -26, "r": 3600, "cut": 0.1, "xray": True, "mode": "grade", "dwell": 9,
-   "ground": 1.0, "title": "A high-grade gold system", "body": "The Elk Gold project sits in the Quesnel Highland of British Columbia's Cariboo District — a road-accessible, established mining region."},
+   "ground": 1.0, "section": "The project", "title": "A high-grade gold system", "body": "The Elk Gold project sits in the Quesnel Highland of British Columbia's Cariboo District — a road-accessible, established mining region."},
   {"h": 30, "p": -22, "r": 2500, "cut": 0.1, "xray": True, "mode": "grade", "dwell": 9,
-   "ground": 1.0, "title": "On real ground", "body": "Every block is placed at its true UTM position on real terrain — this is the actual mountain the deposit sits inside."},
+   "ground": 1.0, "section": "The ground", "title": "On real ground", "body": "Every block is placed at its true UTM position on real terrain — this is the actual mountain the deposit sits inside."},
   {"h": 44, "p": -34, "r": 1950, "cut": 0.1, "xray": True, "mode": "grade", "dwell": 10,
-   "ground": 1.0, "title": "The orebody", "body": "A multi-vein gold system, roughly 1,440 by 1,385 metres, drawn as grade shells — green through orange and red to magenta as gold-equivalent grade climbs."},
+   "ground": 1.0, "section": "The ground", "title": "The orebody", "body": "A multi-vein gold system, roughly 1,440 by 1,385 metres, drawn as grade shells — green through orange and red to magenta as gold-equivalent grade climbs."},
+  {"h": 50, "p": -26, "r": 1750, "cut": 0.3, "xray": True, "mode": "grade", "dwell": 12,
+   "ground": 0.0, "surfaces": True, "section": "The deposit",
+   "title": "The veins as bodies", "body": "The same domains drawn as solid geological surfaces rather than blocks \u2014 the hull of each vein, extracted face by face from the model so nothing is invented between the data points.",
+   "pin": {"at": [693500, 5525400], "dz": 520, "text": "Eight largest vein domains"}},
   {"h": 66, "p": -30, "r": 1450, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 10,
-   "ground": 0.0, "title": "The high-grade core", "body": "The richest fifth of the blocks carry 78% of the metal. Raising the cut-off strips the rest away and leaves the bonanza shells that actually matter."},
+   "ground": 0.0, "section": "The deposit", "title": "The high-grade core", "body": "The richest fifth of the blocks carry 78% of the metal. Raising the cut-off strips the rest away and leaves the bonanza shells that actually matter."},
   {"h": 52, "p": -30, "r": 1700, "cut": 0.1, "xray": True, "mode": "class", "dwell": 11,
-   "ground": 0.0, "title": "How well is it known?", "body": "Recoloured by resource classification. Confidence is not evenly distributed through a deposit — and this is the first question any technical reader asks."},
+   "ground": 0.0, "section": "The deposit", "title": "How well is it known?", "body": "Recoloured by resource classification. Confidence is not evenly distributed through a deposit — and this is the first question any technical reader asks."},
   # Cut-off lifted to 1.0 here so the low-grade halo stops burying the traces.
   {"h": 38, "p": -24, "r": 1900, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11, "drills": True,
-   "ground": 0.0, "title": "Drilled from surface", "body": "Drill traces coloured by assay grade, hung from their collars on the ridge above. These holes are synthetic — traced through the modelled grades to show how drilling reads against the block model."},
+   "ground": 0.0, "section": "Drilling & geometry", "title": "Drilled from surface", "body": "Drill traces coloured by assay grade, hung from their collars on the ridge above. These holes are synthetic — traced through the modelled grades to show how drilling reads against the block model."},
   {"h": 0, "p": -89, "r": 2500, "cut": 0.3, "xray": True, "mode": "grade", "dwell": 9,
-   "ground": 1.0, "title": "Footprint in plan", "body": "Seen from directly above: northwest-trending vein corridors threading across the ridge."},
+   "ground": 1.0, "section": "Drilling & geometry", "title": "Footprint in plan", "body": "Seen from directly above: northwest-trending vein corridors threading across the ridge."},
   {"h": 4, "p": -4, "r": 2650, "cut": 0.3, "xray": True, "mode": "grade", "dwell": 10,
-   "ground": 0.0, "title": "In profile", "body": "Turned on edge, the veins persist to roughly 475 metres below surface — and remain open at depth."},
+   "ground": 0.0, "section": "Drilling & geometry", "title": "In profile", "body": "Turned on edge, the veins persist to roughly 475 metres below surface — and remain open at depth."},
   {"h": 44, "p": -18, "r": 1500, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 12,
    "ground": 0.0, "drills": True, "highlights": True,
-   "title": "The intercepts behind it", "body": "The headline hits, each labelled where it sits in three dimensions \u2014 the drill-release table, put back in the ground it came out of."},
+   "section": "Drilling & geometry", "title": "The intercepts behind it", "body": "The headline hits, each labelled where it sits in three dimensions \u2014 the drill-release table, put back in the ground it came out of."},
   {"h": 26, "p": -27, "r": 3000, "cut": 0.15, "xray": True, "mode": "grade", "dwell": 10,
-   "ground": 0.0, "title": "Explore it yourself", "body": "Forty-six vein domains, each one isolatable, each with its own grade and tonnage. Open Explore and interrogate the model directly."},
-  {"h": 30, "p": -26, "r": 3200, "dwell": 11, "ground": 1.0, "slide": {
+   "ground": 0.0, "section": "Appendix", "title": "Explore it yourself", "body": "Forty-six vein domains, each one isolatable, each with its own grade and tonnage. Open Explore and interrogate the model directly."},
+  {"h": 34, "p": -28, "r": 3000, "dwell": 12, "ground": 1.0, "section": "Appendix", "slide": {
+     "eyebrow": "Grade-tonnage",
+     "title": "What a cut-off costs you",
+     "body": "Every cut-off trades tonnes for grade. This curve is computed from the "
+             "same rollups the readout uses, so it cannot disagree with anything else "
+             "in the deck.",
+     "chart": "gradeTonnage"}},
+  {"h": 40, "p": -30, "r": 2600, "dwell": 12, "ground": 1.0, "section": "Appendix", "slide": {
+     "eyebrow": "Where the metal is",
+     "title": "Ten domains carry it",
+     "body": "Contained ounces by vein domain, share-weighted so blocks straddling "
+             "two domains are split rather than double-counted.",
+     "chart": "veinContribution"}},
+  {"h": 30, "p": -26, "r": 3200, "dwell": 11, "ground": 1.0, "section": "Appendix", "slide": {
      "eyebrow": "Resource by confidence",
      "title": "What is known, and how well",
      "body": "Classification splits the deposit by how much drilling stands behind it. "
@@ -336,6 +353,8 @@ HTML = r"""<!DOCTYPE html>
         background:rgba(7,9,10,.72);border:1px solid rgba(255,255,255,.08);border-radius:5px;
         padding:8px 12px 8px 8px;backdrop-filter:blur(4px);max-height:calc(100vh - 260px);overflow-y:auto}
   #rail .c{display:flex;align-items:center;gap:10px;padding:6px 4px;min-height:44px;cursor:pointer;opacity:.72;transition:opacity .3s}
+  #rail .sec{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.24em;
+             text-transform:uppercase;color:#C99A3A;padding:12px 0 5px 4px;opacity:.9}
   #rail .th{width:54px;height:32px;border-radius:3px;flex:0 0 auto;background-size:cover;background-position:center;
             border:1px solid rgba(255,255,255,.16);background-color:#11161a}
   #rail .th.isslide{background-image:linear-gradient(120deg,#1e242a,#0d1114)}
@@ -461,6 +480,11 @@ HTML = r"""<!DOCTYPE html>
   .stab td{font-family:'JetBrains Mono',monospace;font-size:14px;color:#EDEEEC;
            padding:9px 18px 9px 0;border-top:1px solid rgba(255,255,255,.10)}
   .stab td:first-child{color:#C6CAC5}
+  #s_chart{margin-top:26px;display:none}
+  #s_chart.on{display:block}
+  #s_chart text{font-family:'JetBrains Mono',monospace;fill:#8E948E;font-size:10px}
+  #s_chart .ax{stroke:rgba(255,255,255,.16);stroke-width:1}
+  #s_chart .gl{stroke:rgba(255,255,255,.07);stroke-width:1}
   #prog{position:fixed;left:0;top:0;height:2px;background:#C99A3A;width:0;z-index:8;transition:width .6s ease}
   #dwell{position:fixed;left:0;top:0;height:2px;background:rgba(201,154,58,.35);width:0;z-index:7}
 
@@ -546,6 +570,12 @@ HTML = r"""<!DOCTYPE html>
 
   <h3>Mine plan timeline</h3>
   <div class="cutrow"><input type="range" id="stage" min="-1" max="3" step="1" value="-1"><span id="stagev" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#C99A3A;min-width:96px;text-align:right">none</span></div>
+
+  <h3>Vein surfaces</h3>
+  <div class="seg" id="surfseg">
+    <button data-f="0" class="on">Blocks</button>
+    <button data-f="1">Surfaces</button>
+  </div>
 
   <h3>Property highlight</h3>
   <div class="seg" id="popseg">
@@ -645,6 +675,7 @@ HTML = r"""<!DOCTYPE html>
   <p id="s_b"></p>
   <div class="sstats" id="s_stats"></div>
   <table class="stab" id="s_tab"></table>
+  <div id="s_chart"></div>
 </div></div>
 
 <div id="intro">
@@ -896,10 +927,12 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
           positions:[P(s.mid),P(s.bar)], width:3, material:col,
           depthFailMaterial:ghost(col)}}));
       });
+      // A collar is a physical thing on the ground; a solid marker reads as one
+      // where a screen-space dot reads as a UI annotation.
       drillEnts.push(viewer.entities.add({position:P(h.collar),
-        point:{pixelSize:6,color:Cesium.Color.WHITE.withAlpha(.9),
-               outlineColor:Cesium.Color.fromCssColorString('#07090A'),outlineWidth:1.5,
-               disableDepthTestDistance:Number.POSITIVE_INFINITY},
+        box:{dimensions:new Cesium.Cartesian3(16,16,16),
+             material:Cesium.Color.fromCssColorString('#F2C14E'),
+             outline:true,outlineColor:Cesium.Color.fromCssColorString('#07090A')},
         label:{text:h.id,font:'500 11px monospace',fillColor:Cesium.Color.WHITE.withAlpha(.85),
                showBackground:true,backgroundColor:new Cesium.Color(0.03,0.04,0.04,0.72),
                pixelOffset:new Cesium.Cartesian2(0,-16),scale:0.9,
@@ -951,6 +984,63 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   }
   const showHi=on=>{ if(on) buildHighlights(); if(hiEnts) hiEnts.forEach(e=>e.show=on); };
 
+  // ---- vein domain surfaces ----
+  // Fetched rather than inlined: 2.3 MB of hull geometry does not belong in the
+  // critical path for a viewer that opens on a slide. The service worker caches
+  // it on first sight, so offline still works once the deck has been opened.
+  let surfPrims=null, surfLoading=false, surfOn=false;
+  const utmCache=new Map();
+  function utm2cart(x,y,z){
+    const k=x+','+y;
+    let ll=utmCache.get(k);
+    if(!ll){ ll=proj4('EPSG:26910','WGS84',[x,y]); utmCache.set(k,ll); }
+    return Cesium.Cartesian3.fromDegrees(ll[0],ll[1],(EXAG===1?z:(CZ+(z-CZ)*EXAG))+GEOID);
+  }
+  async function buildSurfaces(){
+    if(surfPrims||surfLoading) return surfPrims;
+    surfLoading=true; setStat('loading vein surfaces…');
+    let data;
+    try{ data=await (await fetch('data/elk_surfaces.json')).json(); }
+    catch(e){ setStat(''); surfLoading=false; toast('Vein surfaces unavailable',4000); return null; }
+    const unb=s=>{const b=atob(s);const u=new Uint8Array(b.length);
+      for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u.buffer;};
+    surfPrims=Object.keys(data).map((name,i)=>{
+      const d=data[name];
+      const vs=new Float32Array(unb(d.v)), ix=new Uint32Array(unb(d.i));
+      const pos=new Float64Array(d.nv*3);
+      for(let k=0;k<d.nv;k++){
+        const c=utm2cart(vs[k*3],vs[k*3+1],vs[k*3+2]);
+        pos[k*3]=c.x; pos[k*3+1]=c.y; pos[k*3+2]=c.z;
+      }
+      let geom=new Cesium.Geometry({
+        attributes:{position:new Cesium.GeometryAttribute({
+          componentDatatype:Cesium.ComponentDatatype.DOUBLE,
+          componentsPerAttribute:3, values:pos})},
+        indices:ix,
+        primitiveType:Cesium.PrimitiveType.TRIANGLES,
+        boundingSphere:Cesium.BoundingSphere.fromVertices(pos)});
+      geom=Cesium.GeometryPipeline.computeNormal(geom);
+      const prim=new Cesium.Primitive({
+        geometryInstances:new Cesium.GeometryInstance({geometry:geom}),
+        asynchronous:true, show:false,
+        appearance:new Cesium.MaterialAppearance({
+          flat:false, translucent:true, faceForward:true, closed:false,
+          material:Cesium.Material.fromType('Color',{
+            color:Cesium.Color.fromCssColorString(VEIN_COLORS[i%VEIN_COLORS.length])
+              .withAlpha(0.42)})})});
+      viewer.scene.primitives.add(prim);
+      return {name:name, prim:prim, oz:d.oz, tonnes:d.tonnes, grade:d.grade, nt:d.nt};
+    });
+    surfLoading=false; setStat('');
+    return surfPrims;
+  }
+  async function showSurfaces(on){
+    if(on) await buildSurfaces();
+    if(surfPrims) surfPrims.forEach(s=>{
+      s.prim.show = on && (vein===-1 || VEINS[vein]===s.name);
+    });
+  }
+
   // ---- site features: claims, infrastructure, roads, labels ----
   // Clamped to terrain rather than floated at a guessed elevation, so they sit
   // on the actual ground the deposit is under.
@@ -997,6 +1087,25 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     return siteEnts;
   }
   const showSite=on=>{ if(on) buildSite(); if(siteEnts) siteEnts.forEach(e=>e.show=on); };
+
+  // ---- pinned scene captions ----
+  // A caption that names a thing should sit next to the thing. A fixed bar at
+  // the bottom of the frame makes the reader hunt for what it refers to.
+  let pinEnt=null;
+  function setPin(pin){
+    if(pinEnt){ viewer.entities.remove(pinEnt); pinEnt=null; }
+    if(!pin) return;
+    const ll=proj4('EPSG:26910','WGS84',pin.at);
+    pinEnt=viewer.entities.add({
+      position:Cesium.Cartesian3.fromDegrees(ll[0],ll[1],
+        (EXAG===1?ZTOP:(CZ+(ZTOP-CZ)*EXAG))+GEOID+(pin.dz||300)),
+      label:{text:pin.text,font:'500 16px Archivo, system-ui, sans-serif',
+        fillColor:Cesium.Color.WHITE,showBackground:true,
+        backgroundColor:new Cesium.Color(0.10,0.11,0.12,0.90),
+        backgroundPadding:new Cesium.Cartesian2(16,12),
+        horizontalOrigin:Cesium.HorizontalOrigin.CENTER,
+        disableDepthTestDistance:Number.POSITIVE_INFINITY}});
+  }
 
   // ---- mine-plan timeline ----
   // Conceptual pit stages as stacked shells: scrubbing the timeline shows how
@@ -1145,6 +1254,9 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     showHi(hiOn&&drills);
     showDepth(depthOn);
     showSite(siteOn);
+    showSurfaces(surfOn);
+    // With surfaces up the blocks become noise inside them, so step them back.
+    if(surfOn) RUNS.forEach(r=>{ if(r.prim) r.prim.show=false; });
     syncWarn();
 
     readout(); syncHash();
@@ -1204,6 +1316,9 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       row.forEach(cell=>{ const td=document.createElement(ri?'td':'th');
         td.textContent=cell; tr.appendChild(td); });
       tab.appendChild(tr);});
+    const ch=$('s_chart');
+    ch.classList.toggle('on',!!s.chart);
+    ch.innerHTML = s.chart && CHARTS[s.chart] ? CHARTS[s.chart]() : '';
     el.classList.add('on');
   }
 
@@ -1256,6 +1371,59 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       });
     }
   }
+
+  // Grade-tonnage: the first chart any technical reader asks for, and it falls
+  // straight out of the rollups the readout already uses, so it cannot disagree
+  // with the rest of the deck.
+  function gradeTonnage(){
+    const pts=LADDER.map(cut=>{
+      let tn=0,m=0;
+      for(const b of BY_CB){ if(LADDER[b.b]<cut-1e-9) continue; tn+=b.t; m+=b.m; }
+      return {cut:cut, t:tn, g:tn?m/tn:0};
+    }).filter(p=>p.t>0);
+    const W=560,H=250,L=54,R=54,T=14,B=30;
+    const maxT=Math.max(...pts.map(p=>p.t)), maxG=Math.max(...pts.map(p=>p.g));
+    const X=i=>L+(W-L-R)*(i/(pts.length-1));
+    const Yt=v=>T+(H-T-B)*(1-v/maxT);
+    const Yg=v=>T+(H-T-B)*(1-v/maxG);
+    const path=(f,acc)=>pts.map((p,i)=>(i?'L':'M')+X(i)+' '+f(acc(p))).join(' ');
+    let s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" '+
+      'aria-label="Grade-tonnage curve: tonnes and average grade above each cut-off">';
+    for(let k=0;k<=4;k++){const y=T+(H-T-B)*k/4;
+      s+='<line class="gl" x1="'+L+'" y1="'+y+'" x2="'+(W-R)+'" y2="'+y+'"/>';}
+    s+='<line class="ax" x1="'+L+'" y1="'+(H-B)+'" x2="'+(W-R)+'" y2="'+(H-B)+'"/>';
+    s+='<path d="'+path(Yt,p=>p.t)+'" fill="none" stroke="#C99A3A" stroke-width="2.5"/>';
+    s+='<path d="'+path(Yg,p=>p.g)+'" fill="none" stroke="#17a89a" stroke-width="2.5" stroke-dasharray="5 4"/>';
+    pts.forEach((p,i)=>{ if(i%3) return;
+      s+='<text x="'+X(i)+'" y="'+(H-10)+'" text-anchor="middle">'+p.cut+'</text>'; });
+    s+='<text x="'+L+'" y="'+(T+9)+'" text-anchor="start" fill="#C99A3A">'+
+       (maxT/1e6).toFixed(1)+' Mt</text>';
+    s+='<text x="'+(W-R)+'" y="'+(T+9)+'" text-anchor="end" fill="#17a89a">'+
+       maxG.toFixed(1)+' g/t</text>';
+    s+='<text x="'+((L+W-R)/2)+'" y="'+(H-10)+'" text-anchor="middle" opacity="0"> </text>';
+    s+='</svg>';
+    return s+'<div style="display:flex;gap:22px;margin-top:10px;font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#8E948E">'+
+      '<span><span style="color:#C99A3A">\u2014</span> tonnes above cut-off</span>'+
+      '<span><span style="color:#17a89a">- -</span> average grade</span>'+
+      '<span>x-axis: cut-off g/t AuEq</span></div>';
+  }
+  function veinContribution(){
+    const oz={}; BUCKETS.forEach(b=>oz[b.v]=(oz[b.v]||0)+b.m/G_PER_OZ);
+    const top=Object.keys(oz).map(k=>({n:VEINS[k],oz:oz[k]}))
+      .sort((a,b)=>b.oz-a.oz).slice(0,10);
+    const max=top[0].oz;
+    let s='<div role="img" aria-label="Contained ounces by vein domain">';
+    top.forEach(d=>{
+      s+='<div style="display:flex;align-items:center;gap:10px;margin:7px 0">'+
+        '<span style="width:64px;font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#C6CAC5">'+d.n+'</span>'+
+        '<span style="flex:1;height:12px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden">'+
+        '<span style="display:block;height:100%;width:'+(d.oz/max*100).toFixed(1)+'%;background:#C99A3A"></span></span>'+
+        '<span style="width:78px;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#EDEEEC">'+
+        Math.round(d.oz).toLocaleString()+' oz</span></div>';
+    });
+    return s+'</div>';
+  }
+  const CHARTS={gradeTonnage:gradeTonnage, veinContribution:veinContribution};
 
   // ---- presenter ink ----
   // Live annotation over the 3D view: the thing a presenter reaches for when
@@ -1351,6 +1519,10 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     apply();});
   $('stage').max=String(STAGES.length-1);
   $('stage').oninput=e=>showStage(+e.target.value);
+  $('surfseg').querySelectorAll('button').forEach(b=>b.onclick=async()=>{
+    surfOn=b.dataset.f==='1';
+    $('surfseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    apply();});
   $('popseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
     setPop(b.dataset.p==='1');
     $('popseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));});
@@ -1396,6 +1568,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       delete veinPrims[v]; });
     if(drillEnts){ drillEnts.forEach(e=>viewer.entities.remove(e)); drillEnts=null; }
     if(hiEnts){ hiEnts.forEach(e=>viewer.entities.remove(e)); hiEnts=null; }
+    if(surfPrims){ surfPrims.forEach(s=>viewer.scene.primitives.remove(s.prim));
+      surfPrims=null; utmCache.clear(); }
     if(depthEnts){ depthEnts.forEach(e=>viewer.entities.remove(e)); depthEnts=null; }
     // These bake EXAG into static Cartesians at build time, so they detach from
     // the stretched terrain unless they are rebuilt too.
@@ -1478,7 +1652,13 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
 
   // ---- chapters ----
   const rail=$('rail');
+  let lastSection=null;
   CHAPTERS.forEach((c,i)=>{
+    if(c.section && c.section!==lastSection){
+      lastSection=c.section;
+      const h=document.createElement('div'); h.className='sec';
+      h.textContent=c.section; rail.appendChild(h);
+    }
     const d=document.createElement('div'); d.className='c';
     const num=document.createElement('span'); num.className='num';
     num.textContent=String(i+1).padStart(2,'0');
@@ -1489,7 +1669,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     tt.textContent=(c.slide?c.slide.title:c.title)||('Chapter '+(i+1));
     d.appendChild(num); d.appendChild(th); d.appendChild(tt);
     d.onclick=()=>{stop();go(i);}; rail.appendChild(d);});
-  const railItems=[].slice.call(rail.children);
+  const railItems=[].slice.call(rail.querySelectorAll('.c'));
 
   function frameFor(c,animate){
     const hpr=new Cesium.HeadingPitchRange(rad(c.h),rad(c.p),c.r);
@@ -1522,6 +1702,9 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     const ci=LADDER.findIndex(v=>v>=want); setCut(ci<0?LADDER.length-1:ci);
     setMode(c.mode||'grade');
     setDrills(!!c.drills);
+    surfOn=!!c.surfaces;
+    $('surfseg').querySelectorAll('button').forEach(x=>
+      x.classList.toggle('on',(x.dataset.f==='1')===surfOn));
     hiOn=!!c.highlights;
     $('hiseg').querySelectorAll('button').forEach(x=>
       x.classList.toggle('on',(x.dataset.h==='1')===hiOn));
@@ -1529,6 +1712,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     Object.keys(clsOn).forEach(k=>{clsOn[k]=true;});
     chips.querySelectorAll('.chip').forEach(el=>el.classList.add('on'));
     inkClearAll();
+    setPin(c.pin);
     if(stageIdx>=0){ showStage(-1); $('stage').value=-1; }
     // Navigating away ends the ground view; leaving the flag set made the Site
     // button jump the user to a chapter they never asked for.
