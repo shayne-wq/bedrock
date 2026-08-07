@@ -144,10 +144,21 @@ quoting this list):
   screen-space and cleared on every chapter change. Styled apart from the
   surveyed tenure lines, and counted in the export footer.
 
+- **Multi-deposit decks** — one deck, more than one orebody, with a switcher in
+  Explore and a `deposit:` key chapters can drive. The second deposit
+  (**Nicola South**) is FABRICATED, sited in real tenure 516750, and loaded
+  through the same OREB v1 path a customer upload takes. `BLOCKS_SYNTHETIC` is
+  the gravest fabricated flag in the tool — not a decoration over real numbers
+  but every tonne and gram in the readout invented — and it joins all five
+  labelling paths.
+- **Drill ledger** — the holes currently on screen, listed left with
+  length-weighted best intercept, TD and azimuth/dip; clicking one flies to it
+  and opens a downhole grade-vs-depth graph. Both are derived from the same
+  `segs` that draw the traces, so the ledger cannot quote an intercept the
+  geometry does not show.
+
 **Still open:**
-1. **Switching deposits inside one deck** — a second deposit is now a second
-   project and share link, not a code change, but one deck holds one model.
-2. **Synced multi-device sessions** — needs a realtime backend.
+1. **Synced multi-device sessions** — needs a realtime backend.
 3. **Underground 360° imagery** — no equivalent; there is no terrain model of a
    heading, so nothing honest to render.
 

@@ -41,7 +41,9 @@ boundary · conceptual pit, waste rock facility, heap leach pad and haul road ·
 named labels on leader lines · mine-plan timeline of stepped pit stages ·
 four ground-level vantages with a full-horizon sweep · fabricated magnetics
 (TMI / RTP / 1VD) draped on terrain · pinned scene captions · presenter-drawn
-areas clamped to the ground, coloured, labelled and exportable as GeoJSON.
+areas clamped to the ground, coloured, labelled and exportable as GeoJSON ·
+a drill ledger of the holes in view with downhole grade graphs · a deposit
+switcher carrying a second, fabricated orebody.
 
 ## Build
 
@@ -163,6 +165,14 @@ Read these before showing anything to anyone.
   a real mountain reads as a real mine plan, so a single function enumerates
   every fabricated layer that is visible and drives one banner; the same
   enumeration is burned into exported bitmaps and printed on every deck slide.
+- **The second deposit is FABRICATED.** There is no Nicola South.
+  `tools/make_synthetic_deposit.py` invents it — every tonne, grade and ounce
+  reported for it was generated, not measured. It is sited inside a real mineral
+  tenure (516750) so the multi-deposit view could be built and tested against
+  real ground; that does not make any of it real. The viewer's
+  `BLOCKS_SYNTHETIC` flag comes from `synthetic:true` in its manifest and joins
+  all five labelling paths — it is the gravest of them, because it is not a
+  decoration over real numbers but the numbers themselves.
 - **The geophysics is FABRICATED.** `tools/make_synthetic_geophysics.py`
   synthesises TMI / RTP / 1VD **from the block model**, so the anomaly sits over
   the deposit because it was built from it — it restates the model rather than
@@ -189,10 +199,7 @@ block and chapters all come from the payload. Verified by hydrating the real Elk
 Gold artifact through `dashboard/lib/extract.js` and landing on the baked deck's
 totals to the tonne, from a different artifact and a different code path.
 
-Not built: **multi-device synced sessions** (needs a realtime backend), and
-**switching deposits inside one deck** — a second deposit is now a second
-project and a second share link rather than a code change, but one deck still
-holds one model.
+Not built: **multi-device synced sessions** (needs a realtime backend).
 
 **True 360° site photography** is not built and will not be faked. The deck
 answers it with four ground-level vantages derived from the block model, each

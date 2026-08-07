@@ -345,6 +345,37 @@ if _tenure_p.exists():
             })
 DRILL_SYNTHETIC = bool(DRILL_MAN.get("synthetic", True)) if HOLES else False
 
+# ------------------------------------------------------- second deposit
+# The demo held one model, so "multi-deposit" was untestable — there was
+# nothing to switch to. Nicola South is FABRICATED (tools/make_synthetic_
+# deposit.py) and sits inside real tenure 516750, ~2.5 km south of Siwash
+# North. It is loaded through the OREB v1 path a customer's own upload takes,
+# not a private back door, so the format stays exercised.
+#
+# `synthetic` here drives BLOCKS_SYNTHETIC in the viewer, which is the gravest
+# of the fabricated flags: not a decoration over real numbers but every tonne
+# and gram in the readout invented. It joins all five labelling paths.
+_dep_p = DRILLDIR / "SYNTHETIC_nicola_south.json"
+DEPOSITS = [{
+    "key": "siwash", "name": "Siwash North", "synthetic": False, "baked": True,
+    "note": "Real Nov-2021 MineSight block model, 46 vein domains.",
+}]
+if _dep_p.exists():
+    _dj = json.loads(_dep_p.read_text())
+    if not _dj.get("synthetic"):
+        raise SystemExit("SYNTHETIC_nicola_south.json is not flagged synthetic — "
+                         "an invented deposit must never load unflagged")
+    DEPOSITS.append({
+        "key": "nicola",
+        "name": _dj.get("name", "Nicola South"),
+        "synthetic": True,
+        "baked": False,
+        "note": _dj.get("warning", ""),
+        "bin": "data/synthetic/" + _dj["blocks_file"],
+        "buckets": "data/synthetic/" + _dj["buckets_file"],
+        "stats": _dj["stats"],
+    })
+
 # ---------------------------------------------------- fabricated geophysics
 # A magnetic survey that was never flown. It is synthesised FROM the block
 # model, so its anomaly sits over the deposit by construction — it restates
@@ -490,7 +521,16 @@ CHAPTERS = [
    "section": "Drilling & geometry", "title": "The intercepts behind it", "body": "The headline hits, each labelled where it sits in three dimensions \u2014 the drill-release table, put back in the ground it came out of."},
   {"h": 26, "p": -27, "r": 3000, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 10,
    "ground": 0.0, "section": "Appendix", "title": "Explore it yourself", "body": "Forty-six vein domains, each one isolatable, each with its own grade and tonnage. Open Explore and interrogate the model directly."},
-  {"h": 34, "p": -28, "r": 3000, "dwell": 12, "ground": 1.0, "section": "Appendix", "slide": {
+  # The multi-deposit beat. Both chapters name the fabrication in their own
+  # copy — the banner fires too, but a presenter reads the body text aloud and
+  # the banner is not read aloud by anyone.
+  {"h": 24, "p": -30, "r": 2600, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 12,
+   "ground": 0.0, "deposit": "nicola", "section": "A second deposit",
+   "title": "Nicola South", "body": "A second orebody on the same property, 2.5 km south, inside tenure 516750. THIS DEPOSIT IS FABRICATED — there is no Nicola South. It exists so the multi-deposit view could be built and shown; every tonne and gram in the readout for it was generated, not measured."},
+  {"h": 40, "p": -34, "r": 2400, "cut": 1.0, "xray": True, "mode": "class", "dwell": 11,
+   "ground": 0.0, "deposit": "nicola", "section": "A second deposit",
+   "title": "A different kind of deposit", "body": "Broad disseminated zones on a coarser 12 × 12 × 8 m lattice rather than Siwash North's narrow high-grade sheets on 10 × 5 × 5 m — more tonnes, less grade. The deck carries both models and the readout re-totals for whichever is loaded. Still fabricated."},
+  {"h": 34, "p": -28, "r": 3000, "dwell": 12, "ground": 1.0, "deposit": "siwash", "section": "Appendix", "slide": {
      "eyebrow": "Grade-tonnage",
      "title": "What a cut-off costs you",
      "body": "Every cut-off trades tonnes for grade. This curve is computed from the "
@@ -758,6 +798,35 @@ HTML = r"""<!DOCTYPE html>
   #st360.on{background:#C99A3A;color:#0d0f10;border-color:#C99A3A}
   @media (max-width:900px){ #stbar{top:auto;bottom:196px} }
 
+  #ledger{position:fixed;left:34px;top:104px;z-index:10;width:308px;max-height:46vh;
+          display:flex;flex-direction:column;border-radius:6px;
+          background:rgba(9,12,13,.93);border:1px solid rgba(255,255,255,.12);
+          backdrop-filter:blur(8px);overflow:hidden}
+  #ledger[hidden],#holegraph[hidden]{display:none}
+  body.ledgeron #rail{display:none}
+  .lhead{display:flex;align-items:center;gap:8px;padding:10px 12px;
+         border-bottom:1px solid rgba(255,255,255,.10)}
+  .lhead>span:first-child{flex:1;font-family:'JetBrains Mono',monospace;font-size:10px;
+         letter-spacing:.14em;text-transform:uppercase;color:#C99A3A}
+  #ledglist{overflow-y:auto;overscroll-behavior:contain}
+  .lrow{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:9px 12px;cursor:pointer;
+        border-bottom:1px solid rgba(255,255,255,.05)}
+  .lrow:hover{background:rgba(201,154,58,.12)}
+  .lrow.on{background:rgba(201,154,58,.20)}
+  .lrow .hid{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#EDEEEC;letter-spacing:.04em}
+  .lrow .htd{font-family:'JetBrains Mono',monospace;font-size:10px;color:#8C948C}
+  .lrow .hbest{grid-column:1/3;font-size:11.5px;color:#C6CAC5}
+  .lrow .hbest b{color:#F2C14E;font-weight:600}
+  #ledgnote{padding:8px 12px;font-size:10.5px;line-height:1.5;color:#8C948C;
+            border-top:1px solid rgba(255,255,255,.08)}
+  #holegraph{position:fixed;left:34px;bottom:118px;z-index:10;width:340px;
+             border-radius:6px;background:rgba(9,12,13,.95);
+             border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(8px)}
+  #hgbody{padding:10px 12px 12px}
+  #hgbody svg{display:block;width:100%;height:auto}
+  #hgbody .hgcap{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#8C948C;
+                 letter-spacing:.08em;margin-top:6px}
+
   #compass{position:fixed;right:40px;bottom:118px;z-index:6;width:52px;height:52px;opacity:.75}
   #scalebar{position:fixed;right:34px;bottom:86px;z-index:6;text-align:right;opacity:.75}
   #scalebar .l{height:3px;background:#EDEEEC;margin-left:auto;border-left:1px solid #EDEEEC;border-right:1px solid #EDEEEC}
@@ -882,12 +951,20 @@ HTML = r"""<!DOCTYPE html>
   <button id="sitebtn" class="btn sm" title="Ground-level site view">Site</button>
   <button id="drawbtn" class="btn sm" title="Annotate (D)">Draw</button>
   <button id="areabtn" class="btn sm" title="Outline an area on the ground (G)">Areas</button>
+  <button id="ledgbtn" class="btn sm" title="Drill hole ledger (H)">Holes</button>
   <button id="sharebtn" class="btn sm" title="Copy a link to this exact view">Link</button>
   <button id="embedbtn" class="btn sm" title="Put this deck on your own website">Embed</button>
   <button id="xbtn" class="btn">Explore ▸</button>
 </div>
 
 <div id="panel">
+  <!-- Populated from DEPOSITS, and hidden entirely when there is only one:
+       a switcher with one option reads as a broken control. -->
+  <div id="deprow" hidden>
+    <h3>Deposit</h3>
+    <div class="seg" id="depseg"></div>
+  </div>
+
   <h3>Colour by</h3>
   <div class="seg" id="modeseg">
     <button data-m="grade" class="on">Grade</button>
@@ -1112,6 +1189,25 @@ HTML = r"""<!DOCTYPE html>
   <div id="stnote"></div>
 </div>
 
+<!-- Drill ledger. Left, where the rail lives, because during a drilling
+     chapter the holes ARE the navigation — the rail hides while it is open
+     rather than the two fighting for the same column. -->
+<div id="ledger" hidden>
+  <div class="lhead">
+    <span id="ledgt">Drill holes</span>
+    <button class="btn sm" id="ledgsort" title="Sort order">Best</button>
+    <button class="btn sm" id="ledgx">Close</button>
+  </div>
+  <div id="ledglist"></div>
+  <div id="ledgnote"></div>
+</div>
+
+<div id="holegraph" hidden>
+  <div class="lhead"><span id="hgt">Hole</span>
+    <button class="btn sm" id="hgx">Close</button></div>
+  <div id="hgbody"></div>
+</div>
+
 <div id="synwarn">Synthetic drill data — fabricated, not real results</div>
 
 <svg id="compass" viewBox="0 0 100 100"><g id="cneedle">
@@ -1184,13 +1280,17 @@ let DATA="__B64__", META="__META__", N=__N__,
       ZTOP=__ZTOP__, ZBOT=__ZBOT__;
 let CHAPTERS=__CHAPTERS__, RUNS=__RUNS__, BUCKETS=__BUCKETS__, VEINS=__VEINS__,
       LADDER=__LADDER__, CLASS_LABELS=__CLASS_LABELS__, CLASS_CONFIRMED=__CLASS_CONFIRMED__,
-      PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, REAL_CLAIMS=__REAL_CLAIMS__, CLAIMS_ATTRIB=__CLAIMS_ATTRIB__, GEOPHYS=__GEOPHYS__, GEOPHYS_SYNTHETIC=__GEOPHYS_SYNTHETIC__, STATIONS=__STATIONS__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
+      PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, REAL_CLAIMS=__REAL_CLAIMS__, CLAIMS_ATTRIB=__CLAIMS_ATTRIB__, GEOPHYS=__GEOPHYS__, GEOPHYS_SYNTHETIC=__GEOPHYS_SYNTHETIC__, STATIONS=__STATIONS__, DEPOSITS=__DEPOSITS__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
 proj4.defs('EPSG:26910','+proj=utm +zone=10 +datum=NAD83 +units=m +no_defs');
 // 10 x 5 x 5 m at 2.7 t/m3 for the demo. A hydrated deck takes its own value
 // from stats.tonnes_per_block — a customer's model is not on this lattice, and
 // carrying the demo's number across would misreport every tonne on screen.
 let TONNES_PER_BLOCK=675;
-let BLOCKS_SYNTHETIC=false;   // set only by a hydrated deck; see hydrate()
+// The lattice the boxes are drawn on, the click index is keyed to, and the
+// inspector quotes. Baked for the demo; replaced by any other model's own
+// stats.block_dims. Drawing a 12 m block as a 10 m box leaves gaps you can see.
+let BLOCK_DIMS=[10,5,5], BLOCK_DENSITY=2.7;
+let BLOCKS_SYNTHETIC=false;   // set by a hydrated deck or a fabricated deposit
 const GEOID=-18, rad=Cesium.Math.toRadians, $=id=>document.getElementById(id);
 const setStat=t=>$('status').textContent=t;
 const QS=new URLSearchParams(location.search);
@@ -1332,7 +1432,12 @@ function unpackOreb(buf){
 // order — (class, grade bin, depth band) — because RUNS are index ranges into
 // F, so the sort here and the runs must agree exactly or every primitive draws
 // the wrong blocks.
-function buildModel(cols, stats){
+// `ladder` is passed rather than read off the global: buildModel runs while a
+// second deposit is being prepared in the background, and binning that model
+// against whichever ladder happens to be current is a silent way to get every
+// run boundary wrong.
+function buildModel(cols, stats, ladder){
+  const LAD=ladder||LADDER;
   const dims=(stats.block_dims&&stats.block_dims.length===3)?stats.block_dims:[10,5,5];
   const ox=cols.origin[0], oy=cols.origin[1], oz=cols.origin[2];
   const n=cols.n;
@@ -1346,7 +1451,7 @@ function buildModel(cols, stats){
   const DEPTH_BAND_M=70, N_BANDS=6;
   const band=i=>{ const t=tops.get(key(i)); const z=cols.z[i]+oz;
     return Math.max(0,Math.min(N_BANDS-1,Math.floor(((t===undefined?z:t)-z)/DEPTH_BAND_M))); };
-  const binOf=g=>{ let b=0; while(b+1<LADDER.length&&LADDER[b+1]<=g) b++; return b; };
+  const binOf=g=>{ let b=0; while(b+1<LAD.length&&LAD[b+1]<=g) b++; return b; };
 
   const idx=new Int32Array(n); for(let i=0;i<n;i++) idx[i]=i;
   const bins=new Uint8Array(n), bands=new Uint8Array(n);
@@ -1373,8 +1478,8 @@ function buildModel(cols, stats){
   for(let k=1;k<=n;k++){
     if(k===n||rk(k)!==rk(s)){
       const i=order[s];
-      runs.push({c:cols.c[i], b:bins[i], d:bands[i], lo:LADDER[bins[i]],
-                 hi:bins[i]+1<LADDER.length?LADDER[bins[i]+1]:null, s:s, n:k-s});
+      runs.push({c:cols.c[i], b:bins[i], d:bands[i], lo:LAD[bins[i]],
+                 hi:bins[i]+1<LAD.length?LAD[bins[i]+1]:null, s:s, n:k-s});
       s=k; }
   }
   return {F:f, M:m, RUNS:runs, N:n};
@@ -1677,17 +1782,33 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // part that matters. Fading by grade reveals the shells without deleting
   // context the way the cut-off does.
   let fade=true, EXAG=1, groundAlpha=0.0;
-  const cll=proj4('EPSG:26910','WGS84',[CE,CN]);
-  const center=Cesium.Cartesian3.fromDegrees(cll[0],cll[1],CZ+GEOID);
-  const RADIUS=Math.max(EX,EY)*0.62;
+  // Recomputed on a deposit change: these are the frame of reference for the
+  // camera, the scale bar and the translucency window, and a second deposit
+  // 2.5 km away shares none of them.
+  let center=null, RADIUS=0;
+  function reframeModel(){
+    const c=proj4('EPSG:26910','WGS84',[CE,CN]);
+    center=Cesium.Cartesian3.fromDegrees(c[0],c[1],CZ+GEOID);
+    RADIUS=Math.max(EX,EY)*0.62;
+    const a=proj4('EPSG:26910','WGS84',[EMIN-30,NMIN-30]);
+    const b=proj4('EPSG:26910','WGS84',[EMIN+EX+30,NMIN+EY+30]);
+    viewer.scene.globe.translucency.rectangle=
+      Cesium.Rectangle.fromDegrees(a[0],a[1],b[0],b[1]);
+  }
+  reframeModel();
   const toCart=(E,Nn,h)=>Cesium.Cartesian3.fromDegrees(...proj4('EPSG:26910','WGS84',[E,Nn]),h+GEOID);
 
-  // Blocks are 10 x 5 x 5 m on the source grid.
-  // Blocks are 10 x 5 x 5 m on the source grid; one geometry per grade tier so
-  // the low tiers can be drawn undersized without touching the data.
-  const BOXES=TIER_SCALE.map(s=>Cesium.BoxGeometry.fromDimensions({
-    vertexFormat:Cesium.PerInstanceColorAppearance.VERTEX_FORMAT,
-    dimensions:new Cesium.Cartesian3(10*s,5*s,5*s)}));
+  // One geometry per grade tier so the low tiers can be drawn undersized
+  // without touching the data. Dimensions come from the model rather than being
+  // fixed at Siwash North's 10 x 5 x 5 m — a 12 m block drawn as a 10 m box
+  // leaves a visible lattice of gaps through the whole deposit.
+  let BOXES=[];
+  function rebuildBoxes(){
+    BOXES=TIER_SCALE.map(s=>Cesium.BoxGeometry.fromDimensions({
+      vertexFormat:Cesium.PerInstanceColorAppearance.VERTEX_FORMAT,
+      dimensions:new Cesium.Cartesian3(BLOCK_DIMS[0]*s,BLOCK_DIMS[1]*s,BLOCK_DIMS[2]*s)}));
+  }
+  rebuildBoxes();
   const boxFor=g=>BOXES[tierOf(g)];
   // proj4 + Cartesian conversion is the expensive part of a rebuild, so do it
   // once for all 168k blocks and reuse for every primitive set built later.
@@ -2160,7 +2281,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   function buildCellIndex(){
     if(cellIndexBuilt) return;
     for(let i=0;i<N;i++){
-      const k=Math.round(F[i*5]/10)+'|'+Math.round(F[i*5+1]/5)+'|'+Math.round(F[i*5+2]/5);
+      const k=Math.round(F[i*5]/BLOCK_DIMS[0])+'|'+Math.round(F[i*5+1]/BLOCK_DIMS[1])+
+              '|'+Math.round(F[i*5+2]/BLOCK_DIMS[2]);
       cellIndex.set(k,i);
     }
     cellIndexBuilt=true;
@@ -2182,9 +2304,9 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     // search a small neighbourhood: the click lands on a face, not a centre
     for(let dz=0;dz<=2;dz++) for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
       for(const s of [-1,1]){
-        const k=(Math.round((utm[0]-EMIN)/10)+dx)+'|'+
-                (Math.round((utm[1]-NMIN)/5)+dy)+'|'+
-                (Math.round(z/5)+s*dz);
+        const k=(Math.round((utm[0]-EMIN)/BLOCK_DIMS[0])+dx)+'|'+
+                (Math.round((utm[1]-NMIN)/BLOCK_DIMS[1])+dy)+'|'+
+                (Math.round(z/BLOCK_DIMS[2])+s*dz);
         const i=cellIndex.get(k);
         if(i!==undefined) return {kind:'block', i:i};
       }
@@ -2208,7 +2330,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
             ['Easting', Math.round(F[i*5]+EMIN).toLocaleString()],
             ['Northing', Math.round(F[i*5+1]+NMIN).toLocaleString()],
             ['Elevation', Math.round(F[i*5+2])+' m'],
-            ['Block', '10 \u00d7 5 \u00d7 5 m @ 2.7 t/m\u00b3']];
+            ['Block', BLOCK_DIMS.join(' \u00d7 ')+' m @ '+BLOCK_DENSITY+' t/m\u00b3']];
       $('i_title').textContent='Block';
     } else {
       const h=p.hole, s=p.seg;
@@ -2845,6 +2967,11 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
                    if(geoKey) geoShow(''); }
     if(drills) buildDrills();
     showDrills(drills);
+    // The ledger follows the traces. A deposit with no drill data disables it
+    // outright rather than leaving an empty panel that looks broken.
+    $('ledgbtn').disabled=!HOLES.length;
+    if(ledgerOn && (!drills || !HOLES.length)) setLedger(false);
+    else if(ledgerOn) ledgerQueue();
     showHi(hiOn&&drills);
     showDepth(depthOn);
     showSite(siteOn);
@@ -3097,6 +3224,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   addEventListener('keydown',e=>{ if(e.key==='Escape'){$('prov').classList.remove('on');
     $('emb').classList.remove('on');
     $('inspect').classList.remove('on');
+    if(!$('holegraph').hidden){ $('holegraph').hidden=true; ledgerHole=null; ledgerPaint(); }
     // Abandon a half-drawn area rather than leaving a dangling outline the
     // presenter has no obvious way to get rid of.
     if(areaMode&&areaPts.length){ areaPts=[]; areaLive(); }} });
@@ -3110,6 +3238,181 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     sw.onclick=()=>{inkColor=sw.dataset.c;
       document.querySelectorAll('.isw').forEach(x=>x.classList.toggle('on',x===sw));};});
   const inkClearAll=()=>{strokes=[];drawing=null;inkRedraw();};
+
+  // ---- drill ledger ------------------------------------------------------
+  // A drill release is a table, and a 3D deck that shows holes without one
+  // makes the audience read grades off a picture. This is that table, scoped
+  // to what is actually on screen so it stays a legend for the view rather
+  // than a directory of forty holes you have to search.
+  //
+  // Everything here is DERIVED from the same segs that draw the traces, so the
+  // ledger cannot quote an intercept the geometry does not show.
+  let ledgerOn=false, ledgerSort='best', ledgerHole=null, ledgerRows=[], ledgerTimer=null;
+
+  // Length-weighted, which is what a drill release reports. Taking the peak
+  // assay instead would headline a 0.5 m sample and overstate every hole.
+  function holeStats(h){
+    if(h.__st) return h.__st;
+    let best=null, metres=0, peak=0;
+    for(const s of h.segs){
+      const len=s.t-s.f;
+      metres+=len; if(s.g>peak) peak=s.g;
+      const score=s.g*len;
+      if(len>=2 && (!best||score>best.score)) best={f:s.f,t:s.t,g:s.g,len:len,score:score};
+    }
+    const d=[h.end[0]-h.collar[0], h.end[1]-h.collar[1], h.end[2]-h.collar[2]];
+    const horiz=Math.hypot(d[0],d[1]);
+    let az=Math.atan2(d[0],d[1])*180/Math.PI; if(az<0) az+=360;
+    const dip=-Math.atan2(d[2],horiz||1e-9)*180/Math.PI;
+    h.__st={best:best, metres:Math.round(metres*10)/10, peak:peak,
+            az:Math.round(az), dip:Math.round(dip)};
+    return h.__st;
+  }
+
+  // Cesium renamed this around 1.111; accept either so a version bump does not
+  // silently empty the ledger.
+  const toWindow=(scene,c)=>(Cesium.SceneTransforms.worldToWindowCoordinates||
+                             Cesium.SceneTransforms.wgs84ToWindowCoordinates)(scene,c);
+  function holeOnScreen(h){
+    const w=viewer.canvas.clientWidth, ht=viewer.canvas.clientHeight;
+    for(const p of [h.collar,h.end]){
+      const c=toCart(p[0],p[1],EXAG===1?p[2]:(CZ+(p[2]-CZ)*EXAG));
+      const win=toWindow(viewer.scene,c);
+      // undefined means behind the camera, which is not "in view".
+      if(win && win.x>=-40 && win.x<=w+40 && win.y>=-40 && win.y<=ht+40) return true;
+    }
+    return false;
+  }
+
+  function ledgerPaint(){
+    if(!ledgerOn) return;
+    const vis=HOLES.filter(holeOnScreen);
+    ledgerRows=vis.slice();
+    if(ledgerSort==='best')
+      ledgerRows.sort((a,b)=>((holeStats(b).best||{}).score||0)-((holeStats(a).best||{}).score||0));
+    else ledgerRows.sort((a,b)=>a.id.localeCompare(b.id,undefined,{numeric:true}));
+    $('ledgt').textContent='Drill holes — '+vis.length+' of '+HOLES.length;
+    const list=$('ledglist'); list.innerHTML='';
+    if(!ledgerRows.length){
+      const d=document.createElement('div'); d.className='lrow';
+      d.style.cursor='default';
+      d.innerHTML='<span class="hid" style="color:#8C948C">No holes in view</span>';
+      list.appendChild(d);
+    }
+    ledgerRows.forEach(h=>{
+      const st=holeStats(h);
+      const row=document.createElement('div');
+      row.className='lrow'+(ledgerHole===h?' on':'');
+      const id=document.createElement('span'); id.className='hid';
+      id.textContent=h.id+(DRILL_SYNTHETIC?'  ·  synthetic':'');
+      const td=document.createElement('span'); td.className='htd';
+      td.textContent='TD '+Math.round(h.td)+' m  ·  '+st.az+'°/'+st.dip+'°';
+      const be=document.createElement('span'); be.className='hbest';
+      if(st.best){
+        be.innerHTML='';
+        be.appendChild(document.createTextNode(st.best.len.toFixed(1)+' m @ '));
+        const b=document.createElement('b'); b.textContent=st.best.g.toFixed(2)+' g/t';
+        be.appendChild(b);
+        be.appendChild(document.createTextNode(
+          ' from '+st.best.f.toFixed(0)+' m'));
+      } else be.textContent='no assay above the floor';
+      row.appendChild(id); row.appendChild(td); row.appendChild(be);
+      row.onclick=()=>focusHole(h);
+      list.appendChild(row);
+    });
+    $('ledgnote').textContent=DRILL_SYNTHETIC
+      ? 'These holes are FABRICATED. Not real assay results.'
+      : 'Length-weighted best intercept per hole.';
+    $('ledgnote').style.color=DRILL_SYNTHETIC?'#D9584A':'';
+  }
+  // Recomputed on camera rest rather than per frame: worldToWindowCoordinates
+  // for every hole on every frame is real cost, and a list that reshuffles
+  // mid-drag is unreadable anyway.
+  function ledgerQueue(){
+    if(!ledgerOn) return;
+    clearTimeout(ledgerTimer);
+    ledgerTimer=setTimeout(ledgerPaint,220);
+  }
+
+  // The downhole graph: grade against depth, which is how a geologist reads a
+  // hole. Drawn from segs, so the bars are the same intervals the trace beads
+  // are — one source, two views.
+  function holeGraph(h){
+    const st=holeStats(h);
+    const W=316, H=190, padT=10, padB=22, padL=34, padR=10;
+    const plotH=H-padT-padB, plotW=W-padL-padR;
+    const gmax=Math.max(1, st.peak);
+    const y=d=>padT+(d/Math.max(1,h.td))*plotH;
+    const parts=[];
+    parts.push('<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Downhole grade for '+
+               h.id.replace(/[<>&"]/g,'')+'">');
+    parts.push('<rect x="'+padL+'" y="'+padT+'" width="'+plotW+'" height="'+plotH+
+               '" fill="rgba(255,255,255,.03)"/>');
+    // depth ticks every 50 m
+    for(let d=0;d<=h.td;d+=50){
+      const yy=y(d).toFixed(1);
+      parts.push('<line x1="'+padL+'" y1="'+yy+'" x2="'+(W-padR)+'" y2="'+yy+
+                 '" stroke="rgba(255,255,255,.08)"/>');
+      parts.push('<text x="'+(padL-5)+'" y="'+(+yy+3)+'" text-anchor="end" '+
+                 'font-family="JetBrains Mono, monospace" font-size="8" fill="#8C948C">'+d+'</text>');
+    }
+    h.segs.forEach(s=>{
+      const y0=y(s.f), y1=y(s.t);
+      const w=Math.max(1.5,(s.g/gmax)*plotW);
+      parts.push('<rect x="'+padL+'" y="'+y0.toFixed(1)+'" width="'+w.toFixed(1)+
+                 '" height="'+Math.max(1.2,(y1-y0)).toFixed(1)+'" fill="'+
+                 TIERS[tierOf(s.g)].css+'" opacity="0.92"/>');
+    });
+    if(st.best){
+      const yb=y(st.best.f), yb2=y(st.best.t);
+      parts.push('<rect x="'+(padL-2)+'" y="'+yb.toFixed(1)+'" width="'+(plotW+4)+
+                 '" height="'+Math.max(2,(yb2-yb)).toFixed(1)+
+                 '" fill="none" stroke="#F2C14E" stroke-width="1"/>');
+    }
+    parts.push('</svg>');
+    let cap='Peak '+st.peak.toFixed(2)+' g/t  ·  '+st.metres.toFixed(1)+' m assayed  ·  0 → '+
+            gmax.toFixed(1)+' g/t across';
+    if(DRILL_SYNTHETIC) cap='FABRICATED — '+cap;
+    $('hgbody').innerHTML=parts.join('')+
+      '<div class="hgcap"'+(DRILL_SYNTHETIC?' style="color:#D9584A"':'')+'>'+cap+'</div>';
+    $('hgt').textContent=h.id+(DRILL_SYNTHETIC?' (synthetic)':'');
+    $('holegraph').hidden=false;
+  }
+
+  function focusHole(h){
+    ledgerHole=h;
+    // Drills have to be on to fly to one, and a chapter that had them off is
+    // not a reason to refuse — turn them on rather than doing nothing.
+    if(!drills){ setDrills(true); apply(); }
+    const zf=z=>EXAG===1?z:(CZ+(z-CZ)*EXAG);
+    const a=toCart(h.collar[0],h.collar[1],zf(h.collar[2]));
+    const b=toCart(h.end[0],h.end[1],zf(h.end[2]));
+    const mid=Cesium.Cartesian3.midpoint(a,b,new Cesium.Cartesian3());
+    const r=Math.max(160,Cesium.Cartesian3.distance(a,b)*0.85);
+    viewer.camera.flyToBoundingSphere(new Cesium.BoundingSphere(mid,r),
+      {duration:REDUCED?0:1.6,
+       offset:new Cesium.HeadingPitchRange(viewer.camera.heading,rad(-24),r*3.0)});
+    holeGraph(h);
+    ledgerPaint();
+  }
+
+  function setLedger(on){
+    ledgerOn=on;
+    $('ledger').hidden=!on;
+    document.body.classList.toggle('ledgeron',on);
+    $('ledgbtn').classList.toggle('on',on);
+    if(!on){ $('holegraph').hidden=true; ledgerHole=null; }
+    else ledgerPaint();
+  }
+  $('ledgbtn').onclick=()=>setLedger(!ledgerOn);
+  $('ledgx').onclick=()=>setLedger(false);
+  $('hgx').onclick=()=>{ $('holegraph').hidden=true; ledgerHole=null; ledgerPaint(); };
+  $('ledgsort').onclick=()=>{
+    ledgerSort=ledgerSort==='best'?'id':'best';
+    $('ledgsort').textContent=ledgerSort==='best'?'Best':'Name';
+    ledgerPaint(); };
+  viewer.camera.changed.addEventListener(ledgerQueue);
+  viewer.camera.moveEnd.addEventListener(ledgerQueue);
 
   // ---- areas: presenter-drawn polygons on the ground ---------------------
   // "Point at the thing you are talking about" is most of what a presenter
@@ -3375,6 +3678,153 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     $('groundv').textContent=a===0?'cut away':Math.round(a*100)+'%';
   }
   $('ground').oninput=e=>setGround((+e.target.value)/100);
+  // ---- deposits ----------------------------------------------------------
+  // One deck, more than one orebody. Everything derived from the model is
+  // swapped together: geometry, extents, rollups, lattice, class labels, the
+  // vein list and the camera's frame of reference. The teardown below is the
+  // same set the vertical-exaggeration rebuild clears, because it is the same
+  // question — every one of these bakes model coordinates into static state.
+  let depKey='siwash', depBusy=false, bakedSnap=null;
+  const modelState=()=>({F:F,M:M,RUNS:RUNS,N:N,EMIN:EMIN,NMIN:NMIN,CE:CE,CN:CN,CZ:CZ,
+    EX:EX,EY:EY,ZTOP:ZTOP,ZBOT:ZBOT,LADDER:LADDER,BUCKETS:BUCKETS,BY_CB:BY_CB,
+    VEINS:VEINS,VGROUP:VGROUP,VGROUP_NAMES:VGROUP_NAMES,PROV:PROV,
+    CLASS_LABELS:CLASS_LABELS,CLASS_CONFIRMED:CLASS_CONFIRMED,
+    TONNES_PER_BLOCK:TONNES_PER_BLOCK,BLOCK_DIMS:BLOCK_DIMS,BLOCK_DENSITY:BLOCK_DENSITY,
+    BLOCKS_SYNTHETIC:BLOCKS_SYNTHETIC,HOLES:HOLES,HIGHLIGHTS:HIGHLIGHTS,
+    SITE:SITE,SITE_SYNTHETIC:SITE_SYNTHETIC,GEOPHYS:GEOPHYS,
+    GEOPHYS_SYNTHETIC:GEOPHYS_SYNTHETIC,STATIONS:STATIONS});
+  function loadModelState(s){
+    F=s.F;M=s.M;RUNS=s.RUNS;N=s.N;EMIN=s.EMIN;NMIN=s.NMIN;CE=s.CE;CN=s.CN;CZ=s.CZ;
+    EX=s.EX;EY=s.EY;ZTOP=s.ZTOP;ZBOT=s.ZBOT;LADDER=s.LADDER;BUCKETS=s.BUCKETS;
+    BY_CB=s.BY_CB;VEINS=s.VEINS;VGROUP=s.VGROUP;VGROUP_NAMES=s.VGROUP_NAMES;
+    PROV=s.PROV;CLASS_LABELS=s.CLASS_LABELS;CLASS_CONFIRMED=s.CLASS_CONFIRMED;
+    TONNES_PER_BLOCK=s.TONNES_PER_BLOCK;BLOCK_DIMS=s.BLOCK_DIMS;BLOCK_DENSITY=s.BLOCK_DENSITY;
+    BLOCKS_SYNTHETIC=s.BLOCKS_SYNTHETIC;HOLES=s.HOLES;HIGHLIGHTS=s.HIGHLIGHTS;
+    SITE=s.SITE;SITE_SYNTHETIC=s.SITE_SYNTHETIC;GEOPHYS=s.GEOPHYS;
+    GEOPHYS_SYNTHETIC=s.GEOPHYS_SYNTHETIC;STATIONS=s.STATIONS;
+  }
+  bakedSnap=modelState();
+
+  async function depState(d){
+    if(d.baked) return bakedSnap;
+    if(d._state) return d._state;
+    const [buf,bj]=await Promise.all([
+      fetch(d.bin).then(r=>{ if(!r.ok) throw new Error('could not load '+d.name); return r.arrayBuffer(); }),
+      fetch(d.buckets).then(r=>{ if(!r.ok) throw new Error('could not load the rollups for '+d.name); return r.json(); })]);
+    const cols=unpackOreb(buf);
+    const st=d.stats, b=st.bounds;
+    const m=buildModel(cols,st,bj.ladder);
+    const vg={}; (st.veins||[]).forEach((v,i)=>{vg[i]=i%9;});
+    d._state={
+      F:m.F,M:m.M,RUNS:m.RUNS,N:m.N,
+      EMIN:cols.origin[0],NMIN:cols.origin[1],
+      CE:(b.x[0]+b.x[1])/2,CN:(b.y[0]+b.y[1])/2,CZ:(b.z[0]+b.z[1])/2,
+      EX:b.x[1]-b.x[0],EY:b.y[1]-b.y[0],ZTOP:b.z[1],ZBOT:b.z[0],
+      LADDER:bj.ladder,BUCKETS:bj.buckets,BY_CB:bj.by_cb,
+      VEINS:st.veins||[],VGROUP:vg,VGROUP_NAMES:(st.veins||[]).slice(0,9),
+      CLASS_LABELS:Object.keys(st.by_class||{}).reduce((o,k)=>{
+        o[k]=({'1':'Measured','2':'Indicated','3':'Inferred'})[k]||('Class '+k); return o;},{}),
+      CLASS_CONFIRMED:false,
+      TONNES_PER_BLOCK:st.tonnes_per_block,
+      BLOCK_DIMS:st.block_dims,BLOCK_DENSITY:st.density,
+      BLOCKS_SYNTHETIC:!!d.synthetic,
+      PROV:{source:d.name,scanned_rows:st.scanned_rows,
+            mineralized_blocks:st.total.blocks,dropped_blocks:0,
+            straddlers:st.blocks_straddling_multiple_domains||0,
+            block_m3:st.block_m3,density:st.density,
+            tonnes_per_block:st.tonnes_per_block,
+            total:st.total,by_class:st.by_class||{},class_confirmed:false,
+            drills_synthetic:false,site_synthetic:false,geophys_synthetic:false,
+            blocks_synthetic:!!d.synthetic},
+      // Drill holes, infrastructure and the magnetics all belong to Siwash
+      // North. Carrying them onto another deposit would put one orebody's
+      // evidence over another's ground, which is worse than showing nothing.
+      // The claim boundaries stay: they are real, property-wide tenures, and
+      // this deposit sits inside one of them.
+      HOLES:[],HIGHLIGHTS:[],SITE:{areas:[],roads:[],labels:[],claims:[]},
+      SITE_SYNTHETIC:false,GEOPHYS:{},GEOPHYS_SYNTHETIC:false,STATIONS:[],
+    };
+    return d._state;
+  }
+
+  function clearModelGeometry(){
+    RUNS.forEach(r=>{ if(r.prim) viewer.scene.primitives.remove(r.prim); r.prim=null; });
+    if(vgPrims){ vgPrims.forEach(o=>viewer.scene.primitives.remove(o.prim)); vgPrims=null; }
+    Object.keys(veinPrims).forEach(v=>{ veinPrims[v].forEach(g=>viewer.scene.primitives.remove(g.prim));
+      delete veinPrims[v]; });
+    if(drillEnts){ drillEnts.forEach(e=>viewer.entities.remove(e)); drillEnts=null; }
+    if(hiEnts){ hiEnts.forEach(e=>viewer.entities.remove(e)); hiEnts=null; }
+    if(surfPrims){ surfPrims.forEach(s=>viewer.scene.primitives.remove(s.prim));
+      surfPrims=null; utmCache.clear(); }
+    if(depthEnts){ depthEnts.forEach(e=>viewer.entities.remove(e)); depthEnts=null; }
+    if(siteEnts){ siteEnts.forEach(e=>viewer.entities.remove(e)); siteEnts=null; }
+    if(stageEnts){ stageEnts.forEach(es=>es.forEach(e=>viewer.entities.remove(e))); stageEnts=null; }
+    if(planLayer){ viewer.imageryLayers.remove(planLayer,true); planLayer=null; planCutBuilt=null; }
+    clearSection();
+    geoShow('');
+    cellIndex.clear(); cellIndexBuilt=false;
+  }
+
+  async function switchDeposit(key){
+    const d=DEPOSITS.find(x=>x.key===key);
+    if(!d||depBusy||key===depKey) return;
+    depBusy=true;
+    setStat('loading '+d.name+'…');
+    try{
+      const st=await depState(d);
+      // Snapshot the CURRENT deposit before overwriting, so the demo's state
+      // survives a round trip even though only the baked one starts with a
+      // snapshot.
+      const cur=DEPOSITS.find(x=>x.key===depKey);
+      if(cur){ if(cur.baked) bakedSnap=modelState(); else cur._state=modelState(); }
+      clearModelGeometry();
+      loadModelState(st);
+      depKey=key;
+      rebuildBoxes(); reframeModel();
+      POS=new Array(N); buildPositions(); buildBase();
+      // Surfaces, drills and the magnetics are Siwash-only, so a deposit
+      // without them must not be left holding their controls on.
+      surfOn=''; drills=false; hiOn=false; planOn=false; siteOn=false; stageIdx=-1;
+      paintModelUI(); syncOverlayControls();
+      document.querySelectorAll('#depseg button').forEach(b=>
+        b.classList.toggle('on',b.dataset.dp===key));
+      // Vein surfaces, drill traces, intercepts, the grade map and the
+      // magnetics are all Siwash North artifacts. Dimmed rather than removed,
+      // so switching back restores the full control set — and so a presenter
+      // can see that the controls exist but have nothing to act on here.
+      ['surfseg','drillseg','hiseg','planseg','georow'].forEach(id=>{
+        const el=$(id); if(!el) return;
+        el.style.opacity=d.baked?'':'0.35';
+        el.style.pointerEvents=d.baked?'':'none'; });
+      apply();
+      viewer.camera.flyToBoundingSphere(
+        new Cesium.BoundingSphere(center,RADIUS*1.9),{duration:REDUCED?0:2.0});
+      toast(d.name+(d.synthetic?' — FABRICATED, not a real deposit':''),
+            d.synthetic?6000:3000);
+    }catch(e){
+      toast('Could not switch deposit: '+e.message,6000);
+    }finally{ depBusy=false; setStat(''); }
+  }
+  // The synthetic tag lives inside the button, not beside it — a fabricated
+  // deposit must not be selectable without the word passing under the cursor.
+  if(DEPOSITS.length>1){
+    $('deprow').hidden=false;
+    const seg=$('depseg'); seg.innerHTML='';
+    DEPOSITS.forEach(d=>{
+      const b=document.createElement('button');
+      b.dataset.dp=d.key;
+      b.textContent=d.name;
+      if(d.synthetic){
+        const t=document.createElement('span');
+        t.className='syntag'; t.textContent='synthetic';
+        b.appendChild(t);
+      }
+      b.title=d.note||d.name;
+      if(d.key===depKey) b.classList.add('on');
+      b.onclick=()=>switchDeposit(d.key);
+      seg.appendChild(b);});
+  }
+
   $('exagseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
     const k=parseFloat(b.dataset.x); if(k===EXAG) return;
     $('exagseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
@@ -3404,7 +3854,38 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   const key=(css,label)=>'<div class="k"><span class="sw" style="background:'+css+
     '"></span><span>'+label+'</span></div>';
   $('gradeleg').innerHTML='<span>AuEq g/t</span>'+TIERS.map(T=>key(T.css,T.label)).join('');
-  $('veinleg').innerHTML='<span>Domain</span>'+VGROUP_NAMES.map((n,i)=>key(VEIN_COLORS[i],n)).join('');
+  // Rebuilt, not built once: every one of these reads the model, and switching
+  // deposits changes all of them. Populated by clearing first so a second call
+  // replaces rather than appends.
+  function paintModelUI(){
+    $('veinleg').innerHTML='<span>Domain</span>'+
+      VGROUP_NAMES.map((n,i)=>key(VEIN_COLORS[i],n)).join('');
+    const chips=$('clschips'); chips.innerHTML=''; $('clsleg').innerHTML='';
+    clsOn={};
+    Object.keys(CLASS_LABELS).map(Number).sort().forEach(c=>{
+      clsOn[c]=true;
+      const d=document.createElement('div'); d.className='chip on'; d.dataset.c=c;
+      d.innerHTML='<span class="sw" style="background:'+CLS_COLOR[c]+'"></span>'+CLASS_LABELS[c];
+      d.onclick=()=>{clsOn[c]=!clsOn[c];d.classList.toggle('on',clsOn[c]);apply();};
+      chips.appendChild(d);
+      const k2=document.createElement('div'); k2.className='k';
+      k2.innerHTML='<span class="sw" style="background:'+CLS_COLOR[c]+'"></span><span>'+CLASS_LABELS[c]+'</span>';
+      $('clsleg').appendChild(k2);
+    });
+    const vs=$('vsel'); vs.innerHTML=''; vein=-1;
+    const veinOz={}; BUCKETS.forEach(b=>veinOz[b.v]=(veinOz[b.v]||0)+b.m/G_PER_OZ);
+    // Vein names come from source CSV column headers, so build options through
+    // the DOM rather than innerHTML — a header is untrusted input here.
+    const mkOpt=(val,label)=>{const o=document.createElement('option');
+      o.value=String(val);o.textContent=label;return o;};
+    vs.appendChild(mkOpt(-1,'All veins ('+VEINS.length+')'));
+    VEINS.map((nm,i)=>({nm:nm,i:i,oz:veinOz[i]||0})).sort((a,b)=>b.oz-a.oz)
+      .forEach(v=>vs.appendChild(mkOpt(v.i,v.nm+' — '+Math.round(v.oz).toLocaleString()+' oz')));
+    vs.value='-1';
+    $('caveat').textContent=(CLASS_CONFIRMED?'':
+      'Class labels follow the usual MineSight convention but are unconfirmed against the Nov-2021 technical report. ')+
+      'Illustrative visualization — not a mineral resource statement.';
+  }
   // Built from DEPTH_MIX, which is what actually shades the blocks. It used to
   // map DEPTH_ALPHA — all 1.0 since shells went solid — so it rendered six
   // identical swatches and decoded nothing.
@@ -3417,27 +3898,9 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     '<div class="k"><span class="sw" style="background:'+hazeMix(k)+'"></span></div>').join('')+
     '<span>0 \u2192 '+(DEPTH_MIX.length*70)+' m</span>';
   const chips=$('clschips');
-  Object.keys(CLASS_LABELS).map(Number).sort().forEach(c=>{
-    const d=document.createElement('div'); d.className='chip on'; d.dataset.c=c;
-    d.innerHTML='<span class="sw" style="background:'+CLS_COLOR[c]+'"></span>'+CLASS_LABELS[c];
-    d.onclick=()=>{clsOn[c]=!clsOn[c];d.classList.toggle('on',clsOn[c]);apply();};
-    chips.appendChild(d);
-    const k=document.createElement('div'); k.className='k';
-    k.innerHTML='<span class="sw" style="background:'+CLS_COLOR[c]+'"></span><span>'+CLASS_LABELS[c]+'</span>';
-    $('clsleg').appendChild(k);
-  });
   const vsel=$('vsel');
-  const veinOz={}; BUCKETS.forEach(b=>veinOz[b.v]=(veinOz[b.v]||0)+b.m/G_PER_OZ);
-  // Vein names come from source CSV column headers, so build options through
-  // the DOM rather than innerHTML — a header is untrusted input here.
-  const mkOpt=(val,label)=>{const o=document.createElement('option');o.value=String(val);o.textContent=label;return o;};
-  vsel.appendChild(mkOpt(-1,'All veins ('+VEINS.length+')'));
-  VEINS.map((nm,i)=>({nm:nm,i:i,oz:veinOz[i]||0})).sort((a,b)=>b.oz-a.oz)
-    .forEach(v=>vsel.appendChild(mkOpt(v.i,v.nm+' — '+Math.round(v.oz).toLocaleString()+' oz')));
+  paintModelUI();
   vsel.onchange=e=>{vein=+e.target.value;setStat(vein===-1?'all veins':'isolating '+VEINS[vein]);apply();};
-  $('caveat').textContent=(CLASS_CONFIRMED?'':
-    'Class labels follow the usual MineSight convention but are unconfirmed against the Nov-2021 technical report. ')+
-    'Illustrative visualization — not a mineral resource statement.';
   $('xbtn').onclick=()=>{const on=$('panel').classList.toggle('on');
     $('xbtn').classList.toggle('on',on); $('xbtn').textContent=on?'Explore ◂':'Explore ▸';
     $('bar').style.opacity=on?'0':'1'; $('bar').style.pointerEvents=on?'none':'auto';};
@@ -3725,6 +4188,12 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(i<0||i>=CHAPTERS.length) return;
     cur=i; const c=CHAPTERS[i];
     trkChapter(i);
+    // A chapter may declare which deposit it is about. The switch is async and
+    // deliberately not awaited: the rest of the chapter applies immediately and
+    // the geometry lands when it lands, rather than stalling the walkthrough on
+    // a fetch. A chapter that says nothing leaves the deposit where it is, so a
+    // presenter who switched by hand is not overridden on the next slide.
+    if(c.deposit && c.deposit!==depKey) switchDeposit(c.deposit);
     // A cut-off above the ladder must clamp to the most restrictive bin, not
     // fall through to index 0 and reveal the entire model. A chapter that
     // declares no cut-off at all (slide chapters) is a different case — it
@@ -3773,6 +4242,10 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     chips.querySelectorAll('.chip').forEach(el=>el.classList.toggle('on',clsOn[el.dataset.c]));
     inkClearAll();
     setPin(assetOnly?null:c.pin);
+    // A drilling chapter opens the ledger for you — it is the reason the
+    // chapter exists, and reaching for a toolbar button mid-sentence is
+    // exactly the friction the walkthrough is meant to remove.
+    if(!assetOnly && c.drills && HOLES.length && !ledgerOn) setLedger(true);
     if(stageIdx>=0){ showStage(-1); $('stage').value=-1; }
     // Navigating away ends the ground view; leaving the flag set made the Site
     // button jump the user to a chapter they never asked for.
@@ -3873,6 +4346,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     else if(e.key==='r'||e.key==='R') rec?stopRec():startRec();
     else if(e.key==='d'||e.key==='D') setInking(!inking);
     else if(e.key==='g'||e.key==='G') setAreaMode(!areaMode);
+    else if(e.key==='h'||e.key==='H'){ if(HOLES.length) setLedger(!ledgerOn); }
     else if(e.key==='Enter'&&areaMode) areaFinish();
     else if((e.metaKey||e.ctrlKey)&&e.key==='z'){ strokes.pop(); inkRedraw(); }
   });
@@ -4203,6 +4677,7 @@ for k, v in {
     "__CLAIMS_ATTRIB__": js(CLAIMS_ATTRIB),
     "__DRILL_SYNTHETIC__": "true" if DRILL_SYNTHETIC else "false",
     "__STATIONS__": js(STATIONS),
+    "__DEPOSITS__": js(DEPOSITS),
     "__GEOPHYS__": js(GEOPHYS),
     "__GEOPHYS_SYNTHETIC__": "true" if GEOPHYS_SYNTHETIC else "false",
 }.items():
