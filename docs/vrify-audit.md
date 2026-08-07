@@ -126,14 +126,29 @@ quoting this list):
   consecutive chapters, all at one cut-off so the only variable is the category.
 - **Content management** — Supabase backend is live (Aug 2026): schema, RLS,
   `deck`/`track` edge functions, private artifacts bucket.
+- **Geophysics raster layers** — TMI / RTP / 1VD, draped as georeferenced
+  imagery under the grade map, with an Explore control and a deck chapter. The
+  data is FABRICATED (`tools/make_synthetic_geophysics.py`) and is joined to all
+  five labelling paths below — verified in the browser, including the export
+  burn-in with geophysics as the only fabricated layer on screen.
+- **360° site vantages** — four ground-level stations derived from the block
+  model (metal-weighted centroid, bonanza centroid, extent ends), each placed on
+  terrain sampled in the browser, plus a 26-second sweep of the full horizon.
+  Deliberately NOT synthetic photography: see the note at the end of this list.
 
 **Still open:**
-1. **Geophysics raster layers** — a fabricated TMI/RTP/1VD set now exists
-   (`tools/make_synthetic_geophysics.py`) but is NOT wired into the viewer.
-   Wiring it means joining all five fabricated-data paths, not just drawing it.
-2. **360° site photography** — needs someone to go and shoot it.
-3. **Multi-deposit decks** — structure supports it, data does not.
-4. **Synced multi-device sessions** — needs a realtime backend.
+1. **Multi-deposit decks** — structure supports it, data does not.
+2. **Synced multi-device sessions** — needs a realtime backend.
+3. **Underground 360° imagery** — no equivalent; there is no terrain model of a
+   heading, so nothing honest to render.
+
+**Why the 360° gap was closed with rendering rather than photography.** The
+obvious way to match VRIFY here is a synthetic photosphere. It is also the one
+fabrication this project should not make: a photograph reads as evidence before
+anyone reaches the caption, so an invented picture of a real place is the
+fabricated layer a label cannot rescue. Standing the camera on real terrain
+under real satellite imagery gets most of the value and fabricates nothing —
+which is why the vantages appear in no fabricated-data path.
 
 **A note for whoever adds a fabricated layer next.** Drawing it is the small
 part. It must also reach: the on-screen banner (`syncSynWarn`), the export

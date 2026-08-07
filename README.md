@@ -39,7 +39,8 @@ exaggeration · ground cut-away over the deposit.
 **The site** — drill traces as rods with grade bars and collar labels · claim
 boundary · conceptual pit, waste rock facility, heap leach pad and haul road ·
 named labels on leader lines · mine-plan timeline of stepped pit stages ·
-ground-level site view · pinned scene captions.
+four ground-level vantages with a full-horizon sweep · fabricated magnetics
+(TMI / RTP / 1VD) draped on terrain · pinned scene captions.
 
 ## Build
 
@@ -161,6 +162,14 @@ Read these before showing anything to anyone.
   a real mountain reads as a real mine plan, so a single function enumerates
   every fabricated layer that is visible and drives one banner; the same
   enumeration is burned into exported bitmaps and printed on every deck slide.
+- **The geophysics is FABRICATED.** `tools/make_synthetic_geophysics.py`
+  synthesises TMI / RTP / 1VD **from the block model**, so the anomaly sits over
+  the deposit because it was built from it — it restates the model rather than
+  corroborating it. Real gold systems are frequently magnetite-*destructive* and
+  a real survey here could as easily show a magnetic low, so this may not even
+  have the right sign. It is joined to the same five labelling paths as the
+  drills and site features. Replace the rasters and set `synthetic:false` in
+  `SYNTHETIC_geophysics.json` when a real survey exists.
 - **Silver is absent.** `Ag_ppm` is zero for all 495,074 source blocks, so the
   AuEq in this export is effectively gold-only. Chapter copy says "gold system",
   not "gold-silver" — do not reintroduce the silver claim without checking
@@ -172,11 +181,18 @@ _Illustrative visualization — not a mineral resource statement._
 
 Phases 1–4 complete, plus the presentation and site layers above.
 
-Not built, because each needs infrastructure this static build does not have:
-**multi-device synced sessions** (needs a realtime backend), **content
-management** (needs auth + storage), and **true 360° site photography** (needs
-someone to go and shoot it — the ground-level view renders real terrain
-instead, which is honest but is not the same thing).
+Not built: **multi-device synced sessions** (needs a realtime backend) and
+**multi-deposit decks** (the structure supports it, the data does not).
+
+**True 360° site photography** is not built and will not be faked. The deck
+answers it with four ground-level vantages derived from the block model, each
+placed on terrain sampled at runtime, with a 26-second sweep of the full
+horizon — real terrain under real satellite imagery, so nothing is fabricated
+and it joins no labelling path. A synthetic photosphere would be the one
+fabrication worth refusing: a photograph reads as evidence before anyone reaches
+the caption, so an invented picture of a real place is the fabricated layer a
+label cannot rescue. Underground imagery has no honest equivalent at all —
+there is no terrain model of a heading.
 
 ### Vein surfaces
 

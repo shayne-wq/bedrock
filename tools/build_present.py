@@ -64,6 +64,48 @@ cE = (EMIN + max(Es)) / 2; cN = (NMIN + max(Ns)) / 2; cZ = (min(Zs) + max(Zs)) /
 EX = max(Es) - min(Es); EY = max(Ns) - min(Ns)
 ZTOP = max(Zs); ZBOT = min(Zs)
 
+# ------------------------------------------------------- ground vantages
+# VRIFY's decks carry 360° site photography. There is none for Siwash North,
+# and fabricating a photosphere is the one thing on this project I would not
+# do: a photograph reads as evidence before anyone reaches the caption, so an
+# invented picture of a real place is the fabricated layer a label cannot
+# rescue. What the deck does instead is stand the camera on the actual
+# mountain — real terrain, real satellite imagery — at positions derived from
+# the block model, and sweep the horizon. Nothing below is synthesised, which
+# is why none of it joins the fabricated-data paths.
+#
+# Each station stands `dist` metres out from a target on a compass bearing and
+# looks back at it, so the deposit is always in frame on arrival. The eye
+# height is above local TERRAIN, sampled in the browser — a build-time guess
+# from ZTOP puts the camera underground on the high side of the ridge.
+_gsum = sum(r[3] for r in rows) or 1.0
+_mcE = sum(r[0] * r[3] for r in rows) / _gsum        # metal-weighted centroid
+_mcN = sum(r[1] * r[3] for r in rows) / _gsum
+_hg = [r for r in rows if r[3] >= 8.0]               # bonanza blocks only
+_hcE = sum(r[0] for r in _hg) / len(_hg) if _hg else _mcE
+_hcN = sum(r[1] for r in _hg) / len(_hg) if _hg else _mcN
+
+
+def _station(name, note, tE, tN, brg, dist, eye=40, pitch=-8):
+    a = math.radians(brg)
+    return {"name": name, "note": note,
+            "e": round(tE + math.sin(a) * dist, 1),
+            "n": round(tN + math.cos(a) * dist, 1),
+            "heading": round((brg + 180.0) % 360.0, 1),
+            "pitch": pitch, "eye": eye}
+
+
+STATIONS = [
+    _station("West flank", "Looking east across the strike of the veins.",
+             _mcE, _mcN, 258, 820),
+    _station("South ridge", "Looking north up the length of the system.",
+             _mcE, _mcN, 188, 950, eye=55),
+    _station("Over the core", "Close in on the bonanza shells, looking southeast.",
+             _hcE, _hcN, 318, 430, eye=30, pitch=-14),
+    _station("North end", "Looking south, down-dip and away.",
+             _mcE, _mcN, 12, 880, eye=50),
+]
+
 
 def binof(g):
     return bisect.bisect_right(LADDER, g) - 1
@@ -303,6 +345,43 @@ if _tenure_p.exists():
             })
 DRILL_SYNTHETIC = bool(DRILL_MAN.get("synthetic", True)) if HOLES else False
 
+# ---------------------------------------------------- fabricated geophysics
+# A magnetic survey that was never flown. It is synthesised FROM the block
+# model, so its anomaly sits over the deposit by construction — it restates
+# what you can already see rather than corroborating it. Worse, real gold
+# systems are frequently magnetite-DESTRUCTIVE and would read as a magnetic
+# LOW, so this is not merely unverified, it may be the wrong shape entirely.
+#
+# It exists to prove the layer plumbing, and it is labelled in five places:
+# the on-screen banner, the export burn-in, the export footer, the provenance
+# report and the embed snippet. A sixth fabricated layer must join all five
+# again — the banner alone is not enough, because exports and embeds leave the
+# page and the banner does not go with them.
+_geo_p = DRILLDIR / "SYNTHETIC_geophysics.json"
+GEOPHYS: dict = {}
+GEOPHYS_SYNTHETIC = False
+if _geo_p.exists():
+    _gj = json.loads(_geo_p.read_text())
+    _ex = _gj.get("extent_utm") or {}
+    if not all(_ex.get(k) is not None for k in ("emin", "nmin", "emax", "nmax")):
+        raise SystemExit("SYNTHETIC_geophysics.json carries no extent_utm — a "
+                         "raster with no georeference must not be draped on "
+                         "terrain; re-run tools/make_synthetic_geophysics.py")
+    GEOPHYS_SYNTHETIC = bool(_gj.get("synthetic", True))
+    GEOPHYS = {
+        # Left in UTM and converted to a geographic rectangle in the browser by
+        # proj4, the same hop the plan map makes. One projection path means the
+        # raster and the blocks cannot drift apart about where they are.
+        "emin": _ex["emin"], "nmin": _ex["nmin"],
+        "emax": _ex["emax"], "nmax": _ex["nmax"],
+        "grid": int(_gj.get("grid", 320)),
+        "dir": "data/synthetic/",
+        "products": [{"key": p["key"], "label": p["label"],
+                      "unit": p.get("unit", ""), "note": p.get("note", ""),
+                      "file": p["file"]}
+                     for p in _gj.get("products", [])],
+    }
+
 # Slide chapters sit in the same deck as the 3D scenes, so a presenter can move
 # between corporate narrative and the model without leaving the tool. The 3D
 # view stays live behind them - the deposit never disappears mid-story.
@@ -340,6 +419,15 @@ CHAPTERS = [
    "ground": 1.0, "surfaces": "veins", "section": "The project", "title": "A high-grade gold system", "body": "The Elk Gold project sits in the Nicola region of southern British Columbia, southeast of Merritt — road-accessible, in an established mining district. The vein domains are drawn as solid bodies, so the structural grain of the system reads immediately."},
   {"h": 30, "p": -22, "r": 2500, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 9,
    "ground": 1.0, "section": "The ground", "title": "On real ground", "body": "Every block is placed at its true UTM position on real terrain — this is the actual mountain the deposit sits inside."},
+  # The one chapter whose copy has to argue against its own picture. A layer
+  # this suggestive is exactly where a deck stops being a visualization and
+  # starts being a claim, so the body text says what it is before the audience
+  # can read anything into it. The banner fires here too, by design.
+  {"h": 0, "p": -78, "r": 2900, "cut": 1.0, "xray": False, "mode": "grade", "dwell": 11,
+   # Blocks off: with the ground intact they draw over the terrain, and a
+   # survey read through a cloud of grade cubes is neither map nor model.
+   "ground": 1.0, "geo": "rtp", "site": True, "blocks": False, "section": "The ground",
+   "title": "The magnetic picture", "body": "Reduced-to-pole magnetics draped over the property, with the tenure boundaries on top. This survey is FABRICATED — nothing was flown, and the field was synthesised from the block model itself, so the anomaly sits over the deposit because it was built from it. It shows how a real survey would sit in the deck; it is not evidence for anything."},
   {"h": 52, "p": -24, "r": 2600, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11,
    "ground": 0.42, "section": "The ground", "title": "The orebody", "body": "Forty-six vein domains threading the ridge, drawn as the blocks they are modelled as. Above a gram the sheets separate and the northwest structural grain of the system becomes obvious."},
   {"h": 50, "p": -22, "r": 2100, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 12,
@@ -498,6 +586,13 @@ HTML = r"""<!DOCTYPE html>
   #depthleg .sw{width:13px;height:9px;border-radius:1px}
   #gtleg{display:none;gap:3px!important;align-items:center}
   #gtleg .sw{width:16px;height:10px;border-radius:1px}
+  #geoleg{display:none;gap:3px!important;align-items:center}
+  #geoleg .sw{width:16px;height:10px;border-radius:1px}
+  /* Red, and in the label rather than under it — a fabricated layer should not
+     be selectable without reading the word. */
+  .syntag{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.08em;
+          color:#D9584A;border:1px solid rgba(217,88,74,.5);border-radius:3px;
+          padding:1px 4px;margin-left:6px;text-transform:uppercase}
   #gradeleg,#clsleg,#veinleg{display:none;gap:13px;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:54vw}
   #gradeleg{display:flex}
   #legend .k{display:flex;align-items:center;gap:6px}
@@ -571,7 +666,8 @@ HTML = r"""<!DOCTYPE html>
   body.datamode #legend,body.datamode #panel,body.datamode #brand,
   body.datamode #intro,body.datamode #slide,body.datamode #ink,
   body.datamode #inkbar,body.datamode #synwarn,body.datamode #compass,
-  body.datamode #scalebar,body.datamode #inspect{display:none!important}
+  body.datamode #scalebar,body.datamode #inspect,
+  body.datamode #stbar{display:none!important}
   #datamode header,#datamode section,#datamode footer{max-width:760px;margin:0 auto 40px}
   #datamode .eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;
     letter-spacing:.24em;text-transform:uppercase;color:#8a6a1f;margin-bottom:10px}
@@ -647,6 +743,20 @@ HTML = r"""<!DOCTYPE html>
            font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;
            color:#0d0f10;background:#D9584A;padding:7px 15px;border-radius:3px;font-weight:600}
   #synwarn.on{display:block}
+
+  /* Top-centre: the rail owns the left edge and #tools the right, and the
+     ground view is the one mode where the bottom of the frame is the horizon
+     you are trying to look at. */
+  #stbar{position:fixed;left:50%;transform:translateX(-50%);top:118px;z-index:9;
+         display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;
+         background:rgba(7,9,10,.86);border:1px solid rgba(255,255,255,.10);
+         border-radius:6px;padding:8px 12px;backdrop-filter:blur(6px);max-width:min(760px,92vw)}
+  #stbar[hidden]{display:none}
+  #stbar .pl{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.16em;
+             text-transform:uppercase;color:#8C948C}
+  #stnote{flex-basis:100%;text-align:center;font-size:11.5px;color:#8C948C;line-height:1.5}
+  #st360.on{background:#C99A3A;color:#0d0f10;border-color:#C99A3A}
+  @media (max-width:900px){ #stbar{top:auto;bottom:196px} }
 
   #compass{position:fixed;right:40px;bottom:118px;z-index:6;width:52px;height:52px;opacity:.75}
   #scalebar{position:fixed;right:34px;bottom:86px;z-index:6;text-align:right;opacity:.75}
@@ -755,6 +865,7 @@ HTML = r"""<!DOCTYPE html>
   <div id="veinleg"></div>
   <div id="depthleg" style="display:flex"></div>
   <div id="gtleg"></div>
+  <div id="geoleg"></div>
 </div>
 
 <div id="tools">
@@ -849,6 +960,19 @@ HTML = r"""<!DOCTYPE html>
   <div class="seg" id="siteseg">
     <button data-s="0" class="on">Hidden</button>
     <button data-s="1">Shown</button>
+  </div>
+
+  <!-- Hidden by JS when no geophysics is baked. The "synthetic" tag is part of
+       the control, not a caption beside it: the reader has to pass the word to
+       reach the button. -->
+  <div id="georow">
+  <h3>Geophysics <span class="syntag">synthetic</span></h3>
+  <div class="seg" id="geoseg">
+    <button data-gp="" class="on">Off</button>
+    <button data-gp="tmi">TMI</button>
+    <button data-gp="rtp">RTP</button>
+    <button data-gp="1vd">1VD</button>
+  </div>
   </div>
 
   <h3>Depth grid</h3>
@@ -956,6 +1080,16 @@ HTML = r"""<!DOCTYPE html>
   <div id="i_body"></div>
 </div>
 
+<!-- Ground vantages. Hidden until the site view is entered, and populated from
+     STATIONS at boot rather than hard-coded here. -->
+<div id="stbar" hidden>
+  <span class="pl">Vantage</span>
+  <div class="seg" id="stseg"></div>
+  <button id="st360" class="btn sm" title="Turn a full circle on the spot">360&deg;</button>
+  <button id="stx" class="btn sm">Exit</button>
+  <div id="stnote"></div>
+</div>
+
 <div id="synwarn">Synthetic drill data — fabricated, not real results</div>
 
 <svg id="compass" viewBox="0 0 100 100"><g id="cneedle">
@@ -1020,7 +1154,7 @@ const DATA="__B64__", META="__META__", N=__N__,
       ZTOP=__ZTOP__, ZBOT=__ZBOT__;
 const CHAPTERS=__CHAPTERS__, RUNS=__RUNS__, BUCKETS=__BUCKETS__, VEINS=__VEINS__,
       LADDER=__LADDER__, CLASS_LABELS=__CLASS_LABELS__, CLASS_CONFIRMED=__CLASS_CONFIRMED__,
-      PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, REAL_CLAIMS=__REAL_CLAIMS__, CLAIMS_ATTRIB=__CLAIMS_ATTRIB__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
+      PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, REAL_CLAIMS=__REAL_CLAIMS__, CLAIMS_ATTRIB=__CLAIMS_ATTRIB__, GEOPHYS=__GEOPHYS__, GEOPHYS_SYNTHETIC=__GEOPHYS_SYNTHETIC__, STATIONS=__STATIONS__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
 proj4.defs('EPSG:26910','+proj=utm +zone=10 +datum=NAD83 +units=m +no_defs');
 const TONNES_PER_BLOCK=675;   // 10 x 5 x 5 m at 2.7 t/m3
 const GEOID=-18, rad=Cesium.Math.toRadians, $=id=>document.getElementById(id);
@@ -1516,7 +1650,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     assetOnly=on;
     if(on){
       assetSaved={drills:drills, hi:hiOn, site:siteOn, depth:depthOn,
-                  stage:stageIdx, plan:planOn, sect:sectAxis, sectPos:sectPos};
+                  stage:stageIdx, plan:planOn, sect:sectAxis, sectPos:sectPos,
+                  geo:geoKey};
       setDrills(false); hiOn=false; siteOn=false; depthOn=false; planOn=false;
       if(stageIdx>=0){ showStage(-1); $('stage').value=-1; }
       if(sectAxis){ sectAxis=null; setSection(null); }
@@ -1528,6 +1663,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       depthOn=assetSaved.depth; planOn=assetSaved.plan;
       if(assetSaved.sect){ sectAxis=assetSaved.sect; setSection(sectAxis,assetSaved.sectPos); }
       if(assetSaved.stage>=0){ $('stage').value=assetSaved.stage; showStage(assetSaved.stage); }
+      if(assetSaved.geo) geoShow(assetSaved.geo);
       assetSaved=null;
     }
     syncOverlayControls();
@@ -1546,6 +1682,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     seg('planseg','l',planOn?'1':'0');
     seg('blockseg','b',blocksOn?'1':'0');
     seg('sectseg','x',sectAxis||'');
+    seg('geoseg','gp',geoKey||'');
   }
 
   // ---- accessible data mode ----
@@ -1703,6 +1840,13 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     L.push('  against the Nov-2021 technical report.');
     if(PROV.drills_synthetic) L.push('  Drill holes are FABRICATED. Not real results.');
     if(PROV.site_synthetic)   L.push('  Site features and pit stages are FABRICATED. Not a mine plan.');
+    if(PROV.geophys_synthetic){
+      L.push('  Geophysics is FABRICATED. No survey was flown and no published');
+      L.push('  geophysical data was used; the field was synthesised FROM this');
+      L.push('  block model, so its anomaly restates the deposit rather than');
+      L.push('  corroborating it. Real gold systems are frequently magnetite-');
+      L.push('  destructive and could read as a magnetic LOW over this ground.');
+    }
     L.push('  Silver is absent from the source; AuEq is effectively gold-only.');
     L.push('  Illustrative visualization — not a mineral resource statement.');
     return L.join('\n');
@@ -2172,6 +2316,50 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   }
   const showSite=on=>{ if(on) buildSite(); if(siteEnts) siteEnts.forEach(e=>e.show=on); };
 
+  // ---- geophysics: a survey that was never flown ------------------------
+  // FABRICATED, and structurally so: the field is synthesised from the block
+  // model, so the anomaly sits over the deposit because it was built from the
+  // deposit — not because anything was measured. Real gold systems are often
+  // magnetite-DESTRUCTIVE and would read as a magnetic LOW, so this may not
+  // even be the right sign. It proves the layer plumbing; it is not evidence.
+  //
+  // Because of that it is joined to all five labelling paths, not just the
+  // banner: syncWarn(), the export burn-in in stamp(), foot() on the export
+  // slide, provText() in the provenance report, and embFabricated() in the
+  // embed snippet. The banner does not travel with an exported PNG or an
+  // iframe someone pastes into WordPress; the other four are what cover that.
+  const GEO_PRODUCTS={}; (GEOPHYS.products||[]).forEach(p=>{GEO_PRODUCTS[p.key]=p;});
+  const GEO_RAMP=['#0c165c','#125caa','#1a9e94','#68ba4e','#e8ce3e','#e27a2a','#b01a26'];
+  let geoLayer=null, geoKey='';
+  function geoShow(key){
+    // Reuse is not worth it here: one 320 px tile per product, and keeping
+    // three layers parked would leave the stacking order dependent on the
+    // order the presenter happened to click them in.
+    if(geoLayer){ viewer.imageryLayers.remove(geoLayer,true); geoLayer=null; }
+    geoKey=GEO_PRODUCTS[key]?key:'';
+    const p=GEO_PRODUCTS[geoKey];
+    if(p){
+      // Same proj4 hop as the plan map. Over 2.6 km the UTM grid's rotation in
+      // geographic space is well under one raster cell, so a rectangle holds.
+      const sw=proj4('EPSG:26910','WGS84',[GEOPHYS.emin,GEOPHYS.nmin]);
+      const ne=proj4('EPSG:26910','WGS84',[GEOPHYS.emax,GEOPHYS.nmax]);
+      geoLayer=viewer.imageryLayers.addImageryProvider(
+        new Cesium.SingleTileImageryProvider({
+          url:GEOPHYS.dir+p.file,
+          rectangle:Cesium.Rectangle.fromDegrees(sw[0],sw[1],ne[0],ne[1]),
+          tileWidth:GEOPHYS.grid, tileHeight:GEOPHYS.grid}));
+      geoLayer.alpha=0.72;
+      // Under the grade map when both are on: the fabricated layer must never
+      // sit on top of the one derived from real modelled grades.
+      if(planLayer) viewer.imageryLayers.lower(geoLayer);
+    }
+    const el=$('geoleg');
+    el.style.display=p?'flex':'none';
+    if(p) el.innerHTML='<span>'+p.label+(p.unit?' ('+p.unit+')':'')+'</span>'+
+      GEO_RAMP.map(c=>'<div class="k"><span class="sw" style="background:'+c+'"></span></div>').join('')+
+      '<span style="color:#D9584A">FABRICATED</span>';
+  }
+
   // ---- pinned scene captions ----
   // A caption that names a thing should sit next to the thing. A fixed bar at
   // the bottom of the frame makes the reader hunt for what it refers to.
@@ -2314,6 +2502,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(drills&&DRILL_SYNTHETIC) parts.push('drill data');
     if(siteOn&&SITE_SYNTHETIC) parts.push('site features');
     if(stageIdx>=0&&SITE_SYNTHETIC) parts.push('pit stages');
+    if(geoKey&&GEOPHYS_SYNTHETIC) parts.push('geophysics');
     const el=$('synwarn');
     el.classList.toggle('on',parts.length>0);
     if(parts.length) el.textContent='Synthetic '+parts.join(' + ')+
@@ -2338,7 +2527,11 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     Object.keys(veinPrims).forEach(v=>{ if(+v!==vein){
       veinPrims[v].forEach(g=>viewer.scene.primitives.remove(g.prim));
       delete veinPrims[v]; } });
-    if(assetOnly){ drills=false; hiOn=false; siteOn=false; depthOn=false; planOn=false; }
+    // geoShow() rebuilds the imagery layer, so it is called only when the key
+    // actually has to change — apply() runs on every cut-off tick, and
+    // re-adding a tile per tick would flicker the survey off and on.
+    if(assetOnly){ drills=false; hiOn=false; siteOn=false; depthOn=false; planOn=false;
+                   if(geoKey) geoShow(''); }
     if(drills) buildDrills();
     showDrills(drills);
     showHi(hiOn&&drills);
@@ -2717,6 +2910,16 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     siteOn=b.dataset.s==='1';
     $('siteseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
     apply();});
+  // No geophysics baked, no control. An empty seg would read as a layer that
+  // failed to load rather than one that was never generated.
+  if(!(GEOPHYS.products||[]).length) $('georow').style.display='none';
+  $('geoseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    geoShow(b.dataset.gp||'');
+    $('geoseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    // apply() owns the banner, so the warning appears in the same frame the
+    // survey does. Toggling this without it would put fabricated magnetics on
+    // screen unlabelled, which is the whole failure mode.
+    apply();});
   $('depthseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
     depthOn=b.dataset.g==='1';
     $('depthseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
@@ -2802,10 +3005,76 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // look around, rather than always orbiting it from the air. Rendered from the
   // same real terrain, so it is a view of the actual place, not stand-in
   // photography of somewhere else.
-  var ground3d=false, savedFrame=null;
+  var ground3d=false, savedFrame=null, savedDepth=null, stIdx=0, sweepRaf=null;
+
+  // Terrain height under a station, not a guess from the model's top block.
+  // The ridge climbs roughly 180 m across the property, so a single ZTOP-based
+  // elevation buries the camera inside the mountain at the uphill stations and
+  // leaves it ballooning over the downhill ones.
+  async function stGround(lon,lat){
+    try{
+      const c=Cesium.Cartographic.fromDegrees(lon,lat);
+      await Cesium.sampleTerrainMostDetailed(viewer.terrainProvider,[c]);
+      if(isFinite(c.height)) return c.height;
+    }catch(e){}
+    return ZTOP+GEOID;                     // last resort, and visibly wrong up high
+  }
+  async function stGo(i,fly){
+    stIdx=Math.max(0,Math.min(STATIONS.length-1,i));
+    const s=STATIONS[stIdx];
+    const ll=proj4('EPSG:26910','WGS84',[s.e,s.n]);
+    const h=await stGround(ll[0],ll[1])+(s.eye||40);
+    viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+    const dest=Cesium.Cartesian3.fromDegrees(ll[0],ll[1],h);
+    const or={heading:rad(s.heading),pitch:rad(s.pitch||-8),roll:0};
+    if(fly&&!REDUCED) viewer.camera.flyTo({destination:dest,orientation:or,duration:2.2});
+    else viewer.camera.setView({destination:dest,orientation:or});
+    $('stseg').querySelectorAll('button').forEach((b,k)=>b.classList.toggle('on',k===stIdx));
+    $('stnote').textContent=s.note;
+  }
+  // A full turn on the spot — the closest honest equivalent to a 360 photo,
+  // except it is the real mountain rather than a picture of one. Position is
+  // held and only heading advances, so it reads as standing still and turning.
+  function sweepStop(){ if(sweepRaf){cancelAnimationFrame(sweepRaf);sweepRaf=null;}
+    $('st360').classList.remove('on'); }
+  function sweep(){
+    if(sweepRaf){ sweepStop(); return; }
+    $('st360').classList.add('on');
+    const cam=viewer.camera, pos=Cesium.Cartesian3.clone(cam.position);
+    const pitch=cam.pitch, start=cam.heading;
+    let t0=null;
+    const DUR=26000;                        // slow enough to read the ground
+    const step=ts=>{
+      if(t0===null) t0=ts;
+      const u=(ts-t0)/DUR;
+      if(u>=1){ cam.setView({destination:pos,orientation:{heading:start,pitch:pitch,roll:0}});
+                sweepStop(); return; }
+      cam.setView({destination:pos,
+        orientation:{heading:start+u*Cesium.Math.TWO_PI,pitch:pitch,roll:0}});
+      sweepRaf=requestAnimationFrame(step);
+    };
+    sweepRaf=requestAnimationFrame(step);
+  }
+  // Built from STATIONS rather than written into the markup, so adding a
+  // vantage is a one-line change in Python.
+  STATIONS.forEach((s,i)=>{
+    const b=document.createElement('button');
+    b.textContent=s.name; b.title=s.note;
+    if(i===0) b.classList.add('on');
+    b.onclick=()=>{ sweepStop(); stGo(i,true); };
+    $('stseg').appendChild(b);});
+  $('st360').onclick=sweep;
+  $('stx').onclick=()=>$('sitebtn').click();
+  // Any manual camera input abandons the sweep — fighting the user for the
+  // camera is the fastest way to make a viewer feel broken.
+  ['mousedown','wheel','touchstart'].forEach(ev=>
+    viewer.canvas.addEventListener(ev,()=>{ if(sweepRaf) sweepStop(); },{passive:true}));
+
   $('sitebtn').onclick=()=>{
     ground3d=!ground3d;
     $('sitebtn').classList.toggle('on',ground3d);
+    sweepStop();
+    $('stbar').hidden=!ground3d;
     if(ground3d){
       stop();
       savedFrame=cur;
@@ -2813,15 +3082,26 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         document.querySelectorAll('#siteseg button').forEach(x=>
           x.classList.toggle('on',x.dataset.s==='1'));
         apply(); }
-      viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
-      const ll=proj4('EPSG:26910','WGS84',[EMIN-160,NMIN-160]);
-      viewer.camera.flyTo({
-        destination:Cesium.Cartesian3.fromDegrees(ll[0],ll[1],ZTOP+GEOID+55),
-        orientation:{heading:rad(46),pitch:rad(-11),roll:0},
-        duration:REDUCED?0:2.4});
+      // The depth grid measures metres below surface. From the surface it is
+      // just numbers hanging in the sky.
+      savedDepth=depthOn; depthOn=false; showDepth(false);
+      syncOverlayControls();          // or Explore keeps claiming it is shown
       setGround(1.0);
-      toast('Site view — drag to look around, scroll to move',3800);
+      // setGround drops the terrain depth test so the deposit shows THROUGH
+      // the mountain — right for an orbit, wrong from the ground, where it
+      // paints grade cubes over the hillside you are standing on. From a
+      // vantage the mountain has to occlude, or this is not a view of the
+      // place at all.
+      viewer.scene.globe.depthTestAgainstTerrain=true;
+      // Slide chapters keep their card up over the canvas. Standing on the
+      // ridge behind a full-bleed title is not a site view.
+      $('slide').classList.remove('on');
+      $('cap').classList.remove('in');
+      stGo(stIdx,true);
+      toast('Site view — pick a vantage, or sweep the horizon with 360°',4200);
     } else {
+      if(savedDepth!==null){ depthOn=savedDepth; savedDepth=null; }
+      syncOverlayControls();
       go(savedFrame===null?cur:savedFrame);
     }
   };
@@ -2849,8 +3129,12 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       ? PUBLISHED : u;
   }
   function embFabricated(){
+    // Static, not live state: an embed is interactive, so a viewer can switch
+    // any of these on after the snippet is pasted. The disclosure has to cover
+    // what the deck CAN show, not what happened to be visible when it was copied.
     const f=[]; if(PROV.drills_synthetic) f.push('drill holes');
     if(PROV.site_synthetic) f.push('site features','pit stages');
+    if(PROV.geophys_synthetic) f.push('geophysics');
     return f;
   }
   // Oxford-less list join, so three fabricated layers do not read
@@ -3023,6 +3307,13 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(c.site!==undefined && !assetOnly){ siteOn=!!c.site;
       $('siteseg').querySelectorAll('button').forEach(x=>
         x.classList.toggle('on',(x.dataset.s==='1')===siteOn)); }
+    // Unconditional, unlike site: every chapter that does not ask for the
+    // survey turns it off. A fabricated layer must not leak forward into
+    // chapters whose copy says nothing about it.
+    if(!assetOnly && (c.geo||'')!==geoKey){
+      geoShow(c.geo||'');
+      $('geoseg').querySelectorAll('button').forEach(x=>
+        x.classList.toggle('on',(x.dataset.gp||'')===geoKey)); }
     blocksOn=c.blocks!==false;
 
     $('blockseg').querySelectorAll('button').forEach(x=>
@@ -3043,7 +3334,13 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(stageIdx>=0){ showStage(-1); $('stage').value=-1; }
     // Navigating away ends the ground view; leaving the flag set made the Site
     // button jump the user to a chapter they never asked for.
-    if(ground3d){ ground3d=false; $('sitebtn').classList.remove('on'); }
+    if(ground3d){ ground3d=false; $('sitebtn').classList.remove('on');
+                  sweepStop(); $('stbar').hidden=true;
+                  // Leaving via the rail rather than Exit must still give the
+                  // depth grid back, or it stays off for the rest of the deck.
+                  if(savedDepth!==null){ depthOn=savedDepth; savedDepth=null;
+                    $('depthseg').querySelectorAll('button').forEach(x=>
+                      x.classList.toggle('on',(x.dataset.g==='1')===depthOn)); } }
     viewer.scene.globe.depthTestAgainstTerrain=true;
     // Cutting the ground away is a deliberate beat, not a permanent state:
     // overhead shots read better with the mountain intact and the deposit shown
@@ -3192,7 +3489,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         x.fillStyle='#C6CAC5';
         x.fillText(disc, pad, c.height-pad-Math.round(6*S));
         const fabricated=(drills&&DRILL_SYNTHETIC)||(siteOn&&SITE_SYNTHETIC)||
-                         (stageIdx>=0&&SITE_SYNTHETIC);
+                         (stageIdx>=0&&SITE_SYNTHETIC)||
+                         (geoKey&&GEOPHYS_SYNTHETIC);
         if(fabricated){
           const warn=$('synwarn').textContent.toUpperCase();
           x.font='600 '+Math.round(15*S)+'px ui-monospace, monospace';
@@ -3248,7 +3546,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     const wasPanel=$('panel').classList.contains('on'), wasChapter=cur;
     // Exporting walks every chapter, which resets mode/cut/vein/classes. Snapshot
     // the user's exploration so a deck export isn't a destructive act.
-    const snap={mode:mode,cutIdx:cutIdx,vein:vein,clsOn:Object.assign({},clsOn)};
+    const snap={mode:mode,cutIdx:cutIdx,vein:vein,clsOn:Object.assign({},clsOn),
+                geo:geoKey};
     exporting=true; ['expPng','expPptx','expPdf'].forEach(id=>$(id).disabled=true);
     if(wasPanel) $('xbtn').click();
     stop();
@@ -3271,6 +3570,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       vein=snap.vein; vsel.value=String(vein);
       Object.keys(snap.clsOn).forEach(k=>{clsOn[k]=snap.clsOn[k];});
       chips.querySelectorAll('.chip').forEach(el=>el.classList.toggle('on',clsOn[el.dataset.c]));
+      if(snap.geo!==geoKey) geoShow(snap.geo);
+      syncOverlayControls();
       apply();
       if(wasPanel) $('xbtn').click();
       exporting=false; ['expPng','expPptx','expPdf'].forEach(id=>$(id).disabled=false);
@@ -3284,6 +3585,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(drills&&DRILL_SYNTHETIC) f.push('drill holes');
     if(siteOn&&SITE_SYNTHETIC) f.push('site features');
     if(stageIdx>=0&&SITE_SYNTHETIC) f.push('pit stages');
+    if(geoKey&&GEOPHYS_SYNTHETIC) f.push('geophysics');
     return (CLASS_CONFIRMED?'':'Resource class labels unconfirmed. ')+
       'Illustrative visualization — not a mineral resource statement.'+
       (f.length?' SYNTHETIC, fabricated: '+f.join(', ')+'.':'');
@@ -3429,6 +3731,7 @@ for k, v in {
         "class_confirmed": stats.get("class_mapping_confirmed", False),
         "drills_synthetic": DRILL_SYNTHETIC,
         "site_synthetic": SITE_SYNTHETIC,
+        "geophys_synthetic": GEOPHYS_SYNTHETIC,
     }),
     "__VGROUP__": js(VGROUP),
     "__VGROUP_NAMES__": js(VGROUP_NAMES),
@@ -3443,6 +3746,9 @@ for k, v in {
     "__REAL_CLAIMS__": js(REAL_CLAIMS),
     "__CLAIMS_ATTRIB__": js(CLAIMS_ATTRIB),
     "__DRILL_SYNTHETIC__": "true" if DRILL_SYNTHETIC else "false",
+    "__STATIONS__": js(STATIONS),
+    "__GEOPHYS__": js(GEOPHYS),
+    "__GEOPHYS_SYNTHETIC__": "true" if GEOPHYS_SYNTHETIC else "false",
 }.items():
     HTML = HTML.replace(k, v)
 
