@@ -27,7 +27,8 @@ rendered on real Esri terrain.
 analytical charts and live 3D scenes ·
 thumbnail slide navigator · autoplay with per-chapter dwell · speech-synthesis
 narration · live freehand annotation over the 3D view · deep-linkable state ·
-embed mode · export to PNG / PPTX / PDF · offline via service worker.
+**asset-only mode** · **screen recording to MP4** · **embed kit** ·
+export to PNG / PPTX / PDF · offline via service worker.
 
 **The model** — discrete opaque grade shells · vein domains as watertight
 geological surfaces · colour-pop property masking · colour by grade, resource class
@@ -91,11 +92,50 @@ Tonnage is real, not a proxy: blocks are 10 × 5 × 5 m at a uniform 2.7 t/m³, 
 whole block is 675 t and its ore tonnage is `675 × Percent_Env`. Both rollup
 tables assert-reconcile to the deposit total at build time.
 
+## Asset-only mode
+
+`Asset` / `A` strips every overlay — drill traces, intercept highlights, site
+infrastructure, pit stages, the depth grid, the plan raster, any section, pinned
+captions and ink — leaving the orebody on terrain and nothing else. It is a
+*mode*, not a one-shot: it survives chapter changes, and toggling it off
+restores exactly the state you were in. For the moment in a meeting where
+someone says "just show me the deposit."
+
+## Recording
+
+`Rec` / `R` records a walkthrough — every camera move, toggle and annotation —
+straight to a file. It records a **compositor canvas**, not the WebGL canvas:
+each frame redraws Cesium's output, then the presenter's ink, then the
+fabricated-data disclaimer, and the recorder captures *that*. Recording the
+WebGL canvas directly would have produced clean footage of fabricated drill
+holes with no disclaimer on it. MP4 (`avc1`) where the browser supports it,
+WebM otherwise.
+
+## Embed kit
+
+`Embed` builds the thing a non-technical person actually needs to get this onto
+a corporate website: a responsive iframe snippet sized to a chosen aspect ratio,
+optionally opening on the current view rather than chapter 1. It pastes into a
+WordPress Custom HTML block or an Elementor HTML widget with no build step. Also
+emits `orebody-embed.html` (a standalone page wrapping the same snippet) and
+`orebody-deck.json` (deck manifest — chapters, deposit figures, caveats).
+
+The caption carries the fabricated-data sentence, but a caption can be deleted,
+so it is not the disclosure — the embedded deck renders its own on-screen banner
+regardless. Stripping the caption cannot produce an unlabelled embed.
+
+The snippet is a *link*, not a copy: the deck streams its own terrain and model
+data, so republishing updates every embed. The hosting address is editable
+because a deck served from `localhost` embeds an address only its author can
+reach; that case is called out in the dialog rather than silently shipped.
+
 ## Controls
 
-`←` `→` chapters · `P` autoplay · `N` narration · `E` Explore panel
+`←` `→` chapters · `P` autoplay · `N` narration · `E` Explore panel ·
+`A` asset only · `R` record · `D` draw
 
-`?embed=1` strips the chrome for iframe embedding and autostarts on Begin.
+`?embed=1` strips the chrome for iframe embedding and autostarts on Begin;
+add `&autoplay=0` to embed it paused.
 The URL hash carries full state (chapter, colour mode, cut-off, vein, classes,
 drills), so any view can be linked to — the **Link** button copies it.
 

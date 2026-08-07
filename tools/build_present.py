@@ -407,6 +407,12 @@ HTML = r"""<!DOCTYPE html>
   .btn:disabled{opacity:.3;cursor:default}
   .btn.on{background:#C99A3A;border-color:#C99A3A;color:#07090A}
   .btn.sm{padding:13px 14px;font-size:10px;min-height:44px}
+  .btn.rec{border-color:#D9584A;color:#D9584A}
+  #recdot{display:none;width:8px;height:8px;border-radius:50%;background:#D9584A;
+          margin-right:7px;vertical-align:middle;animation:recpulse 1.4s infinite}
+  #recdot.on{display:inline-block}
+  #rectime{margin-left:7px;letter-spacing:.06em}
+  @keyframes recpulse{0%,100%{opacity:1}50%{opacity:.35}}
   #nav .count{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:#8E948E;min-width:52px;text-align:center}
 
   #legend{position:fixed;right:34px;top:28px;z-index:6;display:flex;align-items:center;gap:9px;
@@ -505,6 +511,9 @@ HTML = r"""<!DOCTYPE html>
   #datamode pre{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.6;
     background:#ECEAE4;padding:16px;overflow:auto;white-space:pre-wrap;color:#23282c}
   @media print{ #datamode{position:static;padding:0} #datatoggle{display:none} }
+  #emb{position:fixed;inset:0;z-index:15;display:none;align-items:center;justify-content:center;
+    background:rgba(4,7,9,.72);backdrop-filter:blur(3px);padding:24px}
+  #emb.on{display:flex}
   #prov{position:fixed;inset:0;z-index:15;display:none;align-items:center;justify-content:center;
         background:rgba(4,6,7,.82);backdrop-filter:blur(5px);padding:36px}
   #prov.on{display:flex}
@@ -515,6 +524,24 @@ HTML = r"""<!DOCTYPE html>
   .phead>span{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.24em;
               text-transform:uppercase;color:#C99A3A}
   .phead>div{display:flex;gap:8px}
+  #emb .pinner{max-width:760px}
+  #emb label{display:block;font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:rgba(255,255,255,.5);margin:14px 0 5px}
+  #emb input[type=text],#emb select{width:100%;background:#080b0d;color:#e8edf0;
+    border:1px solid rgba(255,255,255,.16);border-radius:4px;padding:7px 9px;
+    font-family:'JetBrains Mono',monospace;font-size:11.5px}
+  #emb .row{display:flex;gap:12px}
+  #emb .row>div{flex:1}
+  #emb .chk{display:flex;gap:16px;margin-top:12px;font-size:12px;color:rgba(255,255,255,.78)}
+  #emb .chk label{display:flex;align-items:center;gap:6px;margin:0;font-size:12px;
+    letter-spacing:0;text-transform:none;color:inherit;cursor:pointer}
+  #emb .chk input{accent-color:#6FCF57}
+  #emb pre{font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.6;
+    background:#080b0d;border:1px solid rgba(255,255,255,.12);border-radius:4px;
+    padding:10px;margin:6px 0 0;white-space:pre-wrap;word-break:break-all;
+    max-height:150px;overflow:auto;color:#9fd8c8}
+  #emb .foot{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+  #emb .note{font-size:11px;line-height:1.6;color:rgba(255,255,255,.45);margin-top:12px}
   #provbody{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.65;
             color:#C6CAC5;padding:18px 20px;overflow:auto;white-space:pre-wrap;margin:0}
   #inspect{position:fixed;left:30px;bottom:120px;z-index:10;width:290px;display:none;
@@ -620,7 +647,7 @@ HTML = r"""<!DOCTYPE html>
      canonical vestibular trigger. Honour the OS setting: cut the flight to a
      snap, stop autoplay starting itself, and flatten the CSS transitions. */
   @media(prefers-reduced-motion:reduce){
-    #cap,#intro,#prog,#dwell,#bar,.btn,.seg button,.chip,#slide,#rail .c,.isw,#toast,#offline
+    #cap,#intro,#prog,#dwell,#bar,.btn,.seg button,.chip,#slide,#rail .c,.isw,#toast,#offline,#recdot
       {transition:none!important;animation:none!important}
     .isw.on{transform:none}
     #dwell{display:none}
@@ -645,11 +672,14 @@ HTML = r"""<!DOCTYPE html>
 </div>
 
 <div id="tools">
+  <button id="recbtn" class="btn sm" title="Record a walkthrough to video (R)"><span id="recdot"></span>Rec<span id="rectime"></span></button>
+  <button id="assetbtn" class="btn sm" title="Asset only — the orebody, nothing else (A)">Asset</button>
   <button id="datatoggle" class="btn sm" title="Text edition — no 3D required">Text</button>
   <button id="provbtn" class="btn sm" title="Audit trail — where every number comes from">Audit</button>
   <button id="sitebtn" class="btn sm" title="Ground-level site view">Site</button>
   <button id="drawbtn" class="btn sm" title="Annotate (D)">Draw</button>
   <button id="sharebtn" class="btn sm" title="Copy a link to this exact view">Link</button>
+  <button id="embedbtn" class="btn sm" title="Put this deck on your own website">Embed</button>
   <button id="xbtn" class="btn">Explore ▸</button>
 </div>
 
@@ -796,6 +826,37 @@ HTML = r"""<!DOCTYPE html>
 
 <main id="datamode" aria-hidden="true"></main>
 
+<div id="emb"><div class="pinner">
+  <div class="phead"><span>Embed on your site</span>
+    <button class="btn sm" id="embclose">Close</button></div>
+  <label for="emburl">Where this deck is hosted</label>
+  <input type="text" id="emburl" spellcheck="false">
+  <div class="row">
+    <div><label for="embratio">Shape</label><select id="embratio">
+      <option value="56.25">16:9 — widescreen</option>
+      <option value="75">4:3 — classic</option>
+      <option value="42.86">21:9 — cinematic</option>
+      <option value="100">1:1 — square</option>
+    </select></div>
+    <div><label for="embstart">Opens on</label><select id="embstart">
+      <option value="first">Chapter 1 — the whole story</option>
+      <option value="here">This exact view</option>
+    </select></div>
+  </div>
+  <div class="chk">
+    <label><input type="checkbox" id="embauto" checked> Autoplay</label>
+    <label><input type="checkbox" id="embcap" checked> Caption underneath</label>
+  </div>
+  <label>Paste this into a WordPress Custom HTML block, or an Elementor HTML widget</label>
+  <pre id="embcode"></pre>
+  <div class="foot">
+    <button class="btn sm" id="embcopy">Copy snippet</button>
+    <button class="btn sm" id="embhtml">Download .html</button>
+    <button class="btn sm" id="embjson">Download .json</button>
+  </div>
+  <p class="note" id="embnote"></p>
+</div></div>
+
 <div id="prov"><div class="pinner">
   <div class="phead"><span>Audit trail</span>
     <div><button class="btn sm" id="provcopy">Copy</button>
@@ -865,7 +926,10 @@ proj4.defs('EPSG:26910','+proj=utm +zone=10 +datum=NAD83 +units=m +no_defs');
 const TONNES_PER_BLOCK=675;   // 10 x 5 x 5 m at 2.7 t/m3
 const GEOID=-18, rad=Cesium.Math.toRadians, $=id=>document.getElementById(id);
 const setStat=t=>$('status').textContent=t;
-const EMBED=new URLSearchParams(location.search).has('embed');
+const QS=new URLSearchParams(location.search);
+const EMBED=QS.has('embed');
+// Embedded decks autostart, unless the embed snippet asked them not to.
+const EMBED_AUTOPLAY=QS.get('autoplay')!=='0';
 const REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches;
 if(EMBED) document.body.classList.add('embed');
 
@@ -1151,6 +1215,141 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     return hiEnts;
   }
   const showHi=on=>{ if(on) buildHighlights(); if(hiEnts) hiEnts.forEach(e=>e.show=on); };
+
+  // ---- recorder ----
+  // Capture whatever the presenter actually does — flying around, toggling
+  // layers, drawing on it — as a video file they can drop into a deck or post.
+  // The WebGL canvas alone would miss the ink and the burned-in disclaimer, so
+  // a compositor canvas redraws the scene plus the overlay every frame and it
+  // is THAT stream which gets recorded.
+  let rec=null, recChunks=[], recTimer=null, recStart=0, recComp=null, recRAF=null;
+  function recSupported(){
+    return typeof MediaRecorder!=='undefined' &&
+           !!HTMLCanvasElement.prototype.captureStream;
+  }
+  function pickMime(){
+    const want=['video/mp4;codecs=avc1','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
+    for(const m of want) if(MediaRecorder.isTypeSupported(m)) return m;
+    return '';
+  }
+  // One place that owns the recorder's UI state. It used to be set in startRec
+  // and cleared in stopRec, so any path that ended a recording without going
+  // through stopRec — an error, a stream ending, a double click — left the
+  // button stuck showing "recording" with nothing recording.
+  function recUI(on){
+    $('recbtn').classList.toggle('rec',on);
+    $('recdot').classList.toggle('on',on);
+    if(!on){ clearInterval(recTimer); recTimer=null; $('rectime').textContent=''; }
+  }
+  function startRec(){
+    if(rec) return;                       // already running
+    if(!recSupported()){ toast('Recording not supported in this browser',4000); return; }
+    const src=viewer.scene.canvas;
+    recComp=document.createElement('canvas');
+    recComp.width=src.width; recComp.height=src.height;
+    const cx=recComp.getContext('2d');
+    const draw=()=>{
+      viewer.render();
+      cx.drawImage(src,0,0);
+      // presenter ink, scaled from CSS pixels into the capture buffer
+      if(strokes.length){
+        const sx=recComp.width/innerWidth, sy=recComp.height/innerHeight;
+        cx.lineCap='round'; cx.lineJoin='round';
+        for(const s of strokes){ if(s.pts.length<2) continue;
+          cx.strokeStyle=s.c; cx.lineWidth=s.w*sx; cx.beginPath();
+          cx.moveTo(s.pts[0][0]*recComp.width, s.pts[0][1]*recComp.height);
+          for(let i=1;i<s.pts.length;i++)
+            cx.lineTo(s.pts[i][0]*recComp.width, s.pts[i][1]*recComp.height);
+          cx.stroke(); }
+      }
+      // the same disclaimer that is burned into stills — a video leaves the app
+      // just as permanently, and fabricated layers must travel labelled.
+      const S=recComp.width/1440, pad=Math.round(22*S);
+      const f=foot();
+      cx.font=Math.round(13*S)+'px ui-monospace, monospace';
+      cx.textBaseline='bottom';
+      const w=cx.measureText(f).width, h=Math.round(24*S);
+      cx.fillStyle='rgba(7,9,10,.82)';
+      cx.fillRect(pad-Math.round(9*S), recComp.height-pad-h, w+Math.round(18*S), h);
+      cx.fillStyle='#C6CAC5';
+      cx.fillText(f, pad, recComp.height-pad-Math.round(6*S));
+      recRAF=requestAnimationFrame(draw);
+    };
+    draw();
+    const mime=pickMime();
+    recChunks=[];
+    rec=new MediaRecorder(recComp.captureStream(30), mime?{mimeType:mime}:undefined);
+    rec.ondataavailable=e=>{ if(e.data.size) recChunks.push(e.data); };
+    rec.onerror=()=>{ recUI(false); cancelAnimationFrame(recRAF); rec=null;
+      toast('Recording failed',4000); };
+    rec.onstop=()=>{
+      recUI(false);
+      cancelAnimationFrame(recRAF);
+      const type=rec.mimeType||mime||'video/webm';
+      const ext=type.indexOf('mp4')>=0?'mp4':'webm';
+      const blob=new Blob(recChunks,{type:type});
+      dl('elk-gold-walkthrough.'+ext, URL.createObjectURL(blob));
+      toast('Saved '+ext.toUpperCase()+' \u2014 '+(blob.size/1e6).toFixed(1)+' MB',5000);
+      rec=null; recComp=null;
+    };
+    rec.start(1000);
+    recStart=performance.now();
+    recUI(true);
+    recTimer=setInterval(()=>{
+      const s=Math.round((performance.now()-recStart)/1000);
+      $('rectime').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+
+                               String(s%60).padStart(2,'0');
+    },500);
+    toast(pickMime().indexOf('mp4')>=0
+      ? 'Recording — MP4' : 'Recording — WebM (this browser has no MP4 encoder)',4500);
+  }
+  function stopRec(){
+    if(!rec){ recUI(false); return; }     // clear a stale badge either way
+    try{ rec.stop(); }catch(e){ recUI(false); rec=null; }
+  }
+
+  // ---- asset only ----
+  // One control for "show me the orebody and nothing else". Turning six toggles
+  // off by hand to get a clean look at the zones is exactly the kind of thing
+  // nobody does mid-presentation, so it needs to be a single press. It is a
+  // MODE, not a one-shot: it survives chapter changes, because otherwise the
+  // next slide's declared overlays would immediately undo it.
+  let assetOnly=false, assetSaved=null;
+  function setAssetOnly(on){
+    assetOnly=on;
+    if(on){
+      assetSaved={drills:drills, hi:hiOn, site:siteOn, depth:depthOn,
+                  stage:stageIdx, plan:planOn, sect:sectAxis, sectPos:sectPos};
+      setDrills(false); hiOn=false; siteOn=false; depthOn=false; planOn=false;
+      if(stageIdx>=0){ showStage(-1); $('stage').value=-1; }
+      if(sectAxis){ sectAxis=null; setSection(null); }
+      setPin(null);
+      inkClearAll();
+      blocksOn=true;
+    } else if(assetSaved){
+      setDrills(assetSaved.drills); hiOn=assetSaved.hi; siteOn=assetSaved.site;
+      depthOn=assetSaved.depth; planOn=assetSaved.plan;
+      if(assetSaved.sect){ sectAxis=assetSaved.sect; setSection(sectAxis,assetSaved.sectPos); }
+      if(assetSaved.stage>=0){ $('stage').value=assetSaved.stage; showStage(assetSaved.stage); }
+      assetSaved=null;
+    }
+    syncOverlayControls();
+    $('assetbtn').classList.toggle('on',on);
+    $('assetbtn').textContent=on?'Asset \u2713':'Asset';
+    apply();
+  }
+  // Keep every overlay control showing the truth after a bulk change.
+  function syncOverlayControls(){
+    const seg=(id,attr,val)=>$(id) && $(id).querySelectorAll('button').forEach(x=>
+      x.classList.toggle('on',(x.dataset[attr]||'')===String(val)));
+    seg('drillseg','d',drills?'1':'0');
+    seg('hiseg','h',hiOn?'1':'0');
+    seg('siteseg','s',siteOn?'1':'0');
+    seg('depthseg','g',depthOn?'1':'0');
+    seg('planseg','l',planOn?'1':'0');
+    seg('blockseg','b',blocksOn?'1':'0');
+    seg('sectseg','x',sectAxis||'');
+  }
 
   // ---- accessible data mode ----
   // A WebGL deck is unreadable to a screen reader, unusable without a GPU,
@@ -1921,6 +2120,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     Object.keys(veinPrims).forEach(v=>{ if(+v!==vein){
       veinPrims[v].forEach(g=>viewer.scene.primitives.remove(g.prim));
       delete veinPrims[v]; } });
+    if(assetOnly){ drills=false; hiOn=false; siteOn=false; depthOn=false; planOn=false; }
     if(drills) buildDrills();
     showDrills(drills);
     showHi(hiOn&&drills);
@@ -2159,6 +2359,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     $('inkbar').classList.toggle('on',on);
     $('inkPen').classList.toggle('on',on);
   }
+  $('recbtn').onclick=()=>rec?stopRec():startRec();
+  $('assetbtn').onclick=()=>setAssetOnly(!assetOnly);
   $('datatoggle').onclick=()=>{
     const on=!document.body.classList.contains('datamode');
     setDataMode(on); $('datatoggle').textContent=on?'3D':'Text';};
@@ -2171,6 +2373,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   $('provcopy').onclick=()=>navigator.clipboard.writeText(provText())
     .then(()=>toast('Audit trail copied'),()=>toast('Copy failed'));
   addEventListener('keydown',e=>{ if(e.key==='Escape'){$('prov').classList.remove('on');
+    $('emb').classList.remove('on');
     $('inspect').classList.remove('on');} });
   $('i_close').onclick=()=>$('inspect').classList.remove('on');
   $('inkPen').onclick=()=>setInking(!inking);
@@ -2384,6 +2587,125 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   $('sharebtn').onclick=()=>{syncHash();
     navigator.clipboard.writeText(location.href).then(()=>toast('Link copied'),()=>toast('Copy failed'));};
 
+  // ---- embed kit -------------------------------------------------------
+  // The deck is already iframe-able via ?embed=1. What was missing is the part
+  // a non-technical person actually needs: the snippet, sized correctly, with
+  // the caveats travelling attached to it. A caption that can be deleted is not
+  // a disclosure, so the fabricated-data sentence is written into the snippet
+  // itself AND into the JSON — the deck also carries its own on-screen banner,
+  // so stripping the caption still cannot produce an unlabelled embed.
+  const DECK=document.title.split(' \u00b7 ')[0];
+  function embBase(){
+    const u=location.origin+location.pathname;
+    return /^https?:\/\/(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(u)
+      ? 'https://orebody.vercel.app/' : u;
+  }
+  function embFabricated(){
+    const f=[]; if(PROV.drills_synthetic) f.push('drill holes');
+    if(PROV.site_synthetic) f.push('site features','pit stages');
+    return f;
+  }
+  // Oxford-less list join, so three fabricated layers do not read
+  // "a and b and c".
+  function embList(f){
+    return f.length<2 ? (f[0]||'')
+         : f.slice(0,-1).join(', ')+' and '+f[f.length-1];
+  }
+  function embCaption(){
+    let s=DECK+' \u2014 '+Math.round(PROV.total.tonnes).toLocaleString()+' t @ '+
+          PROV.total.grade_gt+' g/t AuEq. Illustrative visualization, not a '+
+          'mineral resource statement.';
+    const f=embFabricated();
+    if(f.length) s+=' The '+embList(f)+' shown are FABRICATED and are not real data.';
+    return s;
+  }
+  function embSrc(){
+    let u=$('emburl').value.trim()||embBase();
+    u=u.split('#')[0];
+    const q=[]; q.push('embed=1');
+    if(!$('embauto').checked) q.push('autoplay=0');
+    u+=(u.indexOf('?')>=0?'&':'?')+q.join('&');
+    if($('embstart').value==='here'){ syncHash(); u+=location.hash; }
+    return u;
+  }
+  function embSnippet(){
+    const pad=$('embratio').value, src=embSrc();
+    let s='<!-- '+DECK+' \u2014 interactive 3D deck -->\n'+
+      '<div style="position:relative;width:100%;padding-top:'+pad+'%;'+
+      'border-radius:6px;overflow:hidden;background:#080b0d">\n'+
+      '  <iframe src="'+src+'"\n'+
+      '    title="'+DECK+'" loading="lazy" allowfullscreen\n'+
+      '    style="position:absolute;inset:0;width:100%;height:100%;border:0">'+
+      '</iframe>\n</div>';
+    if($('embcap').checked)
+      s+='\n<p style="font:12px/1.6 system-ui,-apple-system,sans-serif;'+
+         'color:#6b7580;margin:8px 0 0">'+embCaption()+'</p>';
+    return s;
+  }
+  function embRefresh(){
+    $('embcode').textContent=embSnippet();
+    const local=/localhost|127\.0\.0\.1/.test($('emburl').value);
+    $('embnote').textContent=local
+      ? 'This points at your own machine, so nobody else will be able to load it. '+
+        'Replace the address above with wherever you publish the deck.'
+      : 'The deck streams its own terrain and model data, so the snippet stays '+
+        'tiny and updates whenever you republish. Works in any block that '+
+        'accepts raw HTML.';
+    $('embnote').style.color=local?'#E8A33C':'';
+  }
+  function embDoc(){
+    return '<!doctype html>\n<html lang="en">\n<head>\n'+
+      '<meta charset="utf-8">\n'+
+      '<meta name="viewport" content="width=device-width,initial-scale=1">\n'+
+      '<title>'+DECK+'</title>\n'+
+      '<style>html,body{margin:0;height:100%;background:#080b0d;'+
+      'font-family:system-ui,-apple-system,sans-serif}'+
+      '.wrap{max-width:1200px;margin:0 auto;padding:24px}</style>\n'+
+      '</head>\n<body>\n<div class="wrap">\n'+embSnippet()+'\n</div>\n'+
+      '</body>\n</html>\n';
+  }
+  function embJson(){
+    return JSON.stringify({
+      deck:DECK, generator:'Orebody', format:'orebody-embed/1',
+      embed_url:embSrc(), caption:embCaption(),
+      deposit:{tonnes:PROV.total.tonnes, grade_gt:PROV.total.grade_gt,
+               oz:PROV.total.oz, blocks:PROV.mineralized_blocks,
+               metal:'AuEq', cutoff_gt:GRADE_FLOOR},
+      source:PROV.source,
+      chapters:CHAPTERS.map((c,i)=>({n:i+1, section:c.section||null,
+        title:(c.slide?c.slide.title:c.title)||('Chapter '+(i+1))})),
+      caveats:{
+        resource_class_labels_confirmed:!!PROV.class_confirmed,
+        fabricated:embFabricated(),
+        silver_absent:true,
+        statement:'Illustrative visualization \u2014 not a mineral resource statement.'
+      }
+    },null,2);
+  }
+  function dlText(name,text,mime){
+    const b=new Blob([text],{type:mime});
+    const u=URL.createObjectURL(b), a=document.createElement('a');
+    a.href=u; a.download=name; a.click();
+    setTimeout(()=>URL.revokeObjectURL(u),4000);
+  }
+  $('embedbtn').onclick=()=>{
+    if(!$('emburl').value) $('emburl').value=embBase();
+    embRefresh(); $('emb').classList.add('on');
+  };
+  $('embclose').onclick=()=>$('emb').classList.remove('on');
+  $('emb').onclick=e=>{ if(e.target===$('emb')) $('emb').classList.remove('on'); };
+  ['emburl','embratio','embstart','embauto','embcap'].forEach(id=>{
+    $(id).addEventListener('input',embRefresh);
+    $(id).addEventListener('change',embRefresh);
+  });
+  $('embcopy').onclick=()=>navigator.clipboard.writeText(embSnippet())
+    .then(()=>toast('Snippet copied \u2014 paste it into an HTML block'),
+          ()=>toast('Copy failed'));
+  $('embhtml').onclick=()=>{ dlText('orebody-embed.html',embDoc(),'text/html');
+    toast('orebody-embed.html saved'); };
+  $('embjson').onclick=()=>{ dlText('orebody-deck.json',embJson(),'application/json');
+    toast('orebody-deck.json saved'); };
+
   // ---- chapters ----
   const rail=$('rail');
   let lastSection=null;
@@ -2435,8 +2757,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     const want=Math.max(CUT_DEFAULT,(c.cut===undefined||c.cut===null)?CUT_DEFAULT:c.cut);
     const ci=LADDER.findIndex(v=>v>=want); setCut(ci<0?LADDER.length-1:ci);
     setMode(c.mode||'grade');
-    setDrills(!!c.drills);
-    if(c.section3d){
+    setDrills(assetOnly?false:!!c.drills);
+    if(c.section3d && !assetOnly){
       sectAxis=c.section3d;
       const pct=c.sectionAt===undefined?50:c.sectionAt;
       $('sect').value=pct;
@@ -2444,19 +2766,20 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     } else if(sectAxis){ sectAxis=null; setSection(null); }
     $('sectseg').querySelectorAll('button').forEach(x=>
       x.classList.toggle('on',(x.dataset.x||null)===(sectAxis||null)));
-    planOn=!!c.plan;
+    planOn=assetOnly?false:!!c.plan;
     $('planseg').querySelectorAll('button').forEach(x=>
       x.classList.toggle('on',(x.dataset.l==='1')===planOn));
-    if(c.site!==undefined){ siteOn=!!c.site;
+    if(c.site!==undefined && !assetOnly){ siteOn=!!c.site;
       $('siteseg').querySelectorAll('button').forEach(x=>
         x.classList.toggle('on',(x.dataset.s==='1')===siteOn)); }
     blocksOn=c.blocks!==false;
+
     $('blockseg').querySelectorAll('button').forEach(x=>
       x.classList.toggle('on',(x.dataset.b==='1')===blocksOn));
     surfOn=c.surfaces||'';
     $('surfseg').querySelectorAll('button').forEach(x=>
       x.classList.toggle('on',(x.dataset.f||'')===surfOn));
-    hiOn=!!c.highlights;
+    hiOn=assetOnly?false:!!c.highlights;
     $('hiseg').querySelectorAll('button').forEach(x=>
       x.classList.toggle('on',(x.dataset.h==='1')===hiOn));
     vein=-1; vsel.value='-1';
@@ -2465,7 +2788,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     Object.keys(clsOn).forEach(k=>{clsOn[k]=!c.classes || c.classes.indexOf(+k)>=0;});
     chips.querySelectorAll('.chip').forEach(el=>el.classList.toggle('on',clsOn[el.dataset.c]));
     inkClearAll();
-    setPin(c.pin);
+    setPin(assetOnly?null:c.pin);
     if(stageIdx>=0){ showStage(-1); $('stage').value=-1; }
     // Navigating away ends the ground view; leaving the flag set made the Site
     // button jump the user to a chapter they never asked for.
@@ -2541,6 +2864,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     else if((e.key==='e'||e.key==='E')&&!EMBED) $('xbtn').click();
     else if(e.key==='p'||e.key==='P') $('play').click();
     else if(e.key==='n'||e.key==='N') $('narr').click();
+    else if(e.key==='a'||e.key==='A') setAssetOnly(!assetOnly);
+    else if(e.key==='r'||e.key==='R') rec?stopRec():startRec();
     else if(e.key==='d'||e.key==='D') setInking(!inking);
     else if((e.metaKey||e.ctrlKey)&&e.key==='z'){ strokes.pop(); inkRedraw(); }
   });
@@ -2770,7 +3095,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   }
   $('load').style.display='none';
   $('begin').onclick=()=>{$('intro').style.opacity='0';setTimeout(()=>$('intro').style.display='none',800);
-    frameFor(CHAPTERS[0],true); if(EMBED&&!REDUCED) play();};
+    frameFor(CHAPTERS[0],true); if(EMBED&&EMBED_AUTOPLAY&&!REDUCED) play();};
   // ---- offline ----
   if('serviceWorker' in navigator && location.protocol!=='file:'){
     navigator.serviceWorker.register('sw.js').then(reg=>{
