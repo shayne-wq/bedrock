@@ -35,6 +35,20 @@ check "synthetic note travels"    "Fabricated demo holes" \
       "$(jq -r '.assets[0].synthetic_note' <<<"$BODY")"
 # The tenant must not leak: a viewer learns nothing about who owns the deck.
 check "no org id in the payload"  "" "$(jq -r '..|objects|.org_id//empty' <<<"$BODY" | head -1)"
+# ...including through provenance. Storage paths begin with the org UUID, so a
+# surviving *_path key is the same leak through a second door. The seed row
+# carries a buckets_path precisely so this cannot pass vacuously.
+check "provenance keeps generator" "tools/make_synthetic_drills.py" \
+      "$(jq -r '.assets[0].provenance.generator' <<<"$BODY")"
+check "provenance drops paths"    "" \
+      "$(jq -r '.assets[0].provenance|to_entries|map(select(.key|endswith("_path")))|.[0].key//empty' <<<"$BODY")"
+check "no storage path anywhere"  "" \
+      "$(jq -r '..|strings|select(test("aaaaaaaa-0000-0000-0000-000000000001"))' <<<"$BODY" | head -1)"
+# The rollups have to be reachable, not merely named: the readout sums buckets,
+# never pixels. The key must exist even when the object does not (signing a
+# missing object yields null rather than throwing).
+check "buckets url is present"    "true" \
+      "$(jq -r '.assets[0]|has("buckets_url")' <<<"$BODY")"
 
 echo "== deck: token failure modes"
 check "unknown token is 404"      "404" "$(code "$BASE/deck?t=nope")"

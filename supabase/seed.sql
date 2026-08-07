@@ -44,7 +44,13 @@ insert into datasets (id, project_id, kind, label, storage_path, bytes,
    'drills', 'Synthetic drill traces',
    'aaaaaaaa-0000-0000-0000-000000000002/drills.json', 4096,
    '{"holes": 40}'::jsonb,
-   '{"generator": "tools/make_synthetic_drills.py"}'::jsonb,
+   -- buckets_path is here on purpose. Every storage path starts with the org
+   -- UUID, so provenance is a second route to the tenant id that the deck
+   -- function's `project` select deliberately omits. The suite asserts the
+   -- *_path keys are scrubbed and that generator survives, so this row is what
+   -- keeps that scrub honest.
+   '{"generator": "tools/make_synthetic_drills.py",
+     "buckets_path": "aaaaaaaa-0000-0000-0000-000000000001/aaaaaaaa-0000-0000-0000-000000000002/aaaaaaaa-0000-0000-0000-00000000000d/buckets.json"}'::jsonb,
    true, 'Fabricated demo holes')
 on conflict (id) do nothing;
 

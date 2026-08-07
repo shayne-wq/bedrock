@@ -105,16 +105,36 @@ Deno.serve(async (req) => {
   // Artifacts live in a private bucket, so hand out short-lived signed URLs
   // rather than making the bucket public. A leaked deck link expires; a public
   // bucket does not.
+  //
+  // Two artifacts, not one. A block model is useless to the viewer without its
+  // share-weighted bucket rollups — the readout sums those, never the pixels —
+  // and ingest.js writes them beside blocks.bin, recording the path under
+  // provenance.buckets_path. That path was being passed through unsigned, so a
+  // viewer received a location it could not fetch and no way to total anything.
+  //
+  // Storage paths are also SCRUBBED from the provenance that goes out. Every
+  // path begins `<org_id>/<project_id>/…`, so passing provenance through whole
+  // handed every anonymous visitor the tenant UUID that the `project` select
+  // above deliberately omits — the same leak, through a second door.
+  const sign = async (path: string | null | undefined) => {
+    if (!path) return null;
+    const { data } = await db.storage.from("artifacts")
+      .createSignedUrl(path, SIGNED_URL_TTL);
+    return data?.signedUrl ?? null;
+  };
   const assets: Record<string, unknown>[] = [];
   for (const d of datasets ?? []) {
-    const { data: signed } = await db.storage
-      .from("artifacts")
-      .createSignedUrl(d.storage_path, SIGNED_URL_TTL);
+    const prov = { ...(d.provenance ?? {}) } as Record<string, unknown>;
+    const bucketsPath = typeof prov.buckets_path === "string" ? prov.buckets_path : null;
+    for (const k of Object.keys(prov)) {
+      if (k.endsWith("_path") || k === "storage_path") delete prov[k];
+    }
     assets.push({
       id: d.id, kind: d.kind, label: d.label, bytes: d.bytes,
-      stats: d.stats, provenance: d.provenance,
+      stats: d.stats, provenance: prov,
       synthetic: d.synthetic, synthetic_note: d.synthetic_note,
-      url: signed?.signedUrl ?? null,
+      url: await sign(d.storage_path),
+      buckets_url: await sign(bucketsPath),
     });
   }
 
