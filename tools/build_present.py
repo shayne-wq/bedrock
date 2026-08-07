@@ -355,8 +355,8 @@ HTML = r"""<!DOCTYPE html>
   #legend .k{display:flex;align-items:center;gap:6px}
   .sw{width:10px;height:10px;border-radius:2px}
 
-  #tools{position:fixed;right:34px;top:64px;z-index:7;display:flex;gap:8px}
-  #panel{position:fixed;right:34px;top:108px;width:296px;z-index:7;background:rgba(12,15,16,.93);
+  #tools{position:fixed;right:34px;top:64px;z-index:9;display:flex;gap:8px}
+  #panel{position:fixed;right:34px;top:108px;width:296px;z-index:9;background:rgba(12,15,16,.93);
          border:1px solid rgba(255,255,255,.13);border-radius:5px;padding:18px 18px 16px;display:none;
          backdrop-filter:blur(9px);max-height:calc(100vh - 150px);overflow-y:auto}
   #panel.on{display:block}
@@ -407,17 +407,22 @@ HTML = r"""<!DOCTYPE html>
   #inkbar.on{display:flex}
   .ibtn{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
         color:#C6CAC5;background:transparent;border:1px solid rgba(255,255,255,.18);border-radius:3px;
-        padding:8px 11px;cursor:pointer}
+        padding:11px 14px;min-height:38px;cursor:pointer}
   .ibtn.on{background:#C99A3A;border-color:#C99A3A;color:#07090A}
-  .isw{width:18px;height:18px;border-radius:50%;cursor:pointer;border:2px solid rgba(255,255,255,.25)}
+  .isw{width:30px;height:30px;border-radius:50%;cursor:pointer;border:2px solid rgba(255,255,255,.25);
+       flex:0 0 auto}
   .isw.on{border-color:#fff;transform:scale(1.15)}
   /* Slide chapters: a panel over the live 3D view rather than a separate mode,
      so the model stays visible behind the narrative. */
-  #slide{position:fixed;inset:0;z-index:7;display:none;align-items:center;
+  /* The right two-thirds of the slide gradient is fully transparent, so it must
+     not swallow clicks there — it was covering the toolbar and making Explore,
+     Draw, Link and Site unclickable on every slide chapter. Only the text block
+     takes pointer events. */
+  #slide{position:fixed;inset:0;z-index:7;display:none;align-items:center;pointer-events:none;
          background:linear-gradient(100deg,rgba(7,9,10,.96) 0%,rgba(7,9,10,.90) 46%,rgba(7,9,10,.30) 78%,rgba(7,9,10,0) 100%);
          opacity:0;transition:opacity .55s ease}
   #slide.on{display:flex;opacity:1}
-  #slide .sinner{max-width:620px;padding:0 60px}
+  #slide .sinner{max-width:620px;padding:0 60px;pointer-events:auto}
   #slide .sey{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.26em;
               text-transform:uppercase;color:#C99A3A;margin-bottom:20px}
   #slide h2{font-size:clamp(34px,4.2vw,58px);font-weight:800;letter-spacing:-.03em;line-height:1.02}
