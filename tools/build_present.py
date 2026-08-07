@@ -294,8 +294,13 @@ CHAPTERS = [
   # Cut-off lifted to 1.0 here so the low-grade halo stops burying the traces.
   {"h": 38, "p": -24, "r": 1900, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11, "drills": True,
    "ground": 0.0, "section": "Drilling & geometry", "title": "Drilled from surface", "body": "Drill traces coloured by assay grade, hung from their collars on the ridge above. These holes are synthetic — traced through the modelled grades to show how drilling reads against the block model."},
-  {"h": 0, "p": -89, "r": 2500, "cut": 0.3, "xray": True, "mode": "grade", "dwell": 9,
-   "ground": 1.0, "section": "Drilling & geometry", "title": "Footprint in plan", "body": "Seen from directly above: northwest-trending vein corridors threading across the ridge."},
+  # Straight down, ground intact, body replaced by the grade map. Overhead is
+  # the one angle where the 3D model tells you least and the map tells you most.
+  {"h": 0, "p": -90, "r": 2350, "cut": 0.0, "xray": True, "mode": "grade", "dwell": 11,
+   "ground": 1.0, "plan": True, "site": True, "section": "Drilling & geometry",
+   "title": "Footprint in plan",
+   "body": "Overhead, the body itself tells you nothing \u2014 you see the top of it and the ground disappears. So this is grade times thickness accumulated down every column, laid on the terrain: where the metal is, and how much of it, against the ground you would actually mine.",
+   "pin": {"at": [693500, 5525900], "dz": 260, "text": "Grade \u00d7 thickness, g\u00b7m"}},
   {"h": 4, "p": -4, "r": 2650, "cut": 0.3, "xray": True, "mode": "grade", "dwell": 10,
    "ground": 0.0, "section": "Drilling & geometry", "title": "In profile", "body": "Turned on edge, the veins persist to roughly 475 metres below surface — and remain open at depth."},
   {"h": 44, "p": -18, "r": 1500, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 12,
@@ -391,6 +396,8 @@ HTML = r"""<!DOCTYPE html>
   #legend .sw{border:1px solid rgba(255,255,255,.25)}
   #depthleg{gap:3px!important}
   #depthleg .sw{width:13px;height:9px;border-radius:1px}
+  #gtleg{display:none;gap:3px!important;align-items:center}
+  #gtleg .sw{width:16px;height:10px;border-radius:1px}
   #gradeleg,#clsleg,#veinleg{display:none;gap:13px;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:54vw}
   #gradeleg{display:flex}
   #legend .k{display:flex;align-items:center;gap:6px}
@@ -539,6 +546,7 @@ HTML = r"""<!DOCTYPE html>
   <div id="clsleg"></div>
   <div id="veinleg"></div>
   <div id="depthleg" style="display:flex"></div>
+  <div id="gtleg"></div>
 </div>
 
 <div id="tools">
@@ -570,6 +578,12 @@ HTML = r"""<!DOCTYPE html>
 
   <h3>Mine plan timeline</h3>
   <div class="cutrow"><input type="range" id="stage" min="-1" max="3" step="1" value="-1"><span id="stagev" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#C99A3A;min-width:96px;text-align:right">none</span></div>
+
+  <h3>Plan view</h3>
+  <div class="seg" id="planseg">
+    <button data-l="0" class="on">3D body</button>
+    <button data-l="1">Grade map</button>
+  </div>
 
   <h3>Vein surfaces</h3>
   <div class="seg" id="surfseg">
@@ -984,6 +998,80 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   }
   const showHi=on=>{ if(on) buildHighlights(); if(hiEnts) hiEnts.forEach(e=>e.show=on); };
 
+  // ---- plan-view grade x thickness map ----
+  // From directly overhead a block model is an opaque blanket: you see its top
+  // surface and nothing else, so the terrain and any pit underneath vanish.
+  // That is what makes every plan view read as a blob no matter how the shells
+  // are tuned. The fix is to stop drawing the body in plan and draw what a mine
+  // plan actually shows — grade x thickness accumulated down each column,
+  // draped on the ground as a raster. Terrain reads through it, the pit stays
+  // visible, and the deposit reads as a map instead of a lump.
+  let planLayer=null, planOn=false;
+  const GT_STOPS=[[0,'#1b3550'],[0.12,'#1668a6'],[0.30,'#17a89a'],
+                  [0.55,'#F2A33C'],[0.78,'#E8433C'],[1,'#E05CC8']];
+  function gtColor(u){
+    let a=GT_STOPS[0],b=GT_STOPS[GT_STOPS.length-1];
+    for(let i=0;i<GT_STOPS.length-1;i++)
+      if(u>=GT_STOPS[i][0]&&u<=GT_STOPS[i+1][0]){a=GT_STOPS[i];b=GT_STOPS[i+1];break;}
+    const f=(u-a[0])/((b[0]-a[0])||1);
+    const hx=c=>[parseInt(c.slice(1,3),16),parseInt(c.slice(3,5),16),parseInt(c.slice(5,7),16)];
+    const ca=hx(a[1]), cb=hx(b[1]);
+    return [Math.round(ca[0]+(cb[0]-ca[0])*f), Math.round(ca[1]+(cb[1]-ca[1])*f),
+            Math.round(ca[2]+(cb[2]-ca[2])*f)];
+  }
+  let GT_MAX=0;
+  function buildPlanMap(){
+    if(planLayer) return planLayer;
+    // Accumulate grade x thickness (gram-metres) down each 10 x 5 m column.
+    const nx=Math.round(EX/10)+1, ny=Math.round(EY/5)+1;
+    const acc=new Float32Array(nx*ny);
+    for(let i=0;i<N;i++){
+      const gx=Math.round(F[i*4]/10), gy=Math.round(F[i*4+1]/5);
+      if(gx<0||gx>=nx||gy<0||gy>=ny) continue;
+      acc[gy*nx+gx]+=F[i*4+3]*5;          // grade x 5 m block height
+    }
+    const sorted=Array.from(acc).filter(v=>v>0).sort((a,b)=>a-b);
+    GT_MAX=sorted.length?sorted[Math.floor(sorted.length*0.985)]:1;
+    const cv=document.createElement('canvas'); cv.width=nx; cv.height=ny;
+    const cx=cv.getContext('2d');
+    const img=cx.createImageData(nx,ny);
+    for(let y=0;y<ny;y++) for(let x=0;x<nx;x++){
+      const v=acc[y*nx+x];
+      // image row 0 is north, grid row 0 is south
+      const o=(((ny-1-y)*nx)+x)*4;
+      if(v<=0){ img.data[o+3]=0; continue; }
+      const c=gtColor(Math.min(1,v/GT_MAX));
+      img.data[o]=c[0]; img.data[o+1]=c[1]; img.data[o+2]=c[2];
+      // Low columns must be near-invisible, not a 47% wash. A floor of 120 put
+      // a pale haze over the whole footprint — the same blanket problem the
+      // map was built to remove, just flatter.
+      const u=Math.min(1,v/GT_MAX);
+      img.data[o+3]=Math.round(18+232*Math.pow(u,0.7));
+    }
+    cx.putImageData(img,0,0);
+    const sw2=proj4('EPSG:26910','WGS84',[EMIN-5,NMIN-2.5]);
+    const ne2=proj4('EPSG:26910','WGS84',[EMIN+EX+5,NMIN+EY+2.5]);
+    // A UTM grid is not exactly axis-aligned in geographic space, but over
+    // 1.4 km the rotation is well under a block, so a rectangle is fine here.
+    planLayer=viewer.imageryLayers.addImageryProvider(
+      new Cesium.SingleTileImageryProvider({
+        url:cv.toDataURL('image/png'),
+        rectangle:Cesium.Rectangle.fromDegrees(sw2[0],sw2[1],ne2[0],ne2[1]),
+        tileWidth:nx, tileHeight:ny}));
+    planLayer.alpha=0.88;
+    return planLayer;
+  }
+  function showPlan(on){
+    planOn=on;
+    if(on) buildPlanMap();
+    if(planLayer) planLayer.show=on;
+    $('gtleg').style.display=on?'flex':'none';
+    if(on) $('gtleg').innerHTML='<span>Grade &times; thickness</span>'+
+      [0,0.25,0.5,0.75,1].map(u=>{const c=gtColor(u);
+        return '<div class="k"><span class="sw" style="background:rgb('+c.join(',')+')"></span></div>';}).join('')+
+      '<span>0 \u2192 '+Math.round(GT_MAX)+' g\u00b7m</span>';
+  }
+
   // ---- vein domain surfaces ----
   // Fetched rather than inlined: 2.3 MB of hull geometry does not belong in the
   // critical path for a viewer that opens on a slide. The service worker caches
@@ -1055,14 +1143,40 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         material:new Cesium.PolylineDashMaterialProperty({
           color:Cesium.Color.fromCssColorString('#F2C14E'),dashLength:26})}})));
     (SITE.areas||[]).forEach(a=>{
+      // A pit is a hole, not a painted patch. Filling it flat put a pale slab
+      // over the exact ground the plan view exists to show, which is the same
+      // blobbiness the grade map was built to remove. Outline plus descending
+      // bench rings reads as an excavation and leaves the terrain visible.
+      const isPit=a.kind==='pit';
+      if(!isPit){
+        siteEnts.push(viewer.entities.add({name:a.name,
+          polygon:{hierarchy:Cesium.Cartesian3.fromDegreesArray(deg(a.ring)),
+            material:Cesium.Color.fromCssColorString(a.color).withAlpha(0.30),
+            classificationType:Cesium.ClassificationType.TERRAIN}}));
+      }
       siteEnts.push(viewer.entities.add({name:a.name,
-        polygon:{hierarchy:Cesium.Cartesian3.fromDegreesArray(deg(a.ring)),
-          material:Cesium.Color.fromCssColorString(a.color).withAlpha(0.55),
-          classificationType:Cesium.ClassificationType.TERRAIN}}));
-      siteEnts.push(viewer.entities.add({
         polyline:{positions:Cesium.Cartesian3.fromDegreesArray(deg(a.ring)),
-          width:1.6,clampToGround:true,
-          material:Cesium.Color.fromCssColorString(a.color).withAlpha(0.95)}}));
+          width:isPit?2.6:1.6,clampToGround:true,
+          material:Cesium.Color.fromCssColorString(isPit?'#E4EAF0':a.color)
+            .withAlpha(isPit?1:0.95)}}));
+      if(isPit){
+        const mx=a.ring.reduce((s,q)=>s+q[0],0)/a.ring.length;
+        const my=a.ring.reduce((s,q)=>s+q[1],0)/a.ring.length;
+        const NB=5, depth=240;
+        for(let b=1;b<=NB;b++){
+          const shrink=1-(b/NB)*0.66;
+          const z=ZTOP+GEOID-(depth*b/NB);
+          const pos=a.ring.map(c=>{
+            const ll=proj4('EPSG:26910','WGS84',
+              [mx+(c[0]-mx)*shrink, my+(c[1]-my)*shrink]);
+            return Cesium.Cartesian3.fromDegrees(ll[0],ll[1],
+              EXAG===1?z:(CZ+GEOID+(z-CZ-GEOID)*EXAG));});
+          pos.push(pos[0]);
+          siteEnts.push(viewer.entities.add({polyline:{positions:pos,width:1.8,
+            arcType:Cesium.ArcType.NONE,
+            material:Cesium.Color.fromCssColorString('#C7D0D8').withAlpha(0.9-b*0.11)}}));
+        }
+      }
     });
     (SITE.roads||[]).forEach(rd=>siteEnts.push(viewer.entities.add({name:rd.name,
       polyline:{positions:Cesium.Cartesian3.fromDegreesArray(deg(rd.path)),
@@ -1255,8 +1369,10 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     showDepth(depthOn);
     showSite(siteOn);
     showSurfaces(surfOn);
-    // With surfaces up the blocks become noise inside them, so step them back.
-    if(surfOn) RUNS.forEach(r=>{ if(r.prim) r.prim.show=false; });
+    showPlan(planOn);
+    // Surfaces or a plan map both replace the block cloud rather than layer on
+    // top of it — leaving the cubes underneath is what made plan views blobby.
+    if(surfOn||planOn) RUNS.forEach(r=>{ if(r.prim) r.prim.show=false; });
     syncWarn();
 
     readout(); syncHash();
@@ -1519,6 +1635,10 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     apply();});
   $('stage').max=String(STAGES.length-1);
   $('stage').oninput=e=>showStage(+e.target.value);
+  $('planseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    planOn=b.dataset.l==='1';
+    $('planseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    apply();});
   $('surfseg').querySelectorAll('button').forEach(b=>b.onclick=async()=>{
     surfOn=b.dataset.f==='1';
     $('surfseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
@@ -1702,6 +1822,12 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     const ci=LADDER.findIndex(v=>v>=want); setCut(ci<0?LADDER.length-1:ci);
     setMode(c.mode||'grade');
     setDrills(!!c.drills);
+    planOn=!!c.plan;
+    $('planseg').querySelectorAll('button').forEach(x=>
+      x.classList.toggle('on',(x.dataset.l==='1')===planOn));
+    if(c.site!==undefined){ siteOn=!!c.site;
+      $('siteseg').querySelectorAll('button').forEach(x=>
+        x.classList.toggle('on',(x.dataset.s==='1')===siteOn)); }
     surfOn=!!c.surfaces;
     $('surfseg').querySelectorAll('button').forEach(x=>
       x.classList.toggle('on',(x.dataset.f==='1')===surfOn));
