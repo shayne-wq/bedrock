@@ -924,10 +924,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     stageEnts.forEach((ents,k)=>ents.forEach(e=>e.show=(i>=0&&k<=i)));
     $('stagev').textContent=i<0?'none':(STAGES[i].year+' — '+STAGES[i].name+
       ' (' + STAGES[i].depth + ' m)');
-    $('synwarn').classList.toggle('on',
-      (drills&&DRILL_SYNTHETIC)||(siteOn&&SITE_SYNTHETIC)||(i>=0&&SITE_SYNTHETIC));
-    if(i>=0&&SITE_SYNTHETIC) $('synwarn').textContent=
-      'Conceptual pit stages — fabricated, not a real mine plan';
+    syncWarn();
   }
 
   // ---- depth reference grid ----
@@ -991,6 +988,22 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   const haloHidden=()=>fade;
   const isHalo=g=>TIERS[tierOf(g.mid)].halo===true;
 
+  // ONE authority for the fabricated-data banner. It previously lived in two
+  // places — apply() and showStage() — and they did not know about each other,
+  // so setting a pit stage then touching any other control left conceptual mine
+  // geometry on screen with the warning switched off. Every fabricated layer
+  // must be enumerated here, and nothing else may write to #synwarn.
+  function syncWarn(){
+    const parts=[];
+    if(drills&&DRILL_SYNTHETIC) parts.push('drill data');
+    if(siteOn&&SITE_SYNTHETIC) parts.push('site features');
+    if(stageIdx>=0&&SITE_SYNTHETIC) parts.push('pit stages');
+    const el=$('synwarn');
+    el.classList.toggle('on',parts.length>0);
+    if(parts.length) el.textContent='Synthetic '+parts.join(' + ')+
+      ' — fabricated, not real results or a real mine plan';
+  }
+
   function apply(){
     const cut=cutVal();
     const vis=g=>g.lo>=cut-1e-9 && clsOn[g.c] && !(haloHidden() && isHalo(g));
@@ -1013,12 +1026,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     showDrills(drills);
     showDepth(depthOn);
     showSite(siteOn);
-    $('synwarn').textContent = (drills&&DRILL_SYNTHETIC&&siteOn&&SITE_SYNTHETIC)
-      ? 'Synthetic drill data and site features — fabricated, not real'
-      : (siteOn&&SITE_SYNTHETIC&&!drills)
-        ? 'Synthetic site features — conceptual, not a real mine plan'
-        : 'Synthetic drill data — fabricated, not real results';
-    $('synwarn').classList.toggle('on',(drills&&DRILL_SYNTHETIC)||(siteOn&&SITE_SYNTHETIC));
+    syncWarn();
+
     readout(); syncHash();
   }
 
@@ -1318,6 +1327,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     Object.keys(clsOn).forEach(k=>{clsOn[k]=true;});
     chips.querySelectorAll('.chip').forEach(el=>el.classList.add('on'));
     inkClearAll();
+    if(stageIdx>=0){ showStage(-1); $('stage').value=-1; }
     viewer.scene.globe.depthTestAgainstTerrain=true;
     // Cutting the ground away is a deliberate beat, not a permanent state:
     // overhead shots read better with the mountain intact and the deposit shown
@@ -1443,8 +1453,10 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         x.fillRect(pad-Math.round(9*S), c.height-pad-h, w+Math.round(18*S), h);
         x.fillStyle='#C6CAC5';
         x.fillText(disc, pad, c.height-pad-Math.round(6*S));
-        if(drills&&DRILL_SYNTHETIC){
-          const warn='SYNTHETIC DRILL DATA — FABRICATED, NOT REAL RESULTS';
+        const fabricated=(drills&&DRILL_SYNTHETIC)||(siteOn&&SITE_SYNTHETIC)||
+                         (stageIdx>=0&&SITE_SYNTHETIC);
+        if(fabricated){
+          const warn=$('synwarn').textContent.toUpperCase();
           x.font='600 '+Math.round(15*S)+'px ui-monospace, monospace';
           const ww=x.measureText(warn).width, wh=Math.round(30*S);
           const wy=c.height-pad-h-Math.round(10*S)-wh;
@@ -1522,9 +1534,17 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     }
     return shots;
   }
-  const FOOT=(CLASS_CONFIRMED?'':'Resource class labels unconfirmed. ')+
-    'Illustrative visualization — not a mineral resource statement.'+
-    (HOLES.length&&DRILL_SYNTHETIC?' Drill holes shown are SYNTHETIC and fabricated.':'');
+  // Recomputed per export rather than fixed at load: the footer has to describe
+  // what is actually on the slide, not what might be.
+  function foot(){
+    const f=[];
+    if(drills&&DRILL_SYNTHETIC) f.push('drill holes');
+    if(siteOn&&SITE_SYNTHETIC) f.push('site features');
+    if(stageIdx>=0&&SITE_SYNTHETIC) f.push('pit stages');
+    return (CLASS_CONFIRMED?'':'Resource class labels unconfirmed. ')+
+      'Illustrative visualization — not a mineral resource statement.'+
+      (f.length?' SYNTHETIC, fabricated: '+f.join(', ')+'.':'');
+  }
 
   $('expPptx').onclick=async()=>{
     try{
@@ -1541,7 +1561,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         sl.addText(s.body,{x:0.5,y:4.25,w:8.5,h:0.9,fontSize:13,color:'C6CAC5',fontFace:'Arial'});
         sl.addText(fmt(s.stats.t)+'   ·   '+s.stats.g.toFixed(2)+' g/t AuEq   ·   '+fmtoz(s.stats.oz),
           {x:0.5,y:5.05,w:8.5,h:0.35,fontSize:12,color:'C99A3A',fontFace:'Consolas'});
-        sl.addText(FOOT,{x:0.5,y:5.32,w:8.5,h:0.34,fontSize:10,color:'C6CAC5',fontFace:'Arial'});
+        sl.addText(foot(),{x:0.5,y:5.32,w:8.5,h:0.34,fontSize:10,color:'C6CAC5',fontFace:'Arial'});
       });
       await p.writeFile({fileName:'Elk-Gold-Siwash-North.pptx'});
       toast('PPTX saved');
@@ -1566,7 +1586,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         doc.setTextColor(201,154,58); doc.setFontSize(11);
         doc.text(fmt(s.stats.t)+'   ·   '+s.stats.g.toFixed(2)+' g/t AuEq   ·   '+fmtoz(s.stats.oz),40,492);
         doc.setTextColor(198,202,197); doc.setFontSize(10);
-        doc.text(doc.splitTextToSize(FOOT,880),40,512);
+        doc.text(doc.splitTextToSize(foot(),880),40,512);
       });
       doc.save('Elk-Gold-Siwash-North.pdf');
       toast('PDF saved');
