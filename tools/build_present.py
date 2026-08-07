@@ -547,6 +547,12 @@ HTML = r"""<!DOCTYPE html>
   <h3>Mine plan timeline</h3>
   <div class="cutrow"><input type="range" id="stage" min="-1" max="3" step="1" value="-1"><span id="stagev" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#C99A3A;min-width:96px;text-align:right">none</span></div>
 
+  <h3>Property highlight</h3>
+  <div class="seg" id="popseg">
+    <button data-p="1" class="on">On</button>
+    <button data-p="0">Off</button>
+  </div>
+
   <h3>Site features</h3>
   <div class="seg" id="siteseg">
     <button data-s="0" class="on">Hidden</button>
@@ -746,12 +752,44 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // leaves the mountain solid and cuts a window over the orebody instead.
   const sw=proj4('EPSG:26910','WGS84',[EMIN-30,NMIN-30]);
   const ne=proj4('EPSG:26910','WGS84',[EMIN+EX+30,NMIN+EY+30]);
+  // Property extent for the colour-pop cutout — the claim ring if the site
+  // layer supplies one, otherwise a margin around the deposit itself.
+  const POP_RECT=(function(){
+    const ring=(SITE.claims&&SITE.claims[0]&&SITE.claims[0].ring)||null;
+    if(ring){
+      let w=180,e=-180,s=90,n=-90;
+      ring.forEach(c=>{const ll=proj4('EPSG:26910','WGS84',c);
+        w=Math.min(w,ll[0]); e=Math.max(e,ll[0]); s=Math.min(s,ll[1]); n=Math.max(n,ll[1]);});
+      return Cesium.Rectangle.fromDegrees(w,s,e,n);
+    }
+    const a=proj4('EPSG:26910','WGS84',[EMIN-700,NMIN-700]);
+    const b=proj4('EPSG:26910','WGS84',[EMIN+EX+700,NMIN+EY+700]);
+    return Cesium.Rectangle.fromDegrees(a[0],a[1],b[0],b[1]);
+  })();
   viewer.scene.globe.translucency.rectangle=Cesium.Rectangle.fromDegrees(sw[0],sw[1],ne[0],ne[1]);
   viewer.scene.globe.undergroundColor=Cesium.Color.fromCssColorString('#141a1f');
-  // Pull the saturation out of the satellite imagery so the only saturated
-  // thing on screen is the deposit. Terrain stays as context, not competition.
-  viewer.imageryLayers.get(0).saturation=0.45;
-  viewer.imageryLayers.get(0).brightness=0.78;
+  // Colour-pop masking. Two copies of the same imagery: the base stays in full
+  // colour, and a desaturated near-black copy sits on top with a hole cut out
+  // over the property. The claim block is then the only saturated thing in the
+  // world, which reads far harder than desaturating everything uniformly.
+  const baseLayer=viewer.imageryLayers.get(0);
+  baseLayer.saturation=1.15; baseLayer.brightness=1.0;
+  let maskLayer=null, popOn=true;
+  function buildMask(){
+    if(maskLayer) return maskLayer;
+    maskLayer=viewer.imageryLayers.addImageryProvider(imagery);
+    maskLayer.saturation=0.0;
+    maskLayer.brightness=0.42;
+    maskLayer.contrast=1.25;
+    return maskLayer;
+  }
+  function setPop(on){
+    popOn=on;
+    buildMask();
+    maskLayer.show=on;
+    // The cutout is the claim block when there is one, otherwise the deposit.
+    maskLayer.cutoutRectangle=on?POP_RECT:undefined;
+  }
   viewer.scene.skyAtmosphere.show=true;
   viewer.scene.globe.tileLoadProgressEvent.addEventListener(q=>setStat('terrain tiles: '+q));
   viewer.scene.canvas.addEventListener('webglcontextlost',ev=>{ev.preventDefault();setStat('context lost — reloading');setTimeout(()=>location.reload(),1200);},false);
@@ -1313,6 +1351,9 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     apply();});
   $('stage').max=String(STAGES.length-1);
   $('stage').oninput=e=>showStage(+e.target.value);
+  $('popseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    setPop(b.dataset.p==='1');
+    $('popseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));});
   $('siteseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
     siteOn=b.dataset.s==='1';
     $('siteseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
@@ -1766,6 +1807,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       toast('PDF saved');
     }catch(e){ toast('PDF failed: '+e.message,5000); }
   };
+
+  setPop(true);
 
   // ---- boot ----
   const st=readHash();
