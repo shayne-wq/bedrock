@@ -45,6 +45,12 @@ N_VEINS = int(sys.argv[1]) if len(sys.argv) > 1 else 8
 # sheeted structure is carried by the per-vein hulls instead.
 SHELLS = [(3.0, "s30"), (8.0, "s80")]
 
+# Hard floor for the whole tool. Nothing below this is modelled, surfaced,
+# coloured or counted anywhere — a vein hull built from every block in the
+# domain silently reintroduced sub-economic material and made the sheets look
+# bloated, which is exactly the blobbiness the cut-off was raised to remove.
+GRADE_FLOOR = 0.5
+
 DX, DY, DZ = 10.0, 5.0, 5.0          # block dimensions on the source grid
 
 # (neighbour offset, four corner offsets of the face) in half-block units
@@ -80,7 +86,7 @@ def main():
                 tiers[key].add(cell)
                 e = tstat[key]; e[0] += 1; e[1] += tn; e[2] += tn * g
         v = int(r["vein"])
-        if v in want_id:
+        if v in want_id and g >= GRADE_FLOOR:
             cells[v].add(cell)
 
     out = {}
@@ -143,7 +149,10 @@ def main():
                         idx.extend([q[0], q[1], q[2], q[0], q[2], q[3]])
 
         if kind == "vein":
-            s = stats["by_vein"][name]
+            # by_vein is over the whole domain; the hull is only its >= floor
+            # part, so report the hull's own numbers rather than the domain's.
+            s = dict(stats["by_vein"][name])
+            s["blocks"] = len(occ)
         else:
             e = tstat[name]
             s = {"blocks": e[0], "tonnes": round(e[1], 1),

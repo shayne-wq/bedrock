@@ -564,12 +564,6 @@ HTML = r"""<!DOCTYPE html>
     <button data-m="vein">Vein</button>
   </div>
 
-  <h3>Low-grade halo (&lt; 0.3 g/t)</h3>
-  <div class="seg" id="fadeseg">
-    <button data-f="1" class="on">Hidden</button>
-    <button data-f="0">Shown</button>
-  </div>
-
   <h3>Intercept highlights</h3>
   <div class="seg" id="hiseg">
     <button data-h="0" class="on">Hidden</button>
@@ -621,7 +615,7 @@ HTML = r"""<!DOCTYPE html>
   </div>
 
   <h3>Cut-off grade</h3>
-  <div class="cutrow" id="cutrow"><input type="range" id="cut" min="0" max="14" step="1" value="1"><span id="cutv"></span></div>
+  <div class="cutrow" id="cutrow"><input type="range" id="cut" min="4" max="14" step="1" value="4"><span id="cutv"></span></div>
 
   <h3>Resource class</h3>
   <div class="chips" id="clschips"></div>
@@ -741,13 +735,17 @@ const F=new Float32Array(unb64(DATA).buffer), M=unb64(META);
 //
 // The halo is the other half of it: 55% of blocks sit under 1 g/t and carry ~4%
 // of the metal. Drawn, they ARE the blob. Off by default, available as context.
+// GRADE_FLOOR is a hard floor for the entire tool, not a default. Nothing below
+// it is drawn, coloured, surfaced or counted. Sub-economic material was what
+// bridged the gaps between the veins and merged the system into one mass; with
+// it gone the sheets stand apart. Must match tools/extract_surfaces.py.
+const GRADE_FLOOR=0.5;
 const TIERS=[
-  {lo:0,    css:'#3d4a57', a:0.30, label:'< 0.3',   halo:true},
-  {lo:0.3,  css:'#6FCF57', a:1.00, label:'0.3 – 1'},
+  {lo:0.5,  css:'#6FCF57', a:1.00, label:'0.5 – 1'},
   {lo:1.0,  css:'#F2A33C', a:1.00, label:'1 – 3'},
   {lo:3.0,  css:'#E8433C', a:1.00, label:'3 – 8'},
   {lo:8.0,  css:'#E05CC8', a:1.00, label:'8+ g/t'}];
-const TIER_SCALE=[0.5,1.0,1.0,1.0,1.0];
+const TIER_SCALE=[1.0,1.0,1.0,1.0];
 // Aerial perspective: things seen through more rock get fainter and drift
 // toward the cold background, exactly as haze works in air. Without it a 475 m
 // thick deposit viewed from above is a flat sheet with no way to tell any of it
@@ -929,7 +927,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         positions:[P(h.collar),P(h.end)], shape:ROD,
         material:new Cesium.Color(0.87,0.89,0.87,0.55),
         outline:false}}));
-      h.segs.forEach(s=>{ if(s.g<0.1) return;
+      h.segs.forEach(s=>{ if(s.g<GRADE_FLOOR) return;
         const col=depthShade(ramp(s.g,false),s.d||0);
         // Assayed intervals as beads strung on the trace rather than fat rods:
         // a bead reads as a discrete sample and does not occlude the blocks
@@ -1033,7 +1031,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     const acc=new Float32Array(nx*ny);
     for(let i=0;i<N;i++){
       const g=F[i*4+3];
-      if(g<planCutBuilt-1e-9) continue;
+      if(g<planCutBuilt-1e-9 || g<GRADE_FLOOR-1e-9) continue;
       const gx=Math.round(F[i*4]/10), gy=Math.round(F[i*4+1]/5);
       if(gx<0||gx>=nx||gy<0||gy>=ny) continue;
       acc[gy*nx+gx]+=g*5;                 // grade x 5 m block height
@@ -1331,7 +1329,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // ---- state ----
   // 0.5 g/t is the house default everywhere: below it the low-grade halo
   // bridges the gaps between veins and the whole system merges into one mass.
-  const CUT_DEFAULT=0.5, CUT_DEFAULT_IDX=LADDER.indexOf(CUT_DEFAULT);
+  const CUT_DEFAULT=GRADE_FLOOR, CUT_DEFAULT_IDX=LADDER.indexOf(CUT_DEFAULT);
   let mode='grade', cutIdx=CUT_DEFAULT_IDX, vein=-1, clsOn={0:true,1:true,2:true,3:true},
       cur=0, drills=false, playing=false, narrating=false, dwellTimer=null, restoring=false;
   const cutVal=()=>LADDER[cutIdx];
@@ -1353,9 +1351,6 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     return vgPrims;
   }
   const colorOf=g=>depthShade(mode==='grade'?ramp(g.mid,true):clsColor(g.c),g.d||0,true);
-  // `fade` now means "hide the halo" rather than "make everything see-through".
-  const haloHidden=()=>fade;
-  const isHalo=g=>TIERS[tierOf(g.mid)].halo===true;
 
   // ONE authority for the fabricated-data banner. It previously lived in two
   // places — apply() and showStage() — and they did not know about each other,
@@ -1375,12 +1370,12 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
 
   function apply(){
     const cut=cutVal();
-    const vis=g=>g.lo>=cut-1e-9 && clsOn[g.c] && !(haloHidden() && isHalo(g));
+    const vis=g=>g.lo>=cut-1e-9 && g.lo>=GRADE_FLOOR-1e-9 && clsOn[g.c];
     const veinMode=mode==='vein';
     RUNS.forEach(r=>{ r.prim.show = !veinMode && vein===-1 && vis(r);
       r.prim.appearance.material.uniforms.color=colorOf(r); });
     if(veinMode){
-      buildVeinGroups().forEach(o=>{ o.prim.show = vein===-1 && o.lo>=cut-1e-9 && !(haloHidden() && isHalo(o));
+      buildVeinGroups().forEach(o=>{ o.prim.show = vein===-1 && o.lo>=cut-1e-9 && o.lo>=GRADE_FLOOR-1e-9;
         o.prim.appearance.material.uniforms.color=depthShade(
           Cesium.Color.fromCssColorString(VEIN_COLORS[o.g]).withAlpha(fade?0.85:1),o.d||0); });
     } else if(vgPrims){ vgPrims.forEach(o=>o.prim.show=false); }
@@ -1421,7 +1416,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       // from the number too. Without this the readout over-reported the drawn
       // model by 0.92 Mt at the default view — and the whole claim of this tool
       // is that the figure matches the picture under every filter.
-      if(haloHidden() && LADDER[b.b] < TIERS[1].lo) continue;
+      if(LADDER[b.b] < GRADE_FLOOR-1e-9) continue;
       n+=b.n; t+=b.t; m+=b.m;
     }
     $('r_t').textContent=t?fmt(t):'—';
@@ -1636,7 +1631,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   function readHash(){
     const h=new URLSearchParams(location.hash.slice(1));
     if(!h.has('c')) return null;
-    return {c:+h.get('c')||0, m:(['class','vein'].indexOf(h.get('m'))>=0?h.get('m'):'grade'), k:h.has('k')?Math.max(0,Math.min(LADDER.length-1,+h.get('k'))):CUT_DEFAULT_IDX,
+    return {c:+h.get('c')||0, m:(['class','vein'].indexOf(h.get('m'))>=0?h.get('m'):'grade'), k:h.has('k')?Math.max(CUT_DEFAULT_IDX,Math.min(LADDER.length-1,+h.get('k'))):CUT_DEFAULT_IDX,
             v:+h.get('v'), s:h.has('s')?h.get('s'):'0123', d:h.get('d')==='1'};
   }
 
@@ -1648,7 +1643,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     $('clsleg').style.display=m==='class'?'flex':'none';
     $('veinleg').style.display=m==='vein'?'flex':'none';
   }
-  function setCut(i){cutIdx=i;$('cut').value=i;$('cutv').textContent=cutVal().toFixed(2)+' g/t';}
+  function setCut(i){cutIdx=Math.max(CUT_DEFAULT_IDX,i);i=cutIdx;$('cut').value=i;$('cutv').textContent=cutVal().toFixed(2)+' g/t';}
   function setDrills(on){
     drills=on;
     $('drillseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',(x.dataset.d==='1')===on));
@@ -1692,16 +1687,6 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     $('groundv').textContent=a===0?'cut away':Math.round(a*100)+'%';
   }
   $('ground').oninput=e=>setGround((+e.target.value)/100);
-  $('fadeseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
-    if((b.dataset.f==='1')===fade) return;
-    fade=b.dataset.f==='1';
-    $('fadeseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
-    // Block size is baked into the geometry, so switching fade rebuilds.
-    setStat('rebuilding…');
-    if(vgPrims){ vgPrims.forEach(o=>viewer.scene.primitives.remove(o.prim)); vgPrims=null; }
-    Object.keys(veinPrims).forEach(v=>{ veinPrims[v].forEach(g=>viewer.scene.primitives.remove(g.prim));
-      delete veinPrims[v]; });
-    buildBase(); apply(); setStat('');});
   $('exagseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
     const k=parseFloat(b.dataset.x); if(k===EXAG) return;
     $('exagseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
@@ -1846,7 +1831,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     // fall through to index 0 and reveal the entire model. A chapter that
     // declares no cut-off at all (slide chapters) is a different case — it
     // means "no opinion", not "hide everything", so fall back to the default.
-    const want=(c.cut===undefined||c.cut===null)?CUT_DEFAULT:c.cut;
+    const want=Math.max(CUT_DEFAULT,(c.cut===undefined||c.cut===null)?CUT_DEFAULT:c.cut);
     const ci=LADDER.findIndex(v=>v>=want); setCut(ci<0?LADDER.length-1:ci);
     setMode(c.mode||'grade');
     setDrills(!!c.drills);
