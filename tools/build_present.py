@@ -277,36 +277,36 @@ CHAPTERS = [
                {"k": "Tonnes", "v": f"{_T['tonnes']/1e6:.2f} Mt"},
                {"k": "Grade", "v": f"{_T['grade_gt']} g/t"},
                {"k": "Vein domains", "v": str(len(VEINS))}]}},
-  {"h": 28, "p": -26, "r": 3600, "cut": 0.1, "xray": True, "mode": "grade", "dwell": 9,
+  {"h": 28, "p": -26, "r": 3600, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 9,
    "ground": 1.0, "section": "The project", "title": "A high-grade gold system", "body": "The Elk Gold project sits in the Quesnel Highland of British Columbia's Cariboo District — a road-accessible, established mining region."},
-  {"h": 30, "p": -22, "r": 2500, "cut": 0.1, "xray": True, "mode": "grade", "dwell": 9,
+  {"h": 30, "p": -22, "r": 2500, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 9,
    "ground": 1.0, "section": "The ground", "title": "On real ground", "body": "Every block is placed at its true UTM position on real terrain — this is the actual mountain the deposit sits inside."},
   {"h": 52, "p": -24, "r": 2600, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 11,
    "ground": 0.42, "section": "The ground", "title": "The orebody", "body": "Forty-six vein domains threading the ridge, drawn as the blocks they are modelled as. Above half a gram the sheets separate and the northwest structural grain of the system becomes obvious."},
-  {"h": 50, "p": -22, "r": 2100, "cut": 0.3, "xray": True, "mode": "grade", "dwell": 12,
+  {"h": 50, "p": -22, "r": 2100, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 12,
    "ground": 0.0, "surfaces": "veins", "section": "The deposit",
    "title": "The veins as bodies", "body": "The same domains drawn as solid geological surfaces rather than blocks \u2014 the hull of each vein, extracted face by face from the model so nothing is invented between the data points.",
    "pin": {"at": [693500, 5525400], "dz": 520, "text": "Eight largest vein domains"}},
   {"h": 58, "p": -34, "r": 2450, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11,
    "ground": 0.0, "surfaces": "cores", "section": "The deposit", "title": "The high-grade core", "body": "The richest fifth of the blocks carry 78% of the metal. Raising the cut-off strips the rest away and leaves the bonanza shells that actually matter."},
-  {"h": 52, "p": -30, "r": 1700, "cut": 0.1, "xray": True, "mode": "class", "dwell": 11,
+  {"h": 52, "p": -30, "r": 1700, "cut": 0.5, "xray": True, "mode": "class", "dwell": 11,
    "ground": 0.0, "section": "The deposit", "title": "How well is it known?", "body": "Recoloured by resource classification. Confidence is not evenly distributed through a deposit — and this is the first question any technical reader asks."},
   # Cut-off lifted to 1.0 here so the low-grade halo stops burying the traces.
   {"h": 38, "p": -24, "r": 1900, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11, "drills": True,
    "ground": 0.0, "section": "Drilling & geometry", "title": "Drilled from surface", "body": "Drill traces coloured by assay grade, hung from their collars on the ridge above. These holes are synthetic — traced through the modelled grades to show how drilling reads against the block model."},
   # Straight down, ground intact, body replaced by the grade map. Overhead is
   # the one angle where the 3D model tells you least and the map tells you most.
-  {"h": 0, "p": -90, "r": 2350, "cut": 0.0, "xray": True, "mode": "grade", "dwell": 11,
+  {"h": 0, "p": -90, "r": 2350, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 11,
    "ground": 1.0, "plan": True, "site": True, "section": "Drilling & geometry",
    "title": "Footprint in plan",
    "body": "Overhead, the body itself tells you nothing \u2014 you see the top of it and the ground disappears. So this is grade times thickness accumulated down every column, laid on the terrain: where the metal is, and how much of it, against the ground you would actually mine.",
    "pin": {"at": [693500, 5525900], "dz": 260, "text": "Grade \u00d7 thickness, g\u00b7m"}},
-  {"h": 4, "p": -4, "r": 2650, "cut": 0.3, "xray": True, "mode": "grade", "dwell": 10,
+  {"h": 4, "p": -4, "r": 2650, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 10,
    "ground": 0.0, "section": "Drilling & geometry", "title": "In profile", "body": "Turned on edge, the veins persist to roughly 475 metres below surface — and remain open at depth."},
   {"h": 44, "p": -18, "r": 1500, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 12,
    "ground": 0.0, "drills": True, "highlights": True,
    "section": "Drilling & geometry", "title": "The intercepts behind it", "body": "The headline hits, each labelled where it sits in three dimensions \u2014 the drill-release table, put back in the ground it came out of."},
-  {"h": 26, "p": -27, "r": 3000, "cut": 0.15, "xray": True, "mode": "grade", "dwell": 10,
+  {"h": 26, "p": -27, "r": 3000, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 10,
    "ground": 0.0, "section": "Appendix", "title": "Explore it yourself", "body": "Forty-six vein domains, each one isolatable, each with its own grade and tonnage. Open Explore and interrogate the model directly."},
   {"h": 34, "p": -28, "r": 3000, "dwell": 12, "ground": 1.0, "section": "Appendix", "slide": {
      "eyebrow": "Grade-tonnage",
@@ -1021,15 +1021,22 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
             Math.round(ca[2]+(cb[2]-ca[2])*f)];
   }
   let GT_MAX=0;
+  let planCutBuilt=null;
   function buildPlanMap(){
-    if(planLayer) return planLayer;
+    // The raster has to honour the same cut-off as everything else, or the map
+    // shows one deposit and the readout reports another.
+    if(planLayer && planCutBuilt===cutVal()) return planLayer;
+    if(planLayer){ viewer.imageryLayers.remove(planLayer,true); planLayer=null; }
+    planCutBuilt=cutVal();
     // Accumulate grade x thickness (gram-metres) down each 10 x 5 m column.
     const nx=Math.round(EX/10)+1, ny=Math.round(EY/5)+1;
     const acc=new Float32Array(nx*ny);
     for(let i=0;i<N;i++){
+      const g=F[i*4+3];
+      if(g<planCutBuilt-1e-9) continue;
       const gx=Math.round(F[i*4]/10), gy=Math.round(F[i*4+1]/5);
       if(gx<0||gx>=nx||gy<0||gy>=ny) continue;
-      acc[gy*nx+gx]+=F[i*4+3]*5;          // grade x 5 m block height
+      acc[gy*nx+gx]+=g*5;                 // grade x 5 m block height
     }
     const sorted=Array.from(acc).filter(v=>v>0).sort((a,b)=>a-b);
     GT_MAX=sorted.length?sorted[Math.floor(sorted.length*0.985)]:1;
@@ -1064,7 +1071,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   }
   function showPlan(on){
     planOn=on;
-    if(on) buildPlanMap();
+    if(on) buildPlanMap();          // rebuilds itself if the cut-off moved
     if(planLayer) planLayer.show=on;
     $('gtleg').style.display=on?'flex':'none';
     if(on) $('gtleg').innerHTML='<span>Grade &times; thickness</span>'+
@@ -1322,7 +1329,10 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(depthEnts) depthEnts.forEach(e=>e.show=on); };
 
   // ---- state ----
-  let mode='grade', cutIdx=1, vein=-1, clsOn={0:true,1:true,2:true,3:true},
+  // 0.5 g/t is the house default everywhere: below it the low-grade halo
+  // bridges the gaps between veins and the whole system merges into one mass.
+  const CUT_DEFAULT=0.5, CUT_DEFAULT_IDX=LADDER.indexOf(CUT_DEFAULT);
+  let mode='grade', cutIdx=CUT_DEFAULT_IDX, vein=-1, clsOn={0:true,1:true,2:true,3:true},
       cur=0, drills=false, playing=false, narrating=false, dwellTimer=null, restoring=false;
   const cutVal=()=>LADDER[cutIdx];
   // Vein-identity colouring needs geometry grouped by domain rather than by
@@ -1626,7 +1636,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   function readHash(){
     const h=new URLSearchParams(location.hash.slice(1));
     if(!h.has('c')) return null;
-    return {c:+h.get('c')||0, m:(['class','vein'].indexOf(h.get('m'))>=0?h.get('m'):'grade'), k:Math.max(0,Math.min(LADDER.length-1,+h.get('k')||0)),
+    return {c:+h.get('c')||0, m:(['class','vein'].indexOf(h.get('m'))>=0?h.get('m'):'grade'), k:h.has('k')?Math.max(0,Math.min(LADDER.length-1,+h.get('k'))):CUT_DEFAULT_IDX,
             v:+h.get('v'), s:h.has('s')?h.get('s'):'0123', d:h.get('d')==='1'};
   }
 
@@ -1836,7 +1846,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     // fall through to index 0 and reveal the entire model. A chapter that
     // declares no cut-off at all (slide chapters) is a different case — it
     // means "no opinion", not "hide everything", so fall back to the default.
-    const want=(c.cut===undefined||c.cut===null)?0.3:c.cut;
+    const want=(c.cut===undefined||c.cut===null)?CUT_DEFAULT:c.cut;
     const ci=LADDER.findIndex(v=>v>=want); setCut(ci<0?LADDER.length-1:ci);
     setMode(c.mode||'grade');
     setDrills(!!c.drills);
