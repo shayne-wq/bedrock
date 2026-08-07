@@ -1,0 +1,38 @@
+{
+  "synthetic": true,
+  "warning": "FABRICATED GEOPHYSICS \u2014 not a survey. Synthesised from the block model; no magnetometer data was used and no published geophysical data was consulted. Not evidence of anything.",
+  "generator": "tools/make_synthetic_geophysics.py",
+  "data_source": "SYNTHETIC",
+  "seed": 20260807,
+  "crs": "EPSG:26910",
+  "grid": 320,
+  "extent_utm": {
+    "emin": 691830.0,
+    "nmin": 5524322.5,
+    "emax": 694470.0,
+    "nmax": 5526907.5
+  },
+  "products": [
+    {
+      "key": "tmi",
+      "label": "Total Magnetic Intensity",
+      "unit": "nT",
+      "note": "Total field, fabricated from the modelled grade shells.",
+      "file": "SYNTHETIC_geophys_tmi.png"
+    },
+    {
+      "key": "rtp",
+      "label": "TMI Reduced to Pole",
+      "unit": "nT",
+      "note": "Fabricated RTP \u2014 the anomaly moved over its source.",
+      "file": "SYNTHETIC_geophys_rtp.png"
+    },
+    {
+      "key": "1vd",
+      "label": "RTP First Vertical Derivative",
+      "unit": "nT/m",
+      "note": "Fabricated 1VD \u2014 edges of the fabricated bodies.",
+      "file": "SYNTHETIC_geophys_1vd.png"
+    }
+  ]
+}

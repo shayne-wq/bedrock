@@ -263,6 +263,44 @@ for _d in _int:                      # at most two headline hits per hole
 _site_p = DRILLDIR / "SYNTHETIC_site_features.json"
 SITE = json.loads(_site_p.read_text()) if _site_p.exists() else {}
 SITE_SYNTHETIC = bool(SITE.get("synthetic", True)) if SITE else False
+
+# ---------------------------------------------------------- real tenures
+# The claim boundaries are the one layer here that is NOT invented: public BC
+# mineral tenures, clipped by tools/fetch_bc_claims.py. They are kept separate
+# from SITE precisely so they do not inherit its `synthetic` flag — a reader
+# who can verify a tenure number should not see it captioned "conceptual".
+#
+# This split also narrows what the fabricated banner has to condemn: areas,
+# roads and pit stages remain invented and remain labelled; claims no longer
+# drag real geography into that sentence.
+_tenure_p = ROOT / "data" / "bc_tenures_elk.geojson"
+REAL_CLAIMS: list = []
+CLAIMS_ATTRIB = ""
+if _tenure_p.exists():
+    _tj = json.loads(_tenure_p.read_text())
+    if _tj.get("synthetic") is True:                 # refuse to mislabel
+        raise SystemExit("bc_tenures_elk.geojson is flagged synthetic — "
+                         "it must not be drawn as real tenure")
+    CLAIMS_ATTRIB = _tj.get("attribution", "")
+    for _f in _tj.get("features", []):
+        _p = _f.get("properties") or {}
+        _g = _f.get("geometry") or {}
+        if _g.get("type") == "Polygon":
+            _rings = _g.get("coordinates") or []
+        elif _g.get("type") == "MultiPolygon":
+            _rings = [r for poly in (_g.get("coordinates") or []) for r in poly]
+        else:
+            _rings = []
+        for _r in _rings:
+            if len(_r) < 3:
+                continue
+            REAL_CLAIMS.append({
+                "name": _p.get("CLAIM_NAME") or str(_p.get("TENURE_NUMBER_ID") or "Tenure"),
+                "tenure": _p.get("TENURE_NUMBER_ID"),
+                "owner": _p.get("OWNER_NAME"),
+                # Already WGS84 — no proj4 hop, unlike the UTM site features.
+                "ll": [round(c, 6) for pt in _r for c in pt[:2]],
+            })
 DRILL_SYNTHETIC = bool(DRILL_MAN.get("synthetic", True)) if HOLES else False
 
 # Slide chapters sit in the same deck as the 3D scenes, so a presenter can move
@@ -274,18 +312,36 @@ CHAPTERS = [
   {"h": 26, "p": -28, "r": 4200, "dwell": 9, "ground": 1.0, "slide": {
      "eyebrow": "The project",
      "section": "The project", "title": "Elk Gold - Siwash North",
-     "body": "A drill-defined, high-grade gold system in British Columbia's Cariboo "
-             "District. Road-accessible, in an established mining region, and open at depth.",
+     "body": "A drill-defined, high-grade gold system in the Nicola region of "
+             "southern British Columbia, southeast of Merritt. Road-accessible, in an established mining region, and open at depth.",
      "stats": [{"k": "Contained AuEq", "v": f"{_T['oz']/1e6:.2f} Moz"},
                {"k": "Tonnes", "v": f"{_T['tonnes']/1e6:.2f} Mt"},
                {"k": "Grade", "v": f"{_T['grade_gt']} g/t"},
                {"k": "Vein domains", "v": str(len(VEINS))}]}},
-  {"h": 28, "p": -26, "r": 3600, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 9,
-   "ground": 1.0, "section": "The project", "title": "A high-grade gold system", "body": "The Elk Gold project sits in the Quesnel Highland of British Columbia's Cariboo District — a road-accessible, established mining region."},
-  {"h": 30, "p": -22, "r": 2500, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 9,
+  # Cut-offs across the deck are authored, not left at the floor.
+  #
+  # GRADE_FLOOR (0.5) draws essentially the whole mineralized envelope: 168k
+  # blocks over 46 domains, every bin opaque. That reads as one solid mass and
+  # the structure disappears. An opening scene wants the shape of the system,
+  # not its full extent, so these sit above the floor and let the eye find the
+  # sheets. Where a body line quotes a grade, the two move together — a chapter
+  # that says "above half a gram" while rendering 1.5 g/t is worse than blobby,
+  # it is wrong.
+  # Opens on surfaces, not blocks.
+  #
+  # Blocks are voxels: at any cut-off they fuse into one opaque mass, because
+  # every bin at or above the cut draws solid and the outer bin hides the rest.
+  # Tested at 0.5, 1.5 and 3.0 g/t — the silhouette barely changes, only the
+  # colour does. The vein hulls are what carry the northwest structural grain,
+  # so the deck's first look at the deposit uses them. Blocks still get their
+  # turn at "The orebody", which is where the blocks-then-surfaces contrast in
+  # the next chapter's copy actually lands.
+  {"h": 28, "p": -26, "r": 3600, "cut": 1.5, "xray": True, "mode": "grade", "dwell": 9,
+   "ground": 1.0, "surfaces": "veins", "section": "The project", "title": "A high-grade gold system", "body": "The Elk Gold project sits in the Nicola region of southern British Columbia, southeast of Merritt — road-accessible, in an established mining district. The vein domains are drawn as solid bodies, so the structural grain of the system reads immediately."},
+  {"h": 30, "p": -22, "r": 2500, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 9,
    "ground": 1.0, "section": "The ground", "title": "On real ground", "body": "Every block is placed at its true UTM position on real terrain — this is the actual mountain the deposit sits inside."},
-  {"h": 52, "p": -24, "r": 2600, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 11,
-   "ground": 0.42, "section": "The ground", "title": "The orebody", "body": "Forty-six vein domains threading the ridge, drawn as the blocks they are modelled as. Above half a gram the sheets separate and the northwest structural grain of the system becomes obvious."},
+  {"h": 52, "p": -24, "r": 2600, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11,
+   "ground": 0.42, "section": "The ground", "title": "The orebody", "body": "Forty-six vein domains threading the ridge, drawn as the blocks they are modelled as. Above a gram the sheets separate and the northwest structural grain of the system becomes obvious."},
   {"h": 50, "p": -22, "r": 2100, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 12,
    "ground": 0.0, "surfaces": "veins", "section": "The deposit",
    "title": "The veins as bodies", "body": "The same domains drawn as solid geological surfaces rather than blocks \u2014 the hull of each vein, extracted face by face from the model so nothing is invented between the data points.",
@@ -294,15 +350,18 @@ CHAPTERS = [
    "ground": 0.0, "surfaces": "cores", "section": "The deposit", "title": "The high-grade core", "body": "The richest fifth of the blocks carry 78% of the metal. Raising the cut-off strips the rest away and leaves the bonanza shells that actually matter."},
   # Cumulative reveal: Measured, then +Indicated, then +Inferred, the way a
   # resource statement is actually presented rather than all at once.
-  {"h": 52, "p": -30, "r": 1900, "cut": 0.5, "xray": True, "mode": "class", "dwell": 9,
+  # The classification reveal holds one cut-off across all three so the only
+  # thing changing between them is the category. Move the cut-off here and the
+  # reveal stops being a comparison.
+  {"h": 52, "p": -30, "r": 1900, "cut": 1.0, "xray": True, "mode": "class", "dwell": 9,
    "ground": 0.0, "classes": [1], "section": "The deposit",
    "title": "Measured only",
    "body": "The part of the deposit with the most drilling behind it, on its own."},
-  {"h": 52, "p": -30, "r": 1900, "cut": 0.5, "xray": True, "mode": "class", "dwell": 9,
+  {"h": 52, "p": -30, "r": 1900, "cut": 1.0, "xray": True, "mode": "class", "dwell": 9,
    "ground": 0.0, "classes": [1, 2], "section": "The deposit",
    "title": "Measured and Indicated",
    "body": "Adding Indicated. This is the material a study would normally be built on."},
-  {"h": 52, "p": -30, "r": 1700, "cut": 0.5, "xray": True, "mode": "class", "dwell": 11,
+  {"h": 52, "p": -30, "r": 1700, "cut": 1.0, "xray": True, "mode": "class", "dwell": 11,
    "ground": 0.0, "classes": [0, 1, 2, 3], "section": "The deposit", "title": "How well is it known?", "body": "Recoloured by resource classification. Confidence is not evenly distributed through a deposit — and this is the first question any technical reader asks."},
   # Cut-off lifted to 1.0 here so the low-grade halo stops burying the traces.
   {"h": 38, "p": -24, "r": 1900, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11, "drills": True,
@@ -322,7 +381,21 @@ CHAPTERS = [
    "section": "Drilling & geometry", "title": "A section through it",
    "body": "A 90-metre slab taken north\u2013south through the middle of the deposit and viewed edge-on. Everything outside the slice is removed, so the veins read in true relationship instead of overlapping in projection \u2014 the view a geologist actually works from.",
    "pin": {"at": [693500, 5525400], "dz": 420, "text": "N\u2013S section, \u00b145 m"}},
-  {"h": 4, "p": -4, "r": 2650, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 10,
+  # A section set, not a single section. One slice proves the mechanism; a
+  # fence of them is how a geologist actually interrogates continuity, and it
+  # is what the competing decks ship. The readout re-totals per slab, so each
+  # of these reports its own contained metal rather than the whole deposit's.
+  {"h": 90, "p": -30, "r": 2700, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 10,
+   "ground": 0.0, "section3d": "ns", "sectionAt": 30,
+   "section": "Drilling & geometry", "title": "Stepping the section west",
+   "body": "The same slab moved 20% west along the deposit. The vein sheets persist across the step \u2014 continuity between sections is the thing a section set is drawn to test.",
+   "pin": {"at": [693100, 5525400], "dz": 420, "text": "N\u2013S section, west"}},
+  {"h": 0, "p": -26, "r": 2700, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 11,
+   "ground": 0.0, "section3d": "ew", "sectionAt": 50,
+   "section": "Drilling & geometry", "title": "Across the grain",
+   "body": "An east\u2013west slab, cut perpendicular to the first. The veins are sectioned across their strike here rather than along it, which is what shows their true dip and how steeply the system stands.",
+   "pin": {"at": [693500, 5525400], "dz": 420, "text": "E\u2013W section, \u00b145 m"}},
+  {"h": 4, "p": -4, "r": 2650, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 10,
    "ground": 0.0, "section": "Drilling & geometry", "title": "In profile", "body": "Turned on edge, the veins persist to roughly 475 metres below surface — and remain open at depth."},
   {"h": 44, "p": -18, "r": 1500, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 12,
    "ground": 0.0, "drills": True, "highlights": True,
@@ -447,6 +520,19 @@ HTML = r"""<!DOCTYPE html>
   .chip.on{color:#EDEEEC;border-color:rgba(255,255,255,.4)}
   .chip .sw{width:8px;height:8px;opacity:.35}
   .chip.on .sw{opacity:1}
+  /* Presenter cut-off. Sits inline with Back/Next so it reads as part of the
+     deck controls, not as a settings escapee. Goes gold when held, because a
+     presenter who has overridden the deck needs to see that they have. */
+  #pcut{display:flex;align-items:center;gap:8px;margin-right:14px;
+        padding:0 12px 0 0;border-right:1px solid rgba(255,255,255,.14)}
+  #pcut .pl{font-family:'JetBrains Mono',monospace;font-size:10px;
+            letter-spacing:.09em;text-transform:uppercase;color:#8A8F98}
+  #pcutr{width:104px;accent-color:#C99A3A}
+  #pcutv{font-family:'JetBrains Mono',monospace;font-size:11px;color:#EDEEEC;
+         min-width:58px;text-align:right}
+  #pcut.held .pl,#pcut.held #pcutv{color:#C99A3A}
+  #pcutx{margin-left:2px}
+  @media (max-width:900px){#pcut{display:none}}
   .cutrow{display:flex;align-items:center;gap:11px}
   #cut{flex:1;accent-color:#C99A3A}
   #cutv{font-family:'JetBrains Mono',monospace;font-size:11px;color:#C99A3A;min-width:56px;text-align:right}
@@ -883,6 +969,19 @@ HTML = r"""<!DOCTYPE html>
 <div id="bar">
   <div id="cap"><div class="ey" id="cap_ey">01 / 09</div><h2 id="cap_t"></h2><p id="cap_b"></p></div>
   <div id="nav">
+    <!-- Cut-off on the presenting chrome, not buried in Explore.
+         The question "what if we only mined the good stuff" gets asked out
+         loud, mid-presentation, and walking into a settings panel to answer it
+         breaks the room. Touching this holds the value across chapter changes
+         (see cutHold) so the answer survives the next slide instead of being
+         silently reset by the deck. -->
+    <div id="pcut" title="Cut-off grade — held across chapters once you move it">
+      <span class="pl">Cut-off</span>
+      <input type="range" id="pcutr" min="4" max="14" step="1" value="4"
+             aria-label="Cut-off grade">
+      <span id="pcutv">0.50 g/t</span>
+      <button id="pcutx" class="btn sm" hidden title="Return to the chapter's cut-off">Reset</button>
+    </div>
     <button id="prev" class="btn">‹ Back</button>
     <span class="count" id="count">1 / 9</span>
     <button id="next" class="btn">Next ›</button>
@@ -903,7 +1002,7 @@ HTML = r"""<!DOCTYPE html>
 <div id="intro">
   <div class="eyebrow">Orebody Present · Interactive 3D Story</div>
   <h1>Elk Gold<br>Siwash North</h1>
-  <div class="sub">A high-grade gold system in British Columbia's Cariboo District — presented in three dimensions, on real terrain.</div>
+  <div class="sub">A high-grade gold system in British Columbia's Nicola region — presented in three dimensions, on real terrain.</div>
   <button id="begin">Begin the walkthrough ▸</button>
 </div>
 <div id="offline"></div>
@@ -921,7 +1020,7 @@ const DATA="__B64__", META="__META__", N=__N__,
       ZTOP=__ZTOP__, ZBOT=__ZBOT__;
 const CHAPTERS=__CHAPTERS__, RUNS=__RUNS__, BUCKETS=__BUCKETS__, VEINS=__VEINS__,
       LADDER=__LADDER__, CLASS_LABELS=__CLASS_LABELS__, CLASS_CONFIRMED=__CLASS_CONFIRMED__,
-      PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
+      PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, REAL_CLAIMS=__REAL_CLAIMS__, CLAIMS_ATTRIB=__CLAIMS_ATTRIB__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
 proj4.defs('EPSG:26910','+proj=utm +zone=10 +datum=NAD83 +units=m +no_defs');
 const TONNES_PER_BLOCK=675;   // 10 x 5 x 5 m at 2.7 t/m3
 const GEOID=-18, rad=Cesium.Math.toRadians, $=id=>document.getElementById(id);
@@ -1991,11 +2090,28 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(siteEnts||!SITE.areas) return siteEnts;
     siteEnts=[];
     const deg=r=>r.reduce((acc,c)=>{const ll=proj4('EPSG:26910','WGS84',c);acc.push(ll[0],ll[1]);return acc;},[]);
-    (SITE.claims||[]).forEach(c=>siteEnts.push(viewer.entities.add({name:c.name,
-      polyline:{positions:Cesium.Cartesian3.fromDegreesArray(deg(c.ring)),
-        width:2.5,clampToGround:true,
-        material:new Cesium.PolylineDashMaterialProperty({
-          color:Cesium.Color.fromCssColorString('#F2C14E'),dashLength:26})}})));
+    // Claims are REAL public BC tenures, so they are drawn solid while every
+    // fabricated site feature stays dashed. The dash is the tell across this
+    // whole layer: invented geometry is dashed and captioned "conceptual",
+    // surveyed geometry is not. Do not restyle one without the other.
+    //
+    // Already WGS84, so no proj4 hop — deg() is for the UTM site features.
+    if(REAL_CLAIMS.length){
+      REAL_CLAIMS.forEach(c=>siteEnts.push(viewer.entities.add({
+        name:c.name+(c.tenure?('  ·  tenure '+c.tenure):''),
+        polyline:{positions:Cesium.Cartesian3.fromDegreesArray(c.ll),
+          width:2.5,clampToGround:true,
+          material:Cesium.Color.fromCssColorString('#F2C14E')}})));
+    } else {
+      // No tenure file baked: fall back to the fabricated ring, dashed, so the
+      // deck still draws a boundary and still tells the truth about it.
+      (SITE.claims||[]).forEach(c=>siteEnts.push(viewer.entities.add({
+        name:c.name+(SITE_SYNTHETIC?'  (conceptual)':''),
+        polyline:{positions:Cesium.Cartesian3.fromDegreesArray(deg(c.ring)),
+          width:2.5,clampToGround:true,
+          material:new Cesium.PolylineDashMaterialProperty({
+            color:Cesium.Color.fromCssColorString('#F2C14E'),dashLength:26})}})));
+    }
     (SITE.areas||[]).forEach(a=>{
       // A pit is a hole, not a painted patch. Filling it flat put a pale slab
       // over the exact ground the plan view exists to show, which is the same
@@ -2162,6 +2278,10 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // bridges the gaps between veins and the whole system merges into one mass.
   const CUT_DEFAULT=GRADE_FLOOR, CUT_DEFAULT_IDX=LADDER.indexOf(CUT_DEFAULT);
   let blocksOn=true;
+  // cutHold: the presenter has taken the cut-off off the deck's rails. Chapter
+  // navigation stops writing to it until Reset, so an answer given live to
+  // "what if we only mined above 5 grams" survives the next slide.
+  let cutHold=false;
   let mode='grade', cutIdx=CUT_DEFAULT_IDX, vein=-1, clsOn={0:true,1:true,2:true,3:true},
       cur=0, drills=false, playing=false, narrating=false, dwellTimer=null, restoring=false;
   const cutVal=()=>LADDER[cutIdx];
@@ -2514,13 +2634,36 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     $('clsleg').style.display=m==='class'?'flex':'none';
     $('veinleg').style.display=m==='vein'?'flex':'none';
   }
-  function setCut(i){cutIdx=Math.max(CUT_DEFAULT_IDX,i);i=cutIdx;$('cut').value=i;$('cutv').textContent=cutVal().toFixed(2)+' g/t';}
+  function setCut(i){cutIdx=Math.max(CUT_DEFAULT_IDX,i);i=cutIdx;$('cut').value=i;$('cutv').textContent=cutVal().toFixed(2)+' g/t';
+    // Both cut-off controls are views onto one value. Updating only the one
+    // that was touched lets Explore and the presenter bar disagree about what
+    // the model is showing, which is the same class of bug as a readout that
+    // does not match the geometry.
+    const pr=$('pcutr'); if(pr){ pr.value=i; $('pcutv').textContent=cutVal().toFixed(2)+' g/t'; }
+    const pc=$('pcut'); if(pc) pc.classList.toggle('held',cutHold);
+    const px=$('pcutx'); if(px) px.hidden=!cutHold;}
+
+  // A cut-off above the ladder must clamp to the most restrictive bin, not
+  // fall through to index 0 and reveal the entire model. A chapter that
+  // declares no cut-off at all (slide chapters) is a different case — it
+  // means "no opinion", not "hide everything", so fall back to the default.
+  function applyChapterCut(c){
+    const has=c&&c.cut!==undefined&&c.cut!==null;
+    const want=Math.max(CUT_DEFAULT,has?c.cut:CUT_DEFAULT);
+    const ci=LADDER.findIndex(v=>v>=want);
+    setCut(ci<0?LADDER.length-1:ci);
+  }
   function setDrills(on){
     drills=on;
     $('drillseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',(x.dataset.d==='1')===on));
   }
   setCut(cutIdx);
-  $('cut').oninput=e=>{setCut(+e.target.value);apply();};
+  // Moving either control counts as taking manual control of the cut-off, so
+  // a value dialled in Explore is not silently discarded on the way back to
+  // the deck.
+  $('cut').oninput=e=>{cutHold=true;setCut(+e.target.value);apply();};
+  $('pcutr').oninput=e=>{cutHold=true;setCut(+e.target.value);apply();};
+  $('pcutx').onclick=()=>{cutHold=false;applyChapterCut(CHAPTERS[cur]);apply();};
   $('modeseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{setMode(b.dataset.m);apply();});
   $('hiseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
     hiOn=b.dataset.h==='1';
@@ -2860,8 +3003,10 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     // fall through to index 0 and reveal the entire model. A chapter that
     // declares no cut-off at all (slide chapters) is a different case — it
     // means "no opinion", not "hide everything", so fall back to the default.
-    const want=Math.max(CUT_DEFAULT,(c.cut===undefined||c.cut===null)?CUT_DEFAULT:c.cut);
-    const ci=LADDER.findIndex(v=>v>=want); setCut(ci<0?LADDER.length-1:ci);
+    // Held cut-off wins over the chapter's. Refresh the control anyway so the
+    // "held" badge repaints on every chapter change — otherwise the presenter
+    // loses track of the fact that the deck is no longer driving.
+    if(cutHold) setCut(cutIdx); else applyChapterCut(c);
     setMode(c.mode||'grade');
     setDrills(assetOnly?false:!!c.drills);
     if(c.section3d && !assetOnly){
@@ -3295,6 +3440,8 @@ for k, v in {
     "__HIGHLIGHTS__": js(HIGHLIGHTS),
     "__SITE__": js(SITE),
     "__SITE_SYNTHETIC__": "true" if SITE_SYNTHETIC else "false",
+    "__REAL_CLAIMS__": js(REAL_CLAIMS),
+    "__CLAIMS_ATTRIB__": js(CLAIMS_ATTRIB),
     "__DRILL_SYNTHETIC__": "true" if DRILL_SYNTHETIC else "false",
 }.items():
     HTML = HTML.replace(k, v)

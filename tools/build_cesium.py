@@ -85,7 +85,7 @@ HTML = """<!DOCTYPE html>
 <div id="hud" class="panel">
   <div class="eyebrow">CSE · Georeferenced Model</div>
   <h1>Elk Gold<br>Siwash North</h1>
-  <div class="sub">Block model on real BC terrain<br>UTM 10N NAD83 · Cariboo, BC<br>Terrain: Esri World Elevation</div>
+  <div class="sub">Block model on real BC terrain<br>UTM 10N NAD83 · Nicola region, BC<br>Terrain: Esri World Elevation</div>
 </div>
 
 <div id="stats" class="panel">

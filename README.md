@@ -7,7 +7,7 @@ an analytical Explore mode, and export to PPTX/PDF/PNG for decks.
 
 ## Live demo
 
-Elk Gold — Siwash North (Cariboo, BC): a real Nov-2021 MineSight block model
+Elk Gold — Siwash North (Nicola region, BC — southeast of Merritt): a real Nov-2021 MineSight block model
 rendered on real Esri terrain.
 
 - **168,013 mineralized blocks** — 8,985,428 t @ 3.80 g/t AuEq = **1,097,747 oz**

@@ -115,13 +115,29 @@ provably consistent with what is drawn under every filter; nothing fabricated
 can reach the screen or an export without a label; surfaces are exterior-face
 extractions that invent no geometry between data points.
 
+**Closed since this audit was written** (it went stale; check the code before
+quoting this list):
+
+- **Cross-sections** — real clipping, not camera angles. `SECT_HALF = 45`, so a
+  90 m slab, geometry filtered to it on both `ns` and `ew` axes, and the readout
+  re-totals per slab rather than reporting the whole deposit. The deck ships a
+  three-section fence.
+- **Progressive classification reveal** — M → M+I → M+I+I across three
+  consecutive chapters, all at one cut-off so the only variable is the category.
+- **Content management** — Supabase backend is live (Aug 2026): schema, RLS,
+  `deck`/`track` edge functions, private artifacts bucket.
+
 **Still open:**
-1. **Cross-sections** — clipped N-S / E-W slices as their own slides. Their
-   Tintic deck has seven. We have camera angles, which is not the same thing.
-2. **Progressive classification reveal** — M → M+I → M+I+I across consecutive
-   slides. We have a classification colour mode but no cumulative reveal.
-3. **Geophysics raster layers** — needs survey data we do not have.
-4. **360° site photography** — needs someone to go and shoot it.
-5. **Multi-deposit decks** — structure supports it, data does not.
-6. **Synced multi-device sessions** — needs a realtime backend.
-7. **Content management** — needs auth and storage.
+1. **Geophysics raster layers** — a fabricated TMI/RTP/1VD set now exists
+   (`tools/make_synthetic_geophysics.py`) but is NOT wired into the viewer.
+   Wiring it means joining all five fabricated-data paths, not just drawing it.
+2. **360° site photography** — needs someone to go and shoot it.
+3. **Multi-deposit decks** — structure supports it, data does not.
+4. **Synced multi-device sessions** — needs a realtime backend.
+
+**A note for whoever adds a fabricated layer next.** Drawing it is the small
+part. It must also reach: the on-screen banner (`syncSynWarn`), the export
+burn-in, the exported-image caption, the audit text, and the embed-snippet
+disclosure. Five places. The banner logic already caused one bug by living in
+two of them — geometry on screen with the warning switched off. Add the layer to
+every path or do not add it.
