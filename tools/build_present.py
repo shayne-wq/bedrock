@@ -240,6 +240,23 @@ VGROUP_NAMES = [VEINS[v] for v in TOP_VEINS] + ["other (%d)" % (len(VEINS) - len
 
 HOLES, DRILL_MAN = load_drills()
 
+# Headline intercepts — grade x length, which is how a drill release ranks them.
+_int = []
+for _h in HOLES:
+    for _s in _h["segs"]:
+        _len = _s["t"] - _s["f"]
+        if _s["g"] >= 0.5 and _len >= 3:
+            _int.append({"id": _h["id"], "g": _s["g"], "len": round(_len, 1),
+                         "at": _s["mid"], "score": _s["g"] * _len})
+_int.sort(key=lambda d: -d["score"])
+HIGHLIGHTS = []
+for _d in _int:                      # at most two headline hits per hole
+    if sum(1 for h in HIGHLIGHTS if h["id"] == _d["id"]) >= 2:
+        continue
+    HIGHLIGHTS.append(_d)
+    if len(HIGHLIGHTS) >= 10:
+        break
+
 _site_p = DRILLDIR / "SYNTHETIC_site_features.json"
 SITE = json.loads(_site_p.read_text()) if _site_p.exists() else {}
 SITE_SYNTHETIC = bool(SITE.get("synthetic", True)) if SITE else False
@@ -277,6 +294,9 @@ CHAPTERS = [
    "ground": 1.0, "title": "Footprint in plan", "body": "Seen from directly above: northwest-trending vein corridors threading across the ridge."},
   {"h": 4, "p": -4, "r": 2650, "cut": 0.3, "xray": True, "mode": "grade", "dwell": 10,
    "ground": 0.0, "title": "In profile", "body": "Turned on edge, the veins persist to roughly 475 metres below surface — and remain open at depth."},
+  {"h": 44, "p": -18, "r": 1500, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 12,
+   "ground": 0.0, "drills": True, "highlights": True,
+   "title": "The intercepts behind it", "body": "The headline hits, each labelled where it sits in three dimensions \u2014 the drill-release table, put back in the ground it came out of."},
   {"h": 26, "p": -27, "r": 3000, "cut": 0.15, "xray": True, "mode": "grade", "dwell": 10,
    "ground": 0.0, "title": "Explore it yourself", "body": "Forty-six vein domains, each one isolatable, each with its own grade and tonnage. Open Explore and interrogate the model directly."},
   {"h": 30, "p": -26, "r": 3200, "dwell": 11, "ground": 1.0, "slide": {
@@ -518,6 +538,12 @@ HTML = r"""<!DOCTYPE html>
     <button data-f="0">Shown</button>
   </div>
 
+  <h3>Intercept highlights</h3>
+  <div class="seg" id="hiseg">
+    <button data-h="0" class="on">Hidden</button>
+    <button data-h="1">Shown</button>
+  </div>
+
   <h3>Mine plan timeline</h3>
   <div class="cutrow"><input type="range" id="stage" min="-1" max="3" step="1" value="-1"><span id="stagev" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#C99A3A;min-width:96px;text-align:right">none</span></div>
 
@@ -636,7 +662,7 @@ const DATA="__B64__", META="__META__", N=__N__,
       ZTOP=__ZTOP__, ZBOT=__ZBOT__;
 const CHAPTERS=__CHAPTERS__, RUNS=__RUNS__, BUCKETS=__BUCKETS__, VEINS=__VEINS__,
       LADDER=__LADDER__, CLASS_LABELS=__CLASS_LABELS__, CLASS_CONFIRMED=__CLASS_CONFIRMED__,
-      THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
+      THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
 proj4.defs('EPSG:26910','+proj=utm +zone=10 +datum=NAD83 +units=m +no_defs');
 const GEOID=-18, rad=Cesium.Math.toRadians, $=id=>document.getElementById(id);
 const setStat=t=>$('status').textContent=t;
@@ -802,7 +828,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // depthFailMaterial, so a hole stays legible as a ghost where it passes
   // behind blocks. Without it the traces vanish inside the ore halo, which is
   // exactly where they matter most.
-  let drillEnts=null;
+  let drillEnts=null, hiEnts=null, hiOn=false;
   function buildDrills(){
     if(drillEnts||!HOLES.length) return drillEnts;
     drillEnts=[];
@@ -812,7 +838,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     // block model. Lines of any width stay flat and get lost.
     const tube=(r,n)=>{const s=[];for(let i=0;i<n;i++){const a=2*Math.PI*i/n;
       s.push(new Cesium.Cartesian2(r*Math.cos(a),r*Math.sin(a)));}return s;};
-    const ROD=tube(1.6,8), ORE=tube(4.2,10);
+    const ROD=tube(1.1,6);
     const P=(p_)=>toCart(p_[0],p_[1],EXAG===1?p_[2]:(CZ+(p_[2]-CZ)*EXAG));
     HOLES.forEach(h=>{
       drillEnts.push(viewer.entities.add({polylineVolume:{
@@ -821,9 +847,12 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         outline:false}}));
       h.segs.forEach(s=>{ if(s.g<0.1) return;
         const col=depthShade(ramp(s.g,false),s.d||0);
-        // assayed interval as a fat rod
-        drillEnts.push(viewer.entities.add({polylineVolume:{
-          positions:[P(s.a),P(s.b)], shape:ORE, material:col}}));
+        // Assayed intervals as beads strung on the trace rather than fat rods:
+        // a bead reads as a discrete sample and does not occlude the blocks
+        // behind it, which is how every drill section is drawn.
+        const r=Math.min(9,2.4+Math.sqrt(s.g)*1.6);
+        drillEnts.push(viewer.entities.add({position:P(s.mid),
+          ellipsoid:{radii:new Cesium.Cartesian3(r,r,r),material:col}}));
         // and the grade bar out the side, length scaled by assay
         drillEnts.push(viewer.entities.add({polyline:{
           positions:[P(s.mid),P(s.bar)], width:3, material:col,
@@ -836,12 +865,53 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         label:{text:h.id,font:'500 11px monospace',fillColor:Cesium.Color.WHITE.withAlpha(.85),
                showBackground:true,backgroundColor:new Cesium.Color(0.03,0.04,0.04,0.72),
                pixelOffset:new Cesium.Cartesian2(0,-16),scale:0.9,
-               distanceDisplayCondition:new Cesium.DistanceDisplayCondition(0,2200),
+               // Forty collar tags at once is noise. Show them only close in,
+               // and stand down entirely when the intercept callouts are up —
+               // those carry the hole id already.
+               distanceDisplayCondition:new Cesium.DistanceDisplayCondition(0,1300),
                disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
     });
     return drillEnts;
   }
-  const showDrills=on=>{ if(drillEnts) drillEnts.forEach(e=>e.show=on); };
+  const showDrills=on=>{ if(drillEnts) drillEnts.forEach(e=>{
+    e.show = on && !(hiOn && e.label);   // collar tags off while callouts are up
+  }); };
+
+  // Headline intercepts: hole id over the assay, on a leader line back to a
+  // marker at the intercept. This is the shape of every drill-results release,
+  // and it is the one view a mining audience reads without being taught.
+  hiEnts=null;
+  function buildHighlights(){
+    if(hiEnts||!HIGHLIGHTS.length) return hiEnts;
+    hiEnts=[];
+    const zf=z=>EXAG===1?z:(CZ+(z-CZ)*EXAG);
+    HIGHLIGHTS.forEach((d,i)=>{
+      const ll=proj4('EPSG:26910','WGS84',[d.at[0],d.at[1]]);
+      const at=Cesium.Cartesian3.fromDegrees(ll[0],ll[1],zf(d.at[2])+GEOID);
+      const side=i%2?1:-1, tier=Math.floor(i/2);
+      const off=proj4('EPSG:26910','WGS84',
+        [d.at[0]+side*(430+tier*70), d.at[1]-tier*130]);
+      const lab=Cesium.Cartesian3.fromDegrees(off[0],off[1],
+        zf(d.at[2])+GEOID+150+tier*45);
+      hiEnts.push(viewer.entities.add({polyline:{positions:[at,lab],width:1.2,
+        arcType:Cesium.ArcType.NONE,material:Cesium.Color.WHITE.withAlpha(.62)}}));
+      hiEnts.push(viewer.entities.add({position:at,
+        point:{pixelSize:9,color:Cesium.Color.fromCssColorString('#E8433C'),
+               outlineColor:Cesium.Color.WHITE.withAlpha(.85),outlineWidth:1.5,
+               disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+      hiEnts.push(viewer.entities.add({position:lab,
+        label:{text:d.id+(DRILL_SYNTHETIC?'  (synthetic)':'')+'\n'+
+                    d.g.toFixed(2)+' g/t Au over '+d.len+'m',
+          font:'500 13px Archivo, system-ui, sans-serif',
+          fillColor:Cesium.Color.WHITE,showBackground:true,
+          backgroundColor:new Cesium.Color(0.10,0.11,0.12,0.92),
+          backgroundPadding:new Cesium.Cartesian2(11,8),
+          horizontalOrigin:side>0?Cesium.HorizontalOrigin.LEFT:Cesium.HorizontalOrigin.RIGHT,
+          disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+    });
+    return hiEnts;
+  }
+  const showHi=on=>{ if(on) buildHighlights(); if(hiEnts) hiEnts.forEach(e=>e.show=on); };
 
   // ---- site features: claims, infrastructure, roads, labels ----
   // Clamped to terrain rather than floated at a guessed elevation, so they sit
@@ -1034,6 +1104,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       delete veinPrims[v]; } });
     if(drills) buildDrills();
     showDrills(drills);
+    showHi(hiOn&&drills);
     showDepth(depthOn);
     showSite(siteOn);
     syncWarn();
@@ -1235,6 +1306,11 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   setCut(cutIdx);
   $('cut').oninput=e=>{setCut(+e.target.value);apply();};
   $('modeseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{setMode(b.dataset.m);apply();});
+  $('hiseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    hiOn=b.dataset.h==='1';
+    $('hiseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    if(hiOn&&!drills) setDrills(true);
+    apply();});
   $('stage').max=String(STAGES.length-1);
   $('stage').oninput=e=>showStage(+e.target.value);
   $('siteseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
@@ -1278,6 +1354,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     Object.keys(veinPrims).forEach(v=>{ veinPrims[v].forEach(g=>viewer.scene.primitives.remove(g.prim));
       delete veinPrims[v]; });
     if(drillEnts){ drillEnts.forEach(e=>viewer.entities.remove(e)); drillEnts=null; }
+    if(hiEnts){ hiEnts.forEach(e=>viewer.entities.remove(e)); hiEnts=null; }
     if(depthEnts){ depthEnts.forEach(e=>viewer.entities.remove(e)); depthEnts=null; }
     // These bake EXAG into static Cartesians at build time, so they detach from
     // the stretched terrain unless they are rebuilt too.
@@ -1404,6 +1481,9 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     const ci=LADDER.findIndex(v=>v>=want); setCut(ci<0?LADDER.length-1:ci);
     setMode(c.mode||'grade');
     setDrills(!!c.drills);
+    hiOn=!!c.highlights;
+    $('hiseg').querySelectorAll('button').forEach(x=>
+      x.classList.toggle('on',(x.dataset.h==='1')===hiOn));
     vein=-1; vsel.value='-1';
     Object.keys(clsOn).forEach(k=>{clsOn[k]=true;});
     chips.querySelectorAll('.chip').forEach(el=>el.classList.add('on'));
@@ -1767,6 +1847,7 @@ for k, v in {
     "__CLASS_LABELS__": js(CLASS_LABELS),
     "__CLASS_CONFIRMED__": "true" if stats.get("class_mapping_confirmed") else "false",
     "__HOLES__": js(HOLES),
+    "__HIGHLIGHTS__": js(HIGHLIGHTS),
     "__SITE__": js(SITE),
     "__SITE_SYNTHETIC__": "true" if SITE_SYNTHETIC else "false",
     "__DRILL_SYNTHETIC__": "true" if DRILL_SYNTHETIC else "false",
