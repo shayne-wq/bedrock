@@ -23,12 +23,14 @@ rendered on real Esri terrain.
 
 ## Features
 
-**Presenting** — 11-chapter deck mixing corporate slides with live 3D scenes ·
+**Presenting** — 15-chapter deck in five named sections, mixing corporate slides,
+analytical charts and live 3D scenes ·
 thumbnail slide navigator · autoplay with per-chapter dwell · speech-synthesis
 narration · live freehand annotation over the 3D view · deep-linkable state ·
 embed mode · export to PNG / PPTX / PDF · offline via service worker.
 
-**The model** — discrete opaque grade shells · colour by grade, resource class
+**The model** — discrete opaque grade shells · vein domains as watertight
+geological surfaces · colour-pop property masking · colour by grade, resource class
 or vein domain · cut-off ladder · isolation of any of the 46 vein domains with
 exact share-weighted grade-tonnage · labelled depth grid · vertical
 exaggeration · ground cut-away over the deposit.
@@ -36,7 +38,7 @@ exaggeration · ground cut-away over the deposit.
 **The site** — drill traces as rods with grade bars and collar labels · claim
 boundary · conceptual pit, waste rock facility, heap leach pad and haul road ·
 named labels on leader lines · mine-plan timeline of stepped pit stages ·
-ground-level site view.
+ground-level site view · pinned scene captions.
 
 ## Build
 
@@ -44,6 +46,7 @@ ground-level site view.
 python3 tools/extract_blocks.py [path/to/source_BM.csv]   # → data/*.csv, data/*.json
 python3 tools/make_synthetic_drills.py 40                 # → data/synthetic/  (demo only)
 python3 tools/make_synthetic_site.py                      # → data/synthetic/  (demo only)
+python3 tools/extract_surfaces.py 8                       # → data/elk_surfaces.json
 python3 tools/build_present.py                            # → index.html + sw.js
 python3 tools/capture_thumbs.py                           # → tools/assets/thumbs.json
 python3 tools/build_present.py                            # again, to embed them
@@ -134,6 +137,18 @@ Not built, because each needs infrastructure this static build does not have:
 management** (needs auth + storage), and **true 360° site photography** (needs
 someone to go and shoot it — the ground-level view renders real terrain
 instead, which is honest but is not the same thing).
+
+### Vein surfaces
+
+`extract_surfaces.py` turns each domain's blocks into a watertight triangle hull
+by exterior-face extraction — a face is on the hull exactly when the neighbouring
+cell is absent. This is deliberately not marching cubes: an interpolated
+isosurface would invent geometry between the data points, and this tool's whole
+claim is that it does not embellish. The result is faceted at block scale, which
+is honest — that is the resolution of the data. Greedy meshing merges coplanar
+faces into maximal rectangles, cutting 261,800 triangles to 86,208 and 8.0 MB to
+2.3 MB. It is fetched lazily and cached by the service worker rather than
+inlined, so it stays off the critical path.
 
 Next: real drill and survey data, multi-deposit projects, a hosted embed
 service, and section-plane slicing.
