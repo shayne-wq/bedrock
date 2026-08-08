@@ -364,6 +364,11 @@
              border-top:2px solid #D9584A;font-family:'JetBrains Mono',monospace;
              font-size:11px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
 
+  #loadwhy{margin-top:14px;font-family:'JetBrains Mono',monospace;font-size:11px;
+           letter-spacing:.06em;color:#8C948C;max-width:min(560px,86vw);line-height:1.6}
+  #loadact{margin-top:16px;display:none;gap:8px;justify-content:center;flex-wrap:wrap}
+  #loadact.on{display:flex}
+
   #compass{position:fixed;right:40px;bottom:118px;z-index:6;width:52px;height:52px;opacity:.75}
   #scalebar{position:fixed;right:34px;bottom:86px;z-index:6;text-align:right;opacity:.75}
   #scalebar .l{height:3px;background:#EDEEEC;margin-left:auto;border-left:1px solid #EDEEEC;border-right:1px solid #EDEEEC}
@@ -465,7 +470,9 @@
 </head>
 <body>
 <div id="cesiumContainer"></div>
-<div id="load">PREPARING PRESENTATION…</div>
+<div id="load">PREPARING PRESENTATION…<div id="loadwhy"></div>
+  <div id="loadact"><button class="btn sm" id="loadtext">Read it as text instead</button>
+  <button class="btn sm" id="loadcopy">Copy diagnostics</button></div></div>
 <div id="prog"></div><div id="dwell"></div>
 <div id="toast"></div>
 
@@ -913,6 +920,24 @@ let BOOT_PHASE='loading libraries';
 // buildDataMode reads it to explain itself; ?data=1 leaves it null, because
 // that is a deliberate choice rather than a failure.
 let TEXT_FALLBACK=null;
+
+// Nothing in boot may wait forever.
+//
+// There were six unbounded awaits here — a 3.7 MB model fetch and two calls to
+// external ArcGIS services among them — and not one timeout. A try/catch
+// around an await handles a REJECTION; it does nothing for a HANG. A hung boot
+// shows no error, reaches no fallback, and sits on "PREPARING PRESENTATION…"
+// indefinitely, which from the outside is indistinguishable from a page that
+// simply does not work. On a phone with a weak connection that is the most
+// likely failure of all, and it was the one failure this file could not report.
+function withTimeout(promise, ms, what){
+  let t;
+  return Promise.race([
+    promise.finally(()=>clearTimeout(t)),
+    new Promise((_,rej)=>{ t=setTimeout(()=>rej(
+      new Error(what+' took longer than '+Math.round(ms/1000)+' seconds')), ms); }),
+  ]);
+}
 const bootPhase=p=>{ BOOT_PHASE=p; };
 const QS=new URLSearchParams(location.search);
 const EMBED=QS.has('embed');
@@ -1211,7 +1236,7 @@ async function hydrate(token){
     const u=API+'/deck?t='+encodeURIComponent(token)+
             (passcode?'&passcode='+encodeURIComponent(passcode):'')+
             (EMBED?'&embed=1':'');
-    const r=await fetch(u,{credentials:'omit'});
+    const r=await withTimeout(fetch(u,{credentials:'omit'}),20000,'opening the deck');
     const body=await r.json().catch(()=>({}));
     if(r.ok){ payload=body; break; }
     if(r.status===401&&body.needs_passcode){
@@ -1434,7 +1459,7 @@ async function loadSideArtifacts(assets){
     const a=(assets||[]).find(x=>x.kind===kind&&x.url);
     if(!a) return null;
     try{
-      const r=await fetch(a.url);
+      const r=await withTimeout(fetch(a.url),30000,'the '+kind+' data');
       if(!r.ok) throw new Error('HTTP '+r.status);
       const j=await r.json();
       return {json:j, asset:a};
@@ -1503,9 +1528,13 @@ async function bootData(){
   if(!t){
     bootPhase('downloading the block model');
     setStat('loading block model…');
-    const buf=await fetch('data/elk_blocks.bin').then(r=>{
-      if(!r.ok) throw new Error('the block model could not be downloaded ('+r.status+')');
-      return r.arrayBuffer(); });
+    // Generous: 3.7 MB over a poor cellular link is legitimately slow. But
+    // bounded, because "slow" and "never" have to be distinguishable.
+    const buf=await withTimeout(
+      fetch('data/elk_blocks.bin').then(r=>{
+        if(!r.ok) throw new Error('the block model could not be downloaded ('+r.status+')');
+        return r.arrayBuffer(); }),
+      60000, 'downloading the block model');
     const cols=unpackOreb(buf);
     if(cols.n!==N) throw new Error('block model has '+cols.n+' blocks, expected '+N);
     // Interleaved into F because everything downstream indexes it that way,
@@ -1597,7 +1626,49 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // Section state, for the same reason: readout() consults it on every call.
   let sectAxis=null, sectPos=0, sectStat=null;
 
+// Everything anyone needs to tell us why a deck did not open, in one tap.
+// Reading a stack off a phone screen and retyping it is why three reports in a
+// row arrived without one.
+function diagnostics(extra){
+  return ['Orebody diagnostics',
+    'phase: '+BOOT_PHASE,
+    'url: '+location.href,
+    'ua: '+navigator.userAgent,
+    'screen: '+screen.width+'x'+screen.height+' @'+(window.devicePixelRatio||1)+'x',
+    'online: '+navigator.onLine,
+    'memory: '+(navigator.deviceMemory||'unknown')+' GB',
+    'webgl2: '+(()=>{try{return !!document.createElement('canvas').getContext('webgl2');}
+                     catch(e){return 'threw';}})(),
+    extra||''].join('\n');
+}
+
 (async()=>{
+  // A boot that hangs is the one failure this file could not report: no error,
+  // no fallback, and "PREPARING PRESENTATION…" forever. Every await is now
+  // bounded, but a watchdog covers whatever is not — and it names the phase,
+  // which is what turns "it doesn't load" into something actionable.
+  let booted=false;
+  const watchdog=setTimeout(()=>{
+    if(booted) return;
+    const why=$('loadwhy'), act=$('loadact');
+    if(why) why.textContent='Still working on: '+BOOT_PHASE+
+      '. On a slow connection the model can take a while — or something is stuck.';
+    if(act) act.classList.add('on');
+  },20000);
+  const stopWatchdog=()=>{ booted=true; clearTimeout(watchdog); };
+  try{
+    $('loadtext').onclick=()=>{ stopWatchdog();
+      TEXT_FALLBACK='You chose the text version while the 3D was still loading';
+      try{ $('load').style.display='none'; $('intro').style.display='none'; }catch(e){}
+      setDataMode(true); const t=$('datatoggle'); if(t) t.textContent='3D'; };
+    $('loadcopy').onclick=()=>{
+      const d=diagnostics();
+      navigator.clipboard?.writeText(d).then(
+        ()=>toast('Diagnostics copied — paste them to whoever sent you this'),
+        ()=>{ const w=$('loadwhy'); if(w) w.textContent=d; });
+    };
+  }catch(e){}
+
   // Before anything is built. A hydrated deck replaces the model, the extents,
   // the rollups and the chapters, and every line below reads those.
   bootPhase('loading the block model');
@@ -1639,10 +1710,16 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
 
   bootPhase('contacting terrain and imagery services');
   let imagery, terrain;
-  try{ imagery=await Cesium.ArcGisMapServerImageryProvider.fromUrl('https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer'); }
-  catch(e){ imagery=new Cesium.UrlTemplateImageryProvider({url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',maximumLevel:19,credit:'© OpenStreetMap'}); }
-  try{ terrain=await Cesium.ArcGISTiledElevationTerrainProvider.fromUrl('https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer'); }
-  catch(e){ terrain=new Cesium.EllipsoidTerrainProvider(); }
+  // Both of these reach a third-party service, and both already had a
+  // fallback for failure — but only for a REJECTION. Timed out, the fallback
+  // is reachable when the service simply never answers, which is what a
+  // captive portal or a saturated mobile link actually does.
+  try{ imagery=await withTimeout(Cesium.ArcGisMapServerImageryProvider.fromUrl('https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer'),12000,'satellite imagery'); }
+  catch(e){ console.warn('Orebody: falling back to OpenStreetMap tiles',e);
+    imagery=new Cesium.UrlTemplateImageryProvider({url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',maximumLevel:19,credit:'© OpenStreetMap'}); }
+  try{ terrain=await withTimeout(Cesium.ArcGISTiledElevationTerrainProvider.fromUrl('https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer'),12000,'terrain'); }
+  catch(e){ console.warn('Orebody: falling back to flat terrain',e);
+    terrain=new Cesium.EllipsoidTerrainProvider(); }
 
   // Each attempt asks for less than the last. What costs memory in a WebGL
   // context is the drawing buffer, and on a 3x phone screen that is ~3 Mpx —
@@ -2142,7 +2219,9 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     const tb=document.createElement('tbody');
     Object.keys(PROV.by_class).forEach(k=>{
       const s=statsAbove(GRADE_FLOOR,{classes:[+k]});
-      if(!s.tonnes) return;
+      // Omitted rather than zeroed: "0 t" is a measurement claim, and when
+      // known is false none has been made.
+      if(!s.known||!s.tonnes) return;
       const tr=document.createElement('tr');
       [CLASS_LABELS[k], Math.round(s.tonnes).toLocaleString()+' t',
        s.grade.toFixed(2)+' g/t', Math.round(s.oz).toLocaleString()+' oz']
@@ -2443,6 +2522,17 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // a couple of milliseconds and it means the economics are exact rather than
   // snapped to the nearest step.
   function statsAbove(cut, opts){
+    // F is null until the model has downloaded, and the text edition can be
+    // reached before that — from the boot watchdog, when the download is what
+    // is stuck. Scanning a null array threw and took the whole text edition
+    // down, which is a poor way for the escape hatch to behave.
+    // Same SHAPE, zeroed, plus a flag — rather than null. Returning null meant
+    // every one of the several call sites had to remember to check, and the
+    // one that forgot took the text edition down with "cannot read 'tonnes' of
+    // null". `known:false` lets a caller distinguish "nothing above the
+    // cut-off" from "we cannot say yet", which is a distinction this tool
+    // cares about more than most.
+    if(!F||!N) return {blocks:0, tonnes:0, grade:0, oz:0, metal_g:0, known:false};
     opts=opts||{};
     const useCls=opts.classes||null;
     let n=0,t=0,m=0;
@@ -5348,6 +5438,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       toast('The opening view failed — use the chapter list',7000);
     }
   }
+  stopWatchdog();
   $('load').style.display='none';
   $('begin').onclick=()=>{$('intro').style.opacity='0';setTimeout(()=>$('intro').style.display='none',800);
     frameFor(CHAPTERS[0],true); if(EMBED&&EMBED_AUTOPLAY&&!REDUCED) play();};
@@ -5401,10 +5492,16 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   try{
     const pre=document.createElement('pre');
     pre.id='bootstack';
-    pre.textContent='phase: '+BOOT_PHASE+'\n'+msg+'\n\n'+
-                    ((e&&e.stack)||'(no stack)')+'\n\n'+
-                    navigator.userAgent;
+    pre.textContent=diagnostics(msg+'\n\n'+((e&&e.stack)||'(no stack)'));
     document.body.appendChild(pre);
+    // One tap beats retyping a stack off a phone.
+    const btn=document.createElement('button');
+    btn.textContent='Copy diagnostics';
+    btn.style.cssText='position:fixed;right:14px;bottom:14px;z-index:100;'+
+      'font:600 12px system-ui;padding:10px 14px;border-radius:5px;border:0;'+
+      'background:#C99A3A;color:#07090A';
+    btn.onclick=()=>navigator.clipboard?.writeText(pre.textContent);
+    document.body.appendChild(btn);
   }catch(_){}
 });
 </script>
