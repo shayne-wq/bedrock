@@ -8,7 +8,7 @@ import {
   db, state, CONFIGURED, $, esc, fmtT, fmtOz, fmtInt, fmtDate, slugify,
   toast, fail, modal, closeModal, skeleton, wire,
 } from "./lib/ui.js";
-import { ingestWizard } from "./ingest.js";
+import { ingestWizard, uploadAux } from "./ingest.js";
 import { renderDeck } from "./deck.js";
 
 const view = $("view");
@@ -222,7 +222,8 @@ function renderFirstOrg() {
 function newProject() {
   modal(`
     <h2>New project</h2>
-    <p class="sub">One deposit per project.</p>
+    <p class="sub">A project holds one or more zones — add the first after it
+       is created.</p>
     <div class="field"><label for="pn">Name</label>
       <input type="text" id="pn" placeholder="Siwash North"></div>
     <div class="grid two">
@@ -273,68 +274,95 @@ async function renderProject(id) {
     return;
   }
 
-  const [{ data: datasets }, { data: decks }] = await Promise.all([
+  const [{ data: zones }, { data: datasets }, { data: decks }] = await Promise.all([
+    db.from("zones").select("*").eq("project_id", id)
+      .order("ord").order("created_at"),
     db.from("datasets").select("*").eq("project_id", id).order("created_at"),
     db.from("decks").select("id, title, status, updated_at, chapters(id)")
       .eq("project_id", id).order("updated_at", { ascending: false }),
   ]);
 
-  const blocks = (datasets || []).find((d) => d.kind === "blocks");
-  const st = blocks?.stats?.total;
+  const zs = zones || [];
+  const dsByZone = {};
+  (datasets || []).forEach((d) => { (dsByZone[d.zone_id] ||= []).push(d); });
+  const zoneKind = (z, k) => (dsByZone[z.id] || []).find((d) => d.kind === k);
+  const zonesWithBlocks = zs.filter((z) => zoneKind(z, "blocks"));
   const fabricated = (datasets || []).filter((d) => d.synthetic);
+
+  // Project totals sum every zone's block model. Grade is tonnage-weighted —
+  // backed out of the summed ounces and tonnes — so a small high-grade zone
+  // does not drag the headline the way a plain average of grades would.
+  let T = 0, OZ = 0, B = 0;
+  zonesWithBlocks.forEach((z) => {
+    const s = zoneKind(z, "blocks").stats?.total;
+    if (s) { T += s.tonnes || 0; OZ += s.oz || 0; B += s.blocks || 0; }
+  });
+  const grade = T ? (OZ * 31.10348) / T : 0;
+
+  const KINDS = [
+    { key: "blocks", label: "Block model", req: true },
+    { key: "drills", label: "Drill holes" },
+    { key: "surfaces", label: "Surfaces" },
+    { key: "site", label: "Property & claims" },
+    { key: "geophysics", label: "Geophysics" },
+  ];
+  const slot = (z, k) => {
+    const ds = zoneKind(z, k.key);
+    return `<div class="slot ${ds ? "on" : ""}">
+      <span class="k">${k.label}${k.req ? " *" : ""}</span>
+      ${ds ? `<span class="chip ${ds.synthetic ? "warn" : "live"}">${ds.synthetic ? "Fabricated" : "Loaded"}</span>
+        <button class="btn sm" data-load="${k.key}" data-zone="${z.id}">Replace</button>
+        <button class="btn sm danger" data-del="${ds.id}">Remove</button>`
+       : `<button class="btn sm ${k.req ? "primary" : ""}" data-load="${k.key}" data-zone="${z.id}">${k.req ? "Load" : "Add"}</button>`}
+    </div>`;
+  };
 
   view.innerHTML = `
     <header class="page"><div class="row">
       <div class="grow">
         <span class="eyebrow"><a href="#/">Projects</a> / ${esc(p.commodity || "Project")}</span>
         <h1>${esc(p.name)}</h1>
-        <p>${esc(p.location || "No location set")} · EPSG ${p.epsg}</p>
+        <p>${esc(p.location || "No location set")} · EPSG ${p.epsg}
+           · ${zs.length} zone${zs.length === 1 ? "" : "s"}</p>
       </div>
-      <button class="btn primary" id="newdeck" ${blocks ? "" : "disabled"}>New deck</button>
+      <button class="btn primary" id="newdeck" ${zonesWithBlocks.length ? "" : "disabled"}>New deck</button>
     </div></header>
 
     ${fabricated.length ? `<div class="note warn" style="margin-bottom:16px">
       <b>This project contains fabricated data.</b>
-      ${esc(fabricated.map((d) => d.kind).join(", "))} —
+      ${esc([...new Set(fabricated.map((d) => d.kind))].join(", "))} —
       ${esc(fabricated[0].synthetic_note || "not real")}.
       Every deck built from it carries the warning on screen and in exports.
     </div>` : ""}
 
-    ${st ? `<div class="panel"><div class="grid three">
-      <div class="stat"><span class="l">Tonnage</span><b>${fmtT(st.tonnes)}</b>
-        <span class="sub">${fmtInt(st.blocks)} blocks above cut-off</span></div>
-      <div class="stat"><span class="l">Grade</span><b>${st.grade_gt} g/t</b>
-        <span class="sub">${blocks.stats.share_weighted
-          ? "domains share-weighted" : "single domain column"}</span></div>
-      <div class="stat"><span class="l">Contained metal</span><b>${fmtOz(st.oz)}</b>
-        <span class="sub">${(blocks.stats.veins || []).length} domains</span></div>
+    ${T ? `<div class="panel"><div class="grid three">
+      <div class="stat"><span class="l">Tonnage</span><b>${fmtT(T)}</b>
+        <span class="sub">${fmtInt(B)} blocks · ${zonesWithBlocks.length} zone${zonesWithBlocks.length === 1 ? "" : "s"}</span></div>
+      <div class="stat"><span class="l">Grade</span><b>${grade.toFixed(2)} g/t</b>
+        <span class="sub">tonnage-weighted across zones</span></div>
+      <div class="stat"><span class="l">Contained metal</span><b>${fmtOz(OZ)}</b>
+        <span class="sub">summed over all zones</span></div>
     </div></div>` : ""}
 
     <div class="panel">
-      <h2>Block model ${blocks ? `<span class="chip live">Loaded</span>` : ""}</h2>
-      ${blocks ? `
-        <div class="tablewrap"><table>
-          <thead><tr><th>Artifact</th><th class="n">Rows read</th><th class="n">Blocks</th>
-            <th class="n">Size</th><th class="n">Added</th><th></th></tr></thead>
-          <tbody>${datasets.map((d) => `<tr>
-            <td>${esc(d.label || d.kind)}
-              ${d.synthetic ? `<span class="chip warn">Fabricated</span>` : ""}</td>
-            <td class="n mono">${fmtInt(d.stats?.scanned_rows || 0)}</td>
-            <td class="n mono">${fmtInt(d.stats?.total?.blocks || 0)}</td>
-            <td class="n mono">${((d.bytes || 0) / 1e6).toFixed(1)} MB</td>
-            <td class="n mono">${fmtDate(d.created_at)}</td>
-            <td class="n"><button class="btn sm danger" data-del="${d.id}">Remove</button></td>
-          </tr>`).join("")}</tbody>
-        </table></div>
-        <div class="row-actions" style="margin-top:14px">
-          <button class="btn" id="reingest">Replace block model</button>
-        </div>` : `
+      <div class="row"><h2 class="grow">Zones</h2>
+        <button class="btn" id="addzone">Add zone</button></div>
+      ${zs.length ? zs.map((z) => {
+        const s = zoneKind(z, "blocks")?.stats?.total;
+        return `<div class="zone">
+          <div class="row"><div class="grow"><b>${esc(z.name)}</b>
+            ${s ? `<span class="zsub">${fmtT(s.tonnes)} · ${s.grade_gt} g/t · ${fmtOz(s.oz)}</span>`
+                : `<span class="zsub">No block model yet — load one to include this zone in a deck</span>`}</div>
+            <button class="btn sm danger" data-delzone="${z.id}">Delete zone</button></div>
+          <div class="slots">${KINDS.map((k) => slot(z, k)).join("")}</div>
+        </div>`;
+      }).join("") : `
         <div class="empty">
-          <h3>No block model yet</h3>
-          <p>Point the console at your block-model export. It is read here in
-             your browser — the file itself never leaves this machine, only the
-             few megabytes of geometry and rollups a deck needs.</p>
-          <button class="btn primary" id="ingest">Load a block model</button>
+          <h3>No zones yet</h3>
+          <p>A zone is one deposit. Add your first, then load its block model —
+             read in this browser, the file itself never leaves your machine —
+             plus any drills, surfaces, property boundaries or geophysics.</p>
+          <button class="btn primary" id="addzone2">Add the first zone</button>
         </div>`}
     </div>
 
@@ -343,9 +371,9 @@ async function renderProject(id) {
       ${!decks?.length ? `
         <div class="empty">
           <h3>No decks yet</h3>
-          <p>${blocks ? "A deck is the walkthrough you present, share and embed."
-                      : "Load a block model first — a deck has nothing to show without one."}</p>
-          ${blocks ? `<button class="btn primary" id="newdeck2">Create a deck</button>` : ""}
+          <p>${zonesWithBlocks.length ? "A deck is the walkthrough you present, share and embed — one deck flies across every zone in this project."
+                      : "Load a block model into at least one zone first — a deck has nothing to show without one."}</p>
+          ${zonesWithBlocks.length ? `<button class="btn primary" id="newdeck2">Create a deck</button>` : ""}
         </div>` : `
         <div class="tablewrap"><table>
           <thead><tr><th>Deck</th><th>Status</th><th class="n">Chapters</th>
@@ -363,20 +391,80 @@ async function renderProject(id) {
   wire(view);
   view.querySelectorAll("[data-del]").forEach((b) => {
     b.onclick = async () => {
-      if (!confirm("Remove this artifact? Decks built on it will stop rendering.")) return;
+      if (!confirm("Remove this dataset? Decks that use it will stop rendering it.")) return;
       const { error: e2 } = await db.from("datasets").delete().eq("id", b.dataset.del);
       if (e2) return fail("Remove", e2);
-      toast("Artifact removed");
+      toast("Dataset removed");
       route();
     };
   });
-  for (const k of ["ingest", "reingest"]) if ($(k)) $(k).onclick = () => ingestWizard(p, route);
-  for (const k of ["newdeck", "newdeck2"]) if ($(k)) $(k).onclick = () => newDeck(p);
+  view.querySelectorAll("[data-delzone]").forEach((b) => {
+    b.onclick = async () => {
+      if (!confirm("Delete this zone and every dataset in it? This cannot be undone.")) return;
+      const { error: e2 } = await db.from("zones").delete().eq("id", b.dataset.delzone);
+      if (e2) return fail("Delete zone", e2);
+      toast("Zone deleted");
+      route();
+    };
+  });
+  view.querySelectorAll("[data-load]").forEach((b) => {
+    b.onclick = () => {
+      const kind = b.dataset.load;
+      const z = zs.find((x) => x.id === b.dataset.zone);
+      if (!z) return;
+      if (kind === "blocks") ingestWizard(p, z, route);
+      else uploadAux(p, z, kind, route);
+    };
+  });
+  for (const k of ["addzone", "addzone2"]) if ($(k)) $(k).onclick = () => addZone(p);
+  for (const k of ["newdeck", "newdeck2"]) if ($(k)) $(k).onclick = () => newDeck(p, zonesWithBlocks);
 }
 
-async function newDeck(p) {
+// ------------------------------------------------------------------ zones ---
+function addZone(p) {
+  modal(`
+    <h2>Add a zone</h2>
+    <p class="sub">One deposit — its own block model, drills, surfaces, property
+       and geophysics. A single deck flies across every zone in the project.</p>
+    <div class="field"><label for="zn">Zone name</label>
+      <input type="text" id="zn" placeholder="Siwash North"></div>
+    <div class="row-actions" style="margin-top:16px">
+      <button class="btn primary" id="zgo">Add zone</button>
+      <button class="btn" id="zcancel">Cancel</button>
+    </div>`);
+  $("zcancel").onclick = closeModal;
+  $("zn").onkeydown = (e) => { if (e.key === "Enter") $("zgo").click(); };
+  $("zgo").onclick = async () => {
+    const name = $("zn").value.trim();
+    if (!name) return toast("A zone needs a name.", true);
+    $("zgo").disabled = true;
+    // Order after the last existing zone, and make the slug unique within the
+    // project by suffixing if the base is taken.
+    const { data: existing } = await db.from("zones")
+      .select("slug, ord").eq("project_id", p.id);
+    const taken = new Set((existing || []).map((z) => z.slug));
+    let slug = slugify(name), n = 2;
+    while (taken.has(slug)) slug = `${slugify(name)}-${n++}`;
+    const ord = (existing || []).reduce((m, z) => Math.max(m, z.ord + 1), 0);
+    const { error } = await db.from("zones")
+      .insert({ project_id: p.id, name, slug, ord });
+    $("zgo").disabled = false;
+    if (error) return fail("Add zone", error);
+    closeModal();
+    route();
+  };
+}
+
+async function newDeck(p, zonesWithBlocks = []) {
+  // A deck spans zones: it records which ones are in play so the viewer's
+  // deposit switcher can offer them. Every zone that has a block model is
+  // included by default — the presenter can narrow it later in the editor.
+  const zoneIds = zonesWithBlocks.map((z) => z.id);
   const { data, error } = await db.from("decks")
-    .insert({ project_id: p.id, title: p.name, status: "draft" })
+    .insert({
+      project_id: p.id, title: p.name, status: "draft",
+      settings: { zones: zoneIds },
+    })
     .select("id").single();
   if (error) return fail("Create deck", error);
   // A deck with no chapters cannot be previewed at all, so seed one.
