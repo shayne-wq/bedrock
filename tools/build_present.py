@@ -2175,41 +2175,29 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   //
   // The whole deck already renders without WebGL at ?data=1, as semantic HTML
   // with every figure in a real table. Failing over to it beats failing.
-  bootPhase('checking WebGL support');
-  const webglOk=()=>{
-    try{
-      const c=document.createElement('canvas');
-      const gl=c.getContext('webgl2')||c.getContext('webgl')||
-               c.getContext('experimental-webgl');
-      if(!gl) return false;
-      // Give it straight back. WebGL contexts are a capped, per-process
-      // resource on iOS, and a probe that holds one is competing with the
-      // viewer it was meant to clear the way for. Dropping the reference is
-      // not enough — that waits on GC, and Cesium asks for its context in the
-      // same turn.
-      const lose=gl.getExtension('WEBGL_lose_context');
-      if(lose) lose.loseContext();
-      return true;
-    }catch(e){ return false; }
-  };
+  // ---- WebGL, or the honest alternative --------------------------------
+  // iOS Safari refuses a context when it is out of them — the limit is per
+  // process and shared across every open tab — and under memory pressure and
+  // in Low Power Mode. Cesium's response is to throw "Error constructing
+  // CesiumWidget", which this file used to report as a dead page.
+  //
+  // THERE IS NO PROBE. There was one, and it was the bug: it created a context
+  // to prove a context was available, then released it with
+  // WEBGL_lose_context. That call is ASYNCHRONOUS — it queues the loss and
+  // fires webglcontextlost on a later turn — while Cesium asks for its context
+  // in the same synchronous turn. So the check for a free context was still
+  // holding one when the thing it was checking for went and asked. Attempting
+  // the viewer answers the question definitively and costs nothing extra.
+  bootPhase('creating the 3D viewer');
   function toTextMode(why){
     bootPhase('falling back to the text version');
     TEXT_FALLBACK=why;
     try{ $('load').style.display='none'; $('intro').style.display='none'; }catch(e){}
     setDataMode(true);
     const t=$('datatoggle'); if(t) t.textContent='3D';
-    const s=$('status'); if(s){ s.className=''; s.textContent=''; }
+    const st=$('status'); if(st){ st.className=''; st.textContent=''; }
     toast(why+' — showing the text version of the deck',9000);
     console.warn('Orebody: '+why+'; rendered as text instead.');
-  }
-  if(!webglOk()){
-    // No context from a bare canvas either, so this is the device or the
-    // browser, not this page's memory footprint. On iOS the usual causes are
-    // Lockdown Mode (which disables WebGL outright), WebGL turned off under
-    // Settings > Safari > Advanced > Experimental Features, or every WebGL
-    // context in the process already spoken for by other tabs.
-    toTextMode('WebGL is unavailable in this browser');
-    return;
   }
 
   bootPhase('contacting terrain and imagery services');
@@ -2219,31 +2207,52 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   try{ terrain=await Cesium.ArcGISTiledElevationTerrainProvider.fromUrl('https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer'); }
   catch(e){ terrain=new Cesium.EllipsoidTerrainProvider(); }
 
-  bootPhase('creating the 3D viewer');
-  // preserveDrawingBuffer is needed only to read pixels back for PNG/PPTX/PDF
-  // export, and it roughly doubles what a context costs. On a phone that is
-  // often the difference between getting a context and not, so if the first
-  // attempt fails, drop it and keep the deck — export is worth less than the
-  // deck opening at all.
+  // Each attempt asks for less than the last. What costs memory in a WebGL
+  // context is the drawing buffer, and on a 3x phone screen that is ~3 Mpx —
+  // multiplied by antialiasing (MSAA is several samples per pixel), again by
+  // the alpha and stencil planes, and again by preserveDrawingBuffer's second
+  // copy. Only preserveDrawingBuffer was being dropped before, which is the
+  // smallest of those.
   let noExport=false;
-  const mkViewer=(preserve,webgl1)=>new Cesium.Viewer('cesiumContainer',{
+  const ATTEMPTS=[
+    {name:'full',        opts:{preserveDrawingBuffer:true}},
+    {name:'no export',   opts:{preserveDrawingBuffer:false}, noExport:true},
+    {name:'lean',        opts:{preserveDrawingBuffer:false,antialias:false,
+                               alpha:false,stencil:false,powerPreference:'low-power'},
+                         noExport:true},
+    {name:'lean webgl1', opts:{preserveDrawingBuffer:false,antialias:false,
+                               alpha:false,stencil:false,powerPreference:'low-power'},
+                         webgl1:true, noExport:true},
+  ];
+  const mkViewer=(a)=>new Cesium.Viewer('cesiumContainer',{
     baseLayer:new Cesium.ImageryLayer(imagery),terrainProvider:terrain,
     baseLayerPicker:false,geocoder:false,homeButton:false,sceneModePicker:false,navigationHelpButton:false,
     animation:false,timeline:false,fullscreenButton:false,infoBox:false,selectionIndicator:false,requestRenderMode:false,
-    contextOptions:{requestWebgl1:!!webgl1,
-      webgl:{preserveDrawingBuffer:preserve,failIfMajorPerformanceCaveat:false}}});
+    contextOptions:{requestWebgl1:!!a.webgl1,
+      webgl:Object.assign({failIfMajorPerformanceCaveat:false},a.opts)}});
   let viewer=null;
-  try{ viewer=mkViewer(true); }
-  catch(e1){
-    console.warn('Orebody: no context with preserveDrawingBuffer; retrying without it',e1);
-    try{ viewer=mkViewer(false); noExport=true; }
-    catch(e2){
-      // Last try: WebGL1. iOS will sometimes hand out a v1 context when it has
-      // refused a v2 one, and every feature this deck uses predates WebGL2.
-      console.warn('Orebody: no WebGL2 context; retrying with WebGL1',e2);
-      try{ viewer=mkViewer(false,true); noExport=true; }
-      catch(e3){ toTextMode('Safari refused a WebGL context to this page'); return; }
+  for(const a of ATTEMPTS){
+    try{
+      viewer=mkViewer(a);
+      if(a.noExport) noExport=true;
+      if(a.name!=='full') console.info('Orebody: got a context on the "'+a.name+'" attempt');
+      break;
+    }catch(err){
+      console.warn('Orebody: no context on the "'+a.name+'" attempt',err);
+      // Cesium leaves its half-built widget in the container on failure, and
+      // the next attempt would append a second one beside it.
+      const host=$('cesiumContainer'); if(host) host.innerHTML='';
     }
+  }
+  if(!viewer){
+    // Only now is it worth asking whether WebGL exists at all — there is no
+    // longer a context to lose by asking, and the answer picks the message.
+    let any=false;
+    try{ const c=document.createElement('canvas');
+         any=!!(c.getContext('webgl2')||c.getContext('webgl')); }catch(e){}
+    toTextMode(any ? 'Safari would not give this page a WebGL context'
+                   : 'WebGL is unavailable in this browser');
+    return;
   }
   // A phone does not need a 3x backing store for this, and on a device that
   // is refusing contexts the drawing buffer is the biggest thing to give back.
@@ -2314,7 +2323,18 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   }
   viewer.scene.skyAtmosphere.show=true;
   viewer.scene.globe.tileLoadProgressEvent.addEventListener(q=>setStat('terrain tiles: '+q));
-  viewer.scene.canvas.addEventListener('webglcontextlost',ev=>{ev.preventDefault();setStat('context lost — reloading');setTimeout(()=>location.reload(),1200);},false);
+  // iOS reclaims WebGL contexts under memory pressure, and reloading straight
+  // into the same allocation is how a phone gets into a loop. Once is a blip;
+  // twice in a session means the device cannot hold this scene, and the text
+  // edition is a better answer than a third identical attempt.
+  viewer.scene.canvas.addEventListener('webglcontextlost',ev=>{
+    ev.preventDefault();
+    let n=0; try{ n=+(sessionStorage.getItem('orebody.ctxlost')||0)+1;
+                  sessionStorage.setItem('orebody.ctxlost',String(n)); }catch(e){ n=1; }
+    if(n>=2){ toTextMode('This device kept losing the 3D context'); return; }
+    setStat('context lost — reloading');
+    setTimeout(()=>location.reload(),1200);
+  },false);
 
   // Grade-fade on by default: 80% of the contained metal sits in 20% of the
   // blocks, so an opaque model shows mostly low-grade halo wrapped around the
