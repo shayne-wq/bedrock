@@ -287,6 +287,11 @@ async function renderProject(id) {
   (datasets || []).forEach((d) => { (dsByZone[d.zone_id] ||= []).push(d); });
   const zoneKind = (z, k) => (dsByZone[z.id] || []).find((d) => d.kind === k);
   const zonesWithBlocks = zs.filter((z) => zoneKind(z, "blocks"));
+  // What makes a zone presentable is having ANY data, not having a resource.
+  // Gating deck creation on a block model meant an exploration project — the
+  // common case — could load its claims, magnetics and drilling and still be
+  // told it had nothing to show.
+  const zonesWithData = zs.filter((z) => (dsByZone[z.id] || []).length);
   const fabricated = (datasets || []).filter((d) => d.synthetic);
 
   // Project totals sum every zone's block model. Grade is tonnage-weighted —
@@ -299,21 +304,29 @@ async function renderProject(id) {
   });
   const grade = T ? (OZ * 31.10348) / T : 0;
 
+  // TRACKING.md #1. Nothing here is required. Most projects are pure
+  // exploration — drilling, magnetics and geochem, no resource — and marking
+  // the block model mandatory told the majority of users their project was
+  // incomplete because they had not finished defining it yet. The viewer
+  // renders an exploration deck properly; the console had to stop asking.
+  //
+  // Order is exploration-first for the same reason: the property outline and
+  // the magnetics are what an early-stage project actually has.
   const KINDS = [
-    { key: "blocks", label: "Block model", req: true },
-    { key: "drills", label: "Drill holes" },
-    { key: "surfaces", label: "Surfaces" },
     { key: "site", label: "Property & claims" },
     { key: "geophysics", label: "Geophysics" },
+    { key: "drills", label: "Drill holes" },
+    { key: "blocks", label: "Block model", note: "resource stage" },
+    { key: "surfaces", label: "Surfaces" },
   ];
   const slot = (z, k) => {
     const ds = zoneKind(z, k.key);
     return `<div class="slot ${ds ? "on" : ""}">
-      <span class="k">${k.label}${k.req ? " *" : ""}</span>
+      <span class="k">${k.label}${k.note ? ` <em class="opt">${k.note}</em>` : ""}</span>
       ${ds ? `<span class="chip ${ds.synthetic ? "warn" : "live"}">${ds.synthetic ? "Fabricated" : "Loaded"}</span>
         <button class="btn sm" data-load="${k.key}" data-zone="${z.id}">Replace</button>
         <button class="btn sm danger" data-del="${ds.id}">Remove</button>`
-       : `<button class="btn sm ${k.req ? "primary" : ""}" data-load="${k.key}" data-zone="${z.id}">${k.req ? "Load" : "Add"}</button>`}
+       : `<button class="btn sm" data-load="${k.key}" data-zone="${z.id}">Add</button>`}
     </div>`;
   };
 
@@ -325,7 +338,7 @@ async function renderProject(id) {
         <p>${esc(p.location || "No location set")} · EPSG ${p.epsg}
            · ${zs.length} zone${zs.length === 1 ? "" : "s"}</p>
       </div>
-      <button class="btn primary" id="newdeck" ${zonesWithBlocks.length ? "" : "disabled"}>New deck</button>
+      <button class="btn primary" id="newdeck" ${zonesWithData.length ? "" : "disabled"}>New deck</button>
     </div></header>
 
     ${fabricated.length ? `<div class="note warn" style="margin-bottom:16px">
@@ -349,19 +362,22 @@ async function renderProject(id) {
         <button class="btn" id="addzone">Add zone</button></div>
       ${zs.length ? zs.map((z) => {
         const s = zoneKind(z, "blocks")?.stats?.total;
+        const nk = (dsByZone[z.id] || []).length;
         return `<div class="zone">
           <div class="row"><div class="grow"><b>${esc(z.name)}</b>
             ${s ? `<span class="zsub">${fmtT(s.tonnes)} · ${s.grade_gt} g/t · ${fmtOz(s.oz)}</span>`
-                : `<span class="zsub">No block model yet — load one to include this zone in a deck</span>`}</div>
+                : nk ? `<span class="zsub">Exploration stage — ${nk} dataset${nk === 1 ? "" : "s"} · no resource estimate</span>`
+                : `<span class="zsub">Empty — add whatever this zone has</span>`}</div>
             <button class="btn sm danger" data-delzone="${z.id}">Delete zone</button></div>
           <div class="slots">${KINDS.map((k) => slot(z, k)).join("")}</div>
         </div>`;
       }).join("") : `
         <div class="empty">
           <h3>No zones yet</h3>
-          <p>A zone is one deposit. Add your first, then load its block model —
-             read in this browser, the file itself never leaves your machine —
-             plus any drills, surfaces, property boundaries or geophysics.</p>
+          <p>A zone is one deposit or target. Add your first, then load whatever
+             it has — property outline, geophysics, drilling. Files are read in
+             this browser and never leave your machine. A block model is only
+             needed once the project has a resource.</p>
           <button class="btn primary" id="addzone2">Add the first zone</button>
         </div>`}
     </div>
@@ -371,9 +387,9 @@ async function renderProject(id) {
       ${!decks?.length ? `
         <div class="empty">
           <h3>No decks yet</h3>
-          <p>${zonesWithBlocks.length ? "A deck is the walkthrough you present, share and embed — one deck flies across every zone in this project."
-                      : "Load a block model into at least one zone first — a deck has nothing to show without one."}</p>
-          ${zonesWithBlocks.length ? `<button class="btn primary" id="newdeck2">Create a deck</button>` : ""}
+          <p>${zonesWithData.length ? "A deck is the walkthrough you present, share and embed — one deck flies across every zone in this project."
+                      : "Add a zone and load whatever this project has — a property outline, magnetics, drilling. A block model is only needed once there is a resource."}</p>
+          ${zonesWithData.length ? `<button class="btn primary" id="newdeck2">Create a deck</button>` : ""}
         </div>` : `
         <div class="tablewrap"><table>
           <thead><tr><th>Deck</th><th>Status</th><th class="n">Chapters</th>

@@ -52,9 +52,11 @@ model), and two sources of truth is one too many.
   exists, because an exploration deck pointed at the wrong hemisphere is worse
   than one that admits it cannot place itself.
   Verified against a fixture deck with drills + geophysics and no block model.
-  **Console half outstanding:** `dashboard/app.js` still marks the block model
-  `req: true`, so the UI presses for one. Flipping the flag is trivial; what
-  needs thought is what the zone card shows in its place.
+  **Console half now done too.** Nothing is required: the slot order is
+  exploration-first (property, geophysics, drills, then block model tagged
+  "resource stage"), deck creation gates on a zone having ANY data rather than
+  a resource, and a zone with data but no model reads "Exploration stage — N
+  datasets · no resource estimate" instead of "No block model yet".
   Three Elk-specific lines were leaking into every hydrated deck and are now
   scoped: the class-mapping caveat (printed for projects with no classes), its
   orphaned second line, and "Silver is absent from the source".
@@ -84,6 +86,44 @@ model), and two sources of truth is one too many.
 - [ ] 🔴 **#5 — Geochemistry dataset kind** (soil / rock / stream sediment).
   <https://github.com/shayne-wq/orebody/issues/5>
 
+## P1 — authoring: generate, curate, transition
+
+The shape Shayne asked for (2026-08-08): once the data is uploaded, the
+platform proposes **every slide the data can justify**; the user drags the ones
+they want into a running order; the platform works out how to move between
+them. Authoring becomes curation rather than construction.
+
+- [ ] 🔴 **#9 — Generate slide candidates from the data.** Walk what each zone
+  has and emit every defensible view, each with camera, layers, title and a
+  one-line body: property overview · claim block · each magnetics product ·
+  each zone at 2–3 cut-offs · classification reveal · N–S and E–W sections ·
+  drill forest · each headline intercept · property columns · asset-only.
+  Twenty is realistic for a full project; an exploration zone with claims and
+  magnetics yields eight. **Nothing is proposed that the data does not support**
+  — no resource slides without a block model, no intercept slides without
+  assays. Candidates are proposals, not chapters: they live unsaved until
+  chosen.
+- [ ] 🔴 **#10 — Deck builder: drag candidates into a running order.** Two
+  columns, pool and order. Drag in, reorder, drop out. Writes `chapters` with
+  `ord`. Needs a thumbnail per candidate to be usable — the rail already
+  renders thumbs, and `tools/capture_thumbs.py` already generates them from a
+  built page.
+- [ ] 🔴 **#11 — Computed transitions between consecutive slides.**
+  This is geometry, not intelligence, and should be built as rules that can be
+  reasoned about:
+  - **shortest-arc heading** — interpolating 350° → 10° the long way is the
+    whip-pan that makes a deck feel amateur;
+  - **arc over terrain** — two points either side of the ridge must not be
+    joined by a straight line through it; lift proportional to separation;
+  - **duration from distance**, not a constant — a 5 km move and a 200 m
+    nudge cannot share a 2.3 s flight;
+  - **scale-jump guard** — beyond roughly an order of magnitude, pull back
+    through an establishing frame rather than dollying the whole way;
+  - **arm the next slide's layers before arrival**, so the destination does
+    not pop into existence on landing.
+  Store the resolved path on the chapter so an export and a live present take
+  the same route.
+
 ## P2 — parsing & authoring polish
 
 - [ ] 🔴 **#6 — Parse & desurvey drill data on upload** (traces + intercepts).
@@ -110,6 +150,10 @@ model), and two sources of truth is one too many.
 ---
 
 ## Log
+
+- **2026-08-08** — #1 console half done: nothing is a required dataset, slots
+  reordered exploration-first, deck creation gated on data rather than on a
+  resource. #9/#10/#11 opened for generate → curate → transition.
 
 - **2026-08-08** — #3 shipped. `deck` fn is zone-aware and deployed; viewer
   builds the deposit switcher from zones. Fixed the flat-asset-list bug that

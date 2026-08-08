@@ -318,3 +318,9 @@ tbody tr:last-child td { border-bottom: 0; }
   color: var(--ink-2); flex: 1; min-width: 96px;
 }
 .slot .btn.sm { margin-left: auto; }
+
+/* "resource stage" beside the block-model slot. A quiet note that this one is
+   for later, not an asterisk implying the project is incomplete without it. */
+.slot .k .opt{font-style:normal;font-family:'JetBrains Mono',monospace;
+  font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#6b7580;
+  border:1px solid rgba(255,255,255,.12);border-radius:3px;padding:1px 5px;margin-left:6px}
