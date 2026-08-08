@@ -1446,6 +1446,9 @@ let BLOCKS_SYNTHETIC=false;   // set by a hydrated deck or a fabricated deposit
 // project, which is most of them. Nothing about that is an error state; it
 // means there is no resource yet, so there is nothing to report a tonnage for.
 let EXPLORATION=false;
+// Meshes from a customer's OBJ / GOCAD / DXF upload. Raw {verts,faces} rather
+// than the demo's packed int16 lattice, so they get their own builder.
+let UPLOADED_SURFACES=[];
 const GEOID=-18, rad=Cesium.Math.toRadians, $=id=>document.getElementById(id);
 const setStat=t=>$('status').textContent=t;
 // Names the step boot is currently on, so a failure inside a vendor bundle can
@@ -1649,6 +1652,63 @@ function buildModel(cols, stats, ladder){
   return {F:f, M:m, RUNS:runs, N:n};
 }
 
+// ---- uploaded artifacts -> the shapes the viewer already draws -----------
+// The console parses a customer's drilling, surfaces and claims into
+// orebody-drills/1, orebody-surfaces/1 and orebody-claims/1. Until these
+// converters existed the parse was invisible: a customer uploaded collars and
+// surveys, the desurvey ran, and their deck showed nothing. Reading the
+// artifacts here is what closes that.
+//
+// Nothing new is rendered — these produce exactly the structures the baked
+// demo builds, so drills, surfaces and tenure go down the same paths that are
+// already tested rather than a second implementation for customer data.
+function holesFromArtifact(a, floor){
+  const out=[];
+  const assayBy={};
+  (a.assays||[]).forEach(x=>{assayBy[x.id]=x.iv||[];});
+  (a.traces||[]).forEach(t=>{
+    const pts=t.pts||[]; if(pts.length<2) return;
+    const at=d=>{
+      const i=Math.min(pts.length-1,Math.max(0,Math.floor(d/(t.step||5))));
+      const j=Math.min(pts.length-1,i+1), A=pts[i], B=pts[j];
+      const f=Math.min(1,Math.max(0,(d-i*(t.step||5))/(t.step||5)));
+      return [A[0]+(B[0]-A[0])*f, A[1]+(B[1]-A[1])*f, A[2]+(B[2]-A[2])*f];
+    };
+    const segs=[];
+    (assayBy[t.id]||[]).forEach(iv=>{
+      if(!(iv.g>=floor)) return;
+      const pa=at(iv.f), pb=at(iv.t);
+      const mid=[(pa[0]+pb[0])/2,(pa[1]+pb[1])/2,(pa[2]+pb[2])/2];
+      // The grade bar sticks out perpendicular to the hole and horizontal, so
+      // it reads at any viewing angle — the same construction the baked
+      // desurvey uses, kept identical so both look like one tool.
+      const d=[pb[0]-pa[0], pb[1]-pa[1], pb[2]-pa[2]];
+      const px=d[1], py=-d[0], m=Math.hypot(px,py)||1;
+      const blen=Math.min(45, iv.g*2.2);
+      const band=Math.max(0,Math.min(5,Math.floor((t.collar[2]-mid[2])/70)));
+      segs.push({a:pa,b:pb,g:iv.g,mid:mid,
+                 bar:[mid[0]+px/m*blen, mid[1]+py/m*blen, mid[2]],
+                 d:band, f:iv.f, t:iv.t});
+    });
+    out.push({id:t.id, collar:t.collar, td:t.td,
+              end:pts[pts.length-1], segs:segs});
+  });
+  return out;
+}
+function claimsFromArtifact(a){
+  return (a.rings||[]).map(r=>{
+    const p=r.props||{};
+    return {name:p.CLAIM_NAME||p.name||p.NAME||'Claim',
+            tenure:p.TENURE_NUMBER_ID||p.tenure||null,
+            owner:(p.OWNER_NAME||p.owner||'').trim(),
+            // Uploaded tenure is the issuer's own ground by definition —
+            // nobody uploads their neighbour's claims — so it draws as
+            // subject. Neighbours come from a register, not from a file.
+            subject:true, neighbour:false,
+            ll:r.ring.reduce((acc,c)=>{acc.push(c[0],c[1]);return acc;},[])};
+  }).filter(c=>c.ll.length>=6);
+}
+
 // A chapter authored in the console is rows in a table; the walkthrough wants
 // one flat object per beat. `layers` carries whatever the author set, so it is
 // spread rather than enumerated — a layer added to the console should not need
@@ -1768,6 +1828,7 @@ async function hydrate(token){
     HOLES=[]; HIGHLIGHTS=[]; SITE={areas:[],roads:[],labels:[],claims:[]};
     SITE_SYNTHETIC=false; REAL_CLAIMS=[]; CLAIMS_ATTRIB='';
     GEOPHYS={}; GEOPHYS_SYNTHETIC=false; THUMBS=[]; STATIONS=[];
+    await loadSideArtifacts(assetsOf(zones[0] && zones[0].id));
 
     const chs0=(payload.chapters||[]).map(mapChapter);
     CHAPTERS=chs0.length?chs0:[{h:30,p:-28,r:Math.max(2500,Math.max(EX,EY)*1.6),
@@ -1861,12 +1922,12 @@ async function hydrate(token){
   // real ones. It joins the same five paths as the rest.
   BLOCKS_SYNTHETIC=!!blocks.synthetic;
 
-  // A hydrated deck has none of the demo's side artifacts yet. Empty, not
-  // inherited — showing Elk Gold's drill holes over someone else's deposit
-  // would be the worst bug this viewer could have.
-  HOLES=[]; HIGHLIGHTS=[]; SITE={}; SITE_SYNTHETIC=false;
-  REAL_CLAIMS=[]; CLAIMS_ATTRIB=''; GEOPHYS={}; GEOPHYS_SYNTHETIC=false;
-  THUMBS=[]; STATIONS=[];
+  // Never inherited from the demo — showing Elk Gold's drill holes over
+  // someone else's deposit would be the worst bug this viewer could have.
+  HOLES=[]; HIGHLIGHTS=[]; SITE={areas:[],roads:[],labels:[],claims:[]};
+  SITE_SYNTHETIC=false; REAL_CLAIMS=[]; CLAIMS_ATTRIB='';
+  GEOPHYS={}; GEOPHYS_SYNTHETIC=false; THUMBS=[]; STATIONS=[];
+  await loadSideArtifacts(assetsOf(modelled[0].zone.id));
 
   // Every modelled zone becomes a deposit. The first is already loaded, so it
   // is marked baked and reads from the live snapshot; the rest are fetched on
@@ -1901,6 +1962,59 @@ async function hydrate(token){
       'Presented in three dimensions, on real terrain.';
   }
   setStat('');
+}
+
+// Drills, surfaces and tenure for one zone. Each is optional and each failure
+// is contained: a claims file that will not load must not stop the drilling
+// from drawing, and neither must stop the deck opening. The console already
+// refused anything unreadable at upload, so a failure here is a signed-URL or
+// network problem and is reported as one.
+async function loadSideArtifacts(assets){
+  const grab=async kind=>{
+    const a=(assets||[]).find(x=>x.kind===kind&&x.url);
+    if(!a) return null;
+    try{
+      const r=await fetch(a.url);
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const j=await r.json();
+      return {json:j, asset:a};
+    }catch(e){
+      console.warn('Orebody: could not load the '+kind+' artifact',e);
+      toast('The '+kind+' data for this deck could not be loaded',5000);
+      return null;
+    }
+  };
+
+  const d=await grab('drills');
+  if(d&&d.json&&d.json.format==='orebody-drills/1'){
+    HOLES=holesFromArtifact(d.json,GRADE_FLOOR);
+    DRILL_SYNTHETIC=!!d.asset.synthetic;
+    // Headline intercepts, ranked the way a drill release ranks them: grade
+    // times length, capped at two per hole so one deep hole cannot own the
+    // whole list.
+    const cand=[];
+    HOLES.forEach(h=>h.segs.forEach(sg=>{
+      const len=sg.t-sg.f;
+      if(sg.g>=GRADE_FLOOR&&len>=2)
+        cand.push({id:h.id,g:sg.g,len:Math.round(len*10)/10,at:sg.mid,score:sg.g*len});
+    }));
+    cand.sort((x,y)=>y.score-x.score);
+    HIGHLIGHTS=[];
+    cand.forEach(c=>{ if(HIGHLIGHTS.filter(h=>h.id===c.id).length>=2) return;
+      if(HIGHLIGHTS.length<10) HIGHLIGHTS.push(c); });
+  }
+
+  const c=await grab('site');
+  if(c&&c.json&&c.json.format==='orebody-claims/1'){
+    REAL_CLAIMS=claimsFromArtifact(c.json);
+    CLAIMS_ATTRIB=c.asset.label?('Boundaries as supplied: '+c.asset.label):'';
+    SITE_SYNTHETIC=!!c.asset.synthetic;
+  }
+
+  const sf=await grab('surfaces');
+  if(sf&&sf.json&&sf.json.format==='orebody-surfaces/1'){
+    UPLOADED_SURFACES=sf.json.meshes||[];
+  }
 }
 
 // One entry point for both worlds, so the scene below never has to ask which
@@ -3055,6 +3169,46 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   }
   async function buildSurfaces(){
     if(surfPrims||surfLoading) return surfPrims;
+
+    // A customer's own meshes, from OBJ / GOCAD / DXF. Raw triangles in project
+    // coordinates rather than the demo's packed int16 lattice, so they take a
+    // separate build — but they land as the same Primitive objects, so every
+    // control that already drives surfaces drives these too.
+    if(UPLOADED_SURFACES.length){
+      surfLoading=true; setStat('building surfaces…');
+      surfPrims=UPLOADED_SURFACES.map((m,i)=>{
+        const nv=m.verts.length;
+        const pos=new Float64Array(nv*3);
+        for(let k=0;k<nv;k++){
+          const v=m.verts[k], c=utm2cart(v[0],v[1],v[2]);
+          pos[k*3]=c.x; pos[k*3+1]=c.y; pos[k*3+2]=c.z;
+        }
+        // Uint32 indices unconditionally: a triangulated DTM passes 65k
+        // vertices easily and a silent wrap would fold the mesh in on itself.
+        const ix=new Uint32Array(m.faces.length*3);
+        m.faces.forEach((f,j)=>{ix[j*3]=f[0];ix[j*3+1]=f[1];ix[j*3+2]=f[2];});
+        let geom=new Cesium.Geometry({
+          attributes:{position:new Cesium.GeometryAttribute({
+            componentDatatype:Cesium.ComponentDatatype.DOUBLE,
+            componentsPerAttribute:3, values:pos})},
+          indices:ix, primitiveType:Cesium.PrimitiveType.TRIANGLES,
+          boundingSphere:Cesium.BoundingSphere.fromVertices(pos)});
+        geom=Cesium.GeometryPipeline.computeNormal(geom);
+        const prim=new Cesium.Primitive({
+          geometryInstances:new Cesium.GeometryInstance({geometry:geom}),
+          asynchronous:true, show:false,
+          appearance:new Cesium.MaterialAppearance({
+            flat:false, translucent:true, faceForward:true, closed:false,
+            material:Cesium.Material.fromType('Color',{
+              color:Cesium.Color.fromCssColorString(
+                VEIN_COLORS[i%VEIN_COLORS.length]).withAlpha(0.55)})})});
+        viewer.scene.primitives.add(prim);
+        return {name:m.name||('Surface '+(i+1)), kind:'vein', prim:prim};
+      });
+      surfLoading=false; setStat('');
+      return surfPrims;
+    }
+
     surfLoading=true; setStat('loading vein surfaces…');
     let data;
     try{ data=await (await fetch('data/elk_surfaces.json')).json(); }
@@ -5554,7 +5708,14 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     }).catch(()=>{});
   }
 
-  window.__viewer=viewer; window.__api={go:go,play:play,stop:stop,readout:readout,shoot:shoot,grab:grab};
+  window.__viewer=viewer;
+  // A small, stable surface for automated checks and for anyone debugging a
+  // customer's deck: what loaded, and how much of it.
+  window.__api={go:go,play:play,stop:stop,readout:readout,shoot:shoot,grab:grab,
+    state:()=>({holes:HOLES.length, highlights:HIGHLIGHTS.length,
+      claims:REAL_CLAIMS.length, uploadedSurfaces:UPLOADED_SURFACES.length,
+      surfPrims:surfPrims?surfPrims.length:0, surfOn:surfOn,
+      blocks:N, exploration:EXPLORATION, deposit:depKey, proj:PROJ})};
 })().catch(e=>{
   // Never leave the opaque boot overlay covering an error the user can't read.
   const l=$('load'); if(l) l.style.display='none';
