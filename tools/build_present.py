@@ -363,12 +363,14 @@ SITE_SYNTHETIC = bool(SITE.get("synthetic", True)) if SITE else False
 _tenure_p = ROOT / "data" / "bc_tenures_elk.geojson"
 REAL_CLAIMS: list = []
 CLAIMS_ATTRIB = ""
+CLAIMS_SUBJECT = ""
 if _tenure_p.exists():
     _tj = json.loads(_tenure_p.read_text())
     if _tj.get("synthetic") is True:                 # refuse to mislabel
         raise SystemExit("bc_tenures_elk.geojson is flagged synthetic — "
                          "it must not be drawn as real tenure")
     CLAIMS_ATTRIB = _tj.get("attribution", "")
+    CLAIMS_SUBJECT = _tj.get("subject_owner") or ""
     for _f in _tj.get("features", []):
         _p = _f.get("properties") or {}
         _g = _f.get("geometry") or {}
@@ -384,7 +386,12 @@ if _tenure_p.exists():
             REAL_CLAIMS.append({
                 "name": _p.get("CLAIM_NAME") or str(_p.get("TENURE_NUMBER_ID") or "Tenure"),
                 "tenure": _p.get("TENURE_NUMBER_ID"),
-                "owner": _p.get("OWNER_NAME"),
+                "owner": (_p.get("OWNER_NAME") or "").strip(),
+                # Whose ground this is. The issuer's tenure and a neighbour's
+                # must never render alike: a deck that draws someone else's
+                # claims in its own colour is claiming them.
+                "subject": bool(_p.get("_subject")),
+                "neighbour": bool(_p.get("_neighbour")),
                 # Already WGS84 — no proj4 hop, unlike the UTM site features.
                 "ll": [round(c, 6) for pt in _r for c in pt[:2]],
             })
@@ -1382,7 +1389,7 @@ let N=__N__,
       ZTOP=__ZTOP__, ZBOT=__ZBOT__;
 let CHAPTERS=__CHAPTERS__, RUNS=__RUNS__, BUCKETS=__BUCKETS__, VEINS=__VEINS__,
       LADDER=__LADDER__, CLASS_LABELS=__CLASS_LABELS__, CLASS_CONFIRMED=__CLASS_CONFIRMED__,
-      PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, REAL_CLAIMS=__REAL_CLAIMS__, CLAIMS_ATTRIB=__CLAIMS_ATTRIB__, GEOPHYS=__GEOPHYS__, GEOPHYS_SYNTHETIC=__GEOPHYS_SYNTHETIC__, STATIONS=__STATIONS__, DEPOSITS=__DEPOSITS__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
+      PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, REAL_CLAIMS=__REAL_CLAIMS__, CLAIMS_ATTRIB=__CLAIMS_ATTRIB__, CLAIMS_SUBJECT=__CLAIMS_SUBJECT__, GEOPHYS=__GEOPHYS__, GEOPHYS_SYNTHETIC=__GEOPHYS_SYNTHETIC__, STATIONS=__STATIONS__, DEPOSITS=__DEPOSITS__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
 proj4.defs('EPSG:26910','+proj=utm +zone=10 +datum=NAD83 +units=m +no_defs');
 // 10 x 5 x 5 m at 2.7 t/m3 for the demo. A hydrated deck takes its own value
 // from stats.tonnes_per_block — a customer's model is not on this lattice, and
@@ -3242,11 +3249,45 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     //
     // Already WGS84, so no proj4 hop — deg() is for the UTM site features.
     if(REAL_CLAIMS.length){
-      REAL_CLAIMS.forEach(c=>siteEnts.push(viewer.entities.add({
-        name:c.name+(c.tenure?('  ·  tenure '+c.tenure):''),
-        polyline:{positions:Cesium.Cartesian3.fromDegreesArray(c.ll),
-          width:2.5,clampToGround:true,
-          material:Cesium.Color.fromCssColorString('#F2C14E')}})));
+      // The issuer's ground is gold and heavy; everyone else's is thin and
+      // grey, and carries the registered holder's name. Both are real tenure
+      // from the same public register, so neither is dashed — the distinction
+      // being drawn here is ownership, not certainty.
+      //
+      // Naming the neighbour is the point. "A listed company holds the claims
+      // along strike" is often the most interesting thing on the map, and it
+      // is not something an issuer can assert about itself — only the register
+      // can say it.
+      const seenOwner={};
+      REAL_CLAIMS.forEach(c=>{
+        const mine=c.subject||!c.neighbour;
+        siteEnts.push(viewer.entities.add({
+          name:c.name+(c.tenure?('  ·  tenure '+c.tenure):'')+
+               (c.owner?('  ·  '+c.owner):''),
+          polyline:{positions:Cesium.Cartesian3.fromDegreesArray(c.ll),
+            width:mine?2.5:1.4,clampToGround:true,
+            material:Cesium.Color.fromCssColorString(mine?'#F2C14E':'#8C948C')
+              .withAlpha(mine?1:0.75)}}));
+        // One label per neighbouring holder, not one per tenure — a company
+        // with nine claims would otherwise write its name nine times.
+        if(!mine && c.owner && !seenOwner[c.owner]){
+          seenOwner[c.owner]=1;
+          let mx=0,my=0; for(let i=0;i<c.ll.length;i+=2){mx+=c.ll[i];my+=c.ll[i+1];}
+          const n2=c.ll.length/2;
+          siteEnts.push(viewer.entities.add({
+            position:Cesium.Cartesian3.fromDegrees(mx/n2,my/n2,ZTOP+GEOID+90),
+            label:{text:c.owner,
+              font:'500 11px Archivo, system-ui, sans-serif',
+              fillColor:Cesium.Color.fromCssColorString('#C6CAC5'),
+              showBackground:true,
+              backgroundColor:new Cesium.Color(0.03,0.04,0.05,0.72),
+              backgroundPadding:new Cesium.Cartesian2(7,4),
+              verticalOrigin:Cesium.VerticalOrigin.BOTTOM,
+              scaleByDistance:new Cesium.NearFarScalar(2000,1.0,20000,0.4),
+              distanceDisplayCondition:new Cesium.DistanceDisplayCondition(0,26000),
+              disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+        }
+      });
     } else {
       // No tenure file baked: fall back to the fabricated ring, dashed, so the
       // deck still draws a boundary and still tells the truth about it.
@@ -5503,6 +5544,7 @@ for k, v in {
     "__SITE_SYNTHETIC__": "true" if SITE_SYNTHETIC else "false",
     "__REAL_CLAIMS__": js(REAL_CLAIMS),
     "__CLAIMS_ATTRIB__": js(CLAIMS_ATTRIB),
+    "__CLAIMS_SUBJECT__": js(CLAIMS_SUBJECT),
     "__DRILL_SYNTHETIC__": "true" if DRILL_SYNTHETIC else "false",
     "__STATIONS__": js(STATIONS),
     "__DEPOSITS__": js(DEPOSITS),

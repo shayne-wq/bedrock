@@ -32,7 +32,16 @@ SRC_DEFAULT = (ROOT.parent.parent / "SmallCapContent" / "data"
 SRC = Path(sys.argv[1]) if len(sys.argv) > 1 else SRC_DEFAULT
 BLOCKS = ROOT / "data" / "elk_blocks_v2.csv"
 OUT = ROOT / "data" / "bc_tenures_elk.geojson"
-MARGIN = 1500.0   # m beyond the model extent — neighbours give useful context
+MARGIN = 1500.0     # m beyond the model extent — the subject property
+NEIGHBOUR = 6000.0  # m — the ground around it, held by other people
+
+# Why neighbours are pulled at all, and why they cannot come from the issuer:
+# a company does not own its neighbours' tenure data and has no standing to
+# assert it. Only the public register can say who holds the ground next door,
+# and "a listed company holds the claims along strike" is often the most
+# interesting fact on the map. Within 6 km of Elk Gold the register returns
+# 45 tenures — 29 the issuer's, the rest split between Vizsla Copper, Barranco
+# Gold and four individual prospectors.
 
 if not SRC.exists():
     raise SystemExit(f"tenure source not found: {SRC}\n"
@@ -65,20 +74,58 @@ def rings(geom):
     return []
 
 
-def hits(geom):
+def hits_box(geom, w, ss, e, nn):
     """Bounding-box overlap. A true polygon intersection would need shapely;
     for picking the handful of tenures over one project a bbox test is both
     sufficient and honest about what it is — it may include a neighbour that
     merely brushes the window, which is the safe direction to err."""
     for ring in rings(geom):
         for lon, lat in ring:
-            if W <= lon <= E and S <= lat <= N:
+            if w <= lon <= e and ss <= lat <= nn:
                 return True
     return False
 
 
+# The subject window, and the wider one that catches whoever else is here.
+def _box(margin):
+    a = to_wgs.transform(min(xs) - margin, min(ys) - margin)
+    b = to_wgs.transform(max(xs) + margin, max(ys) + margin)
+    return (min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1]))
+
+
+NW, NS, NE, NN = _box(NEIGHBOUR)
+
+
 src = json.loads(SRC.read_text())
-kept = [f for f in src.get("features", []) if hits(f.get("geometry"))]
+
+# Two passes. The inner window is the subject property; the outer is the
+# neighbourhood. Each kept feature is stamped so the viewer can draw the
+# issuer's ground and everyone else's differently — and never imply that the
+# neighbour's tenure belongs to the company presenting.
+kept = []
+for f in src.get("features", []):
+    g = f.get("geometry")
+    if not hits_box(g, NW, NS, NE, NN):
+        continue
+    f = dict(f)
+    props = dict(f.get("properties") or {})
+    props["_subject"] = hits_box(g, W, S, E, N)
+    f["properties"] = props
+    kept.append(f)
+
+_owners = {}
+for f in kept:
+    o = (f["properties"].get("OWNER_NAME") or "unknown").strip()
+    _owners.setdefault(o, [0, False])
+    _owners[o][0] += 1
+    _owners[o][1] = _owners[o][1] or f["properties"]["_subject"]
+# The issuer is whoever holds the ground the deposit is actually on.
+SUBJECT_OWNER = next((o for o, (c, sub_) in
+                      sorted(_owners.items(), key=lambda kv: -kv[1][0]) if sub_), None)
+for f in kept:
+    f["properties"]["_neighbour"] = (
+        not f["properties"]["_subject"]
+        and (f["properties"].get("OWNER_NAME") or "").strip() != (SUBJECT_OWNER or ""))
 
 out = {
     "type": "FeatureCollection",
@@ -89,16 +136,28 @@ out = {
     "licence": "Open Government Licence – British Columbia",
     "attribution": "Contains information licensed under the Open Government "
                    "Licence – British Columbia.",
-    "note": "Clipped by bounding box to the Elk Gold project extent. Tenure "
-            "boundaries are authoritative as published by the Province; "
-            "currency depends on when the bulk file was baked.",
+    "note": "Two windows: the subject property, and the surrounding ground so "
+            "neighbouring holders can be named. Tenure boundaries are "
+            "authoritative as published by the Province; currency depends on "
+            "when the bulk file was baked, and tenures LAPSE — a claim shown "
+            "as current when it has expired is a misstatement, so the bake "
+            "date travels with the data and must be shown.",
+    "subject_owner": SUBJECT_OWNER,
+    "owners": {o: c for o, (c, _s) in sorted(_owners.items(), key=lambda kv: -kv[1][0])},
     "clip_extent_wgs84": {"west": W, "south": S, "east": E, "north": N},
+    "neighbour_extent_wgs84": {"west": NW, "south": NS, "east": NE, "north": NN},
+    "neighbour_radius_m": NEIGHBOUR,
     "crs_of_source_model": "EPSG:26910",
     "features": kept,
 }
 OUT.write_text(json.dumps(out))
 
-print(f"kept {len(kept)} REAL tenures of {len(src.get('features', [])):,}")
+_sub = sum(1 for f in kept if f["properties"]["_subject"])
+print(f"kept {len(kept)} REAL tenures of {len(src.get('features', [])):,}"
+      f"  ({_sub} on the property, {len(kept) - _sub} surrounding)")
+print(f"  subject owner: {SUBJECT_OWNER}")
+for _o, (_c, _s) in sorted(_owners.items(), key=lambda kv: -kv[1][0])[:8]:
+    print(f"    {_c:>3}  {_o[:56]}{'   <- subject' if _o == SUBJECT_OWNER else ''}")
 print(f"  window {W:.5f},{S:.5f} -> {E:.5f},{N:.5f}")
 if kept:
     props = kept[0].get("properties", {}) or {}

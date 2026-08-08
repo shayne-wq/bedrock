@@ -124,6 +124,47 @@ them. Authoring becomes curation rather than construction.
   Store the resolved path on the chapter so an export and a live present take
   the same route.
 
+- [x] 🟢 **#12 — Claims by registry lookup, including the neighbours.**
+  **Decision: look them up, do not ask the issuer to upload them.** Three
+  reasons, in order of weight:
+  1. **Neighbours cannot be uploaded.** A company does not hold its
+     neighbours' tenure data and has no standing to assert it. Only the public
+     register can say who owns the ground along strike — and that is often the
+     most interesting fact on the map.
+  2. **Claims are the most checkable thing in a mining deck.** A reader can
+     put a tenure number into Mineral Titles Online and have an answer in a
+     minute, so real tenure is a credibility asset and a fabricated boundary
+     is the fabrication most likely to be caught.
+  3. It already caught a real error — the owner records are how we learned the
+     deck had the project in the wrong district.
+  Shipped for BC: `tools/fetch_bc_claims.py` now takes two windows — the
+  subject property (1.5 km) and the neighbourhood (6 km) — identifies the
+  issuer as whoever holds the ground the deposit sits on, and stamps every
+  tenure `_subject` / `_neighbour`. The viewer draws the issuer's ground gold
+  and heavy, everyone else's thin and grey, with one label per neighbouring
+  **holder** (not per tenure). Elk Gold: 54 tenures, 12 on the property, 42
+  surrounding, held by Vizsla Copper, Barranco Gold, Flow Metals and five
+  individuals.
+
+  **Still to do, and each is a real constraint rather than polish:**
+  - **Jurisdiction coverage.** BC, Ontario, Québec, WA, NSW and Queensland
+    publish good open cadastres. US BLM is poor — claims are described by
+    section rather than surveyed geometry. Much of Latin America and Africa is
+    patchy or paywalled. So: look up where a register exists, **allow upload as
+    a fallback, never require it.**
+  - **Never render looked-up and uploaded claims identically.** Same
+    discipline as real-versus-fabricated: registry tenure carries its number
+    and the licence attribution; supplied tenure is styled apart and captioned
+    "as supplied by the issuer".
+  - **Currency.** Tenures lapse. The bake date must travel with the data and
+    be shown — a lapsed claim drawn as current is a misstatement in an
+    investor deck, not a stale cache.
+  - **Logos: own only.** Dragging your own logo onto your own ground is fine.
+    Putting a neighbour's logo on their claims is someone else's trademark
+    implying a relationship that does not exist. The registered holder's
+    **name** is a fact from a public register; a logo is branding. Names by
+    default.
+
 ## P2 — parsing & authoring polish
 
 - [ ] 🔴 **#6 — Parse & desurvey drill data on upload** (traces + intercepts).
@@ -150,6 +191,10 @@ them. Authoring becomes curation rather than construction.
 ---
 
 ## Log
+
+- **2026-08-08** — #12 claims-by-lookup shipped for BC, with neighbouring
+  holders named. Decision recorded: registry lookup over issuer upload,
+  because neighbours cannot be self-asserted.
 
 - **2026-08-08** — #1 console half done: nothing is a required dataset, slots
   reordered exploration-first, deck creation gated on data rather than on a
