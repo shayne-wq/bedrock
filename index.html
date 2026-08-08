@@ -136,6 +136,8 @@
   #geoleg{display:none;gap:3px!important;align-items:center}
   #geoleg .sw{width:16px;height:10px;border-radius:1px}
   #propleg{display:none;gap:3px!important;align-items:center}
+  #gcleg{display:none;gap:3px!important;align-items:center}
+  #gcleg .sw{width:14px;height:10px;border-radius:1px}
   #propleg .sw{width:16px;height:10px;border-radius:1px}
   #assayleg{display:none;gap:7px!important;align-items:center}
   #assayleg .sw{width:12px;height:12px;border-radius:2px}
@@ -477,6 +479,7 @@
   <div id="gtleg"></div>
   <div id="geoleg"></div>
   <div id="propleg"></div>
+  <div id="gcleg"></div>
   <div id="assayleg"></div>
 </div>
 
@@ -897,6 +900,9 @@ let UPLOADED_SURFACES=[];
 // Each is {name, e, n, kind}. Kind only chooses the styling; it asserts
 // nothing about the ground.
 let TARGETS=[];
+// Soil / rock-chip / stream samples. Often the only assay data an early
+// project has, and what the first target map is drawn from.
+let GEOCHEM=null;
 const GEOID=-18, rad=Cesium.Math.toRadians, $=id=>document.getElementById(id);
 const setStat=t=>$('status').textContent=t;
 // Names the step boot is currently on, so a failure inside a vendor bundle can
@@ -1477,6 +1483,11 @@ async function loadSideArtifacts(assets){
              dir:'', products:ps.map(x=>({key:x.key,label:x.label,unit:x.unit||'',
                note:x.file, file:x.url||x.file, extent:x.extent}))};
     GEOPHYS_SYNTHETIC=!!gp.asset.synthetic;
+  }
+
+  const gcx=await grab('geochem');
+  if(gcx&&gcx.json&&gcx.json.format==='orebody-geochem/1'){
+    GEOCHEM=gcx.json; GEOCHEM.synthetic=!!gcx.asset.synthetic;
   }
 
   const sf=await grab('surfaces');
@@ -3101,6 +3112,55 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       (GEOPHYS_SYNTHETIC?'<span style="color:#D9584A">FABRICATED</span>':'');
   }
 
+  // ---- geochemistry ------------------------------------------------------
+  // Sample points clamped to the ground, sized and coloured by value on a
+  // percentile scale.
+  //
+  // Percentile, not linear: a soil survey's values are lognormal, and one
+  // 40 g/t rock chip on a linear ramp renders every other sample the same
+  // colour as background. The legend states the actual values at each stop so
+  // the stretch is visible rather than flattering.
+  let gcEnts=null, gcOn=false;
+  const GC_RAMP=['#2C5FA8','#3B82D6','#5EC8E8','#9B7BE8','#D053B8','#F472B6'];
+  function buildGeochem(){
+    if(gcEnts||!GEOCHEM||!GEOCHEM.points.length) return gcEnts;
+    gcEnts=[];
+    const vs=GEOCHEM.points.map(p=>p.v).sort((a,b)=>a-b);
+    const q=f=>vs[Math.min(vs.length-1,Math.floor(vs.length*f))];
+    const stops=[q(0.20),q(0.50),q(0.75),q(0.90),q(0.97),q(0.995)];
+    GEOCHEM.stops=stops;
+    const band=v=>{let i=0;while(i<stops.length-1&&v>stops[i])i++;return i;};
+    GEOCHEM.points.forEach(pt=>{
+      const ll=GEOCHEM.projected?proj4(PROJ,'WGS84',[pt.a,pt.b]):[pt.a,pt.b];
+      const b=band(pt.v);
+      gcEnts.push(viewer.entities.add({
+        position:Cesium.Cartesian3.fromDegrees(ll[0],ll[1]),
+        name:(pt.id?pt.id+'  ·  ':'')+pt.v+' '+(GEOCHEM.unit||''),
+        point:{pixelSize:6+b*2.6,
+          color:Cesium.Color.fromCssColorString(GC_RAMP[b]).withAlpha(0.92),
+          outlineColor:Cesium.Color.fromCssColorString('#07090A').withAlpha(0.6),
+          outlineWidth:1, heightReference:Cesium.HeightReference.CLAMP_TO_GROUND,
+          disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+    });
+    return gcEnts;
+  }
+  function showGeochem(on){
+    if(on) buildGeochem();
+    if(gcEnts) gcEnts.forEach(e=>e.show=on);
+    const el=$('gcleg');
+    el.style.display=on&&GEOCHEM?'flex':'none';
+    if(on&&GEOCHEM){
+      const st=GEOCHEM.stops||[];
+      el.innerHTML='<span>'+(GEOCHEM.element||'Geochem')+
+        (GEOCHEM.unit?' ('+GEOCHEM.unit+')':'')+'</span>'+
+        GC_RAMP.map((c,i)=>'<div class="k"><span class="sw" style="background:'+c+
+          '"></span></div>').join('')+
+        '<span>'+(st[0]!==undefined?(+st[0]).toPrecision(3):'')+' → '+
+        (st[st.length-1]!==undefined?(+st[st.length-1]).toPrecision(3):'')+'</span>'+
+        (GEOCHEM.synthetic?'<span style="color:#D9584A">FABRICATED</span>':'');
+    }
+  }
+
   // ---- named targets -----------------------------------------------------
   // Leader-line labels, like the site features, but driven by data rather than
   // baked. Scaled by distance so a property view stays readable and a close-up
@@ -3344,6 +3404,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     layer('depth grid',()=>showDepth(depthOn));
     layer('site features',()=>showSite(siteOn));
     layer('named targets',()=>showTargets(targetsOn&&!assetOnly));
+    layer('geochemistry',()=>showGeochem(gcOn&&!assetOnly));
     layer('vein surfaces',()=>showSurfaces(surfOn));
     layer('grade map',()=>showPlan(planOn));
     // Async because the other deposit's model may still need fetching. Not
@@ -4874,6 +4935,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     $('planseg').querySelectorAll('button').forEach(x=>
       x.classList.toggle('on',(x.dataset.l==='1')===planOn));
     targetsOn=c.targets!==false;
+    gcOn=!assetOnly&&!!c.geochem;
     if(c.site!==undefined && !assetOnly){ siteOn=!!c.site;
       $('siteseg').querySelectorAll('button').forEach(x=>
         x.classList.toggle('on',(x.dataset.s==='1')===siteOn)); }
@@ -5293,7 +5355,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   window.__api={go:go,play:play,stop:stop,readout:readout,shoot:shoot,grab:grab,
     state:()=>({holes:HOLES.length, highlights:HIGHLIGHTS.length,
       claims:REAL_CLAIMS.length, uploadedSurfaces:UPLOADED_SURFACES.length,
-      targets:TARGETS.length,
+      targets:TARGETS.length, geochem:GEOCHEM?GEOCHEM.points.length:0,
       surfPrims:surfPrims?surfPrims.length:0, surfOn:surfOn,
       blocks:N, exploration:EXPLORATION, deposit:depKey, proj:PROJ})};
 })().catch(e=>{

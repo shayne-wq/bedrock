@@ -146,5 +146,30 @@ ok("no holes were silently assumed vertical in this fixture", assumedVertical.le
 const p50 = F.pointAt(t, 50);
 ok("pointAt: halfway is halfway", near(p50[0] - 692500, 25, 0.5), `east ${(p50[0]-692500).toFixed(2)}`);
 
+console.log("\n== geochemistry");
+const soil = `SampleID,East,North,Au_ppb,Cu_ppm
+S-001,692500,5525500,12,45
+S-002,692520,5525510,<5,60
+S-003,692540,5525520,-5,55
+S-004,692560,5525530,340,120
+S-005,,,99,10`;
+const gc = F.readGeochem(soil, "soil");
+ok("picks the first recognised element", gc.element === "Au_ppb", gc.element);
+ok("unit read from the header", gc.unit === "ppb");
+ok("a row with no coordinates is skipped, not placed at the origin",
+   gc.stats.samples === 4 && gc.stats.skipped === 1, JSON.stringify(gc.stats));
+ok("'<5' becomes half the detection limit", gc.points[1].v === 2.5);
+ok("'-5' means the same thing and is treated the same", gc.points[2].v === 2.5);
+ok("below-detection substitutions are counted", gc.stats.below_detection === 2);
+ok("a named element wins", F.readGeochem(soil, "soil", "Cu_ppm").element === "Cu_ppm");
+ok("lat/lon files are accepted", F.readGeochem("id,lon,lat,au_ppm\nA,-120.3,49.85,1.2").projected === false);
+ok("no element column throws",
+   threw(() => F.readGeochem("id,east,north\nA,1,2"), /element column/));
+// The bug this file exists to prevent: "as" is a substring of "east".
+ok("an element symbol never matches a coordinate column",
+   F.colExact(["East", "North"], "as") === -1 && F.col(["East", "North"], "as") === -1);
+ok("blank numeric fields are missing, not zero",
+   F.readCollars("HOLE,EAST,NORTH,RL\nA,,5525500,1400\nB,692500,5525500,1400").length === 1);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

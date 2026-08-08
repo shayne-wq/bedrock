@@ -316,6 +316,7 @@ async function renderProject(id) {
   const KINDS = [
     { key: "site", label: "Property & claims" },
     { key: "geophysics", label: "Geophysics" },
+    { key: "geochem", label: "Geochemistry" },
     { key: "drills", label: "Drill holes" },
     { key: "blocks", label: "Block model", note: "resource stage" },
     { key: "surfaces", label: "Surfaces" },

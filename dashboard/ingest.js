@@ -15,7 +15,7 @@ import {
 import {
   sniff, readGeoJSON, readKML, readOBJ, readGOCAD, readDXF,
   readCollars, readSurveys, readAssays, desurvey,
-  readWorldFile, worldExtent, magProduct,
+  readWorldFile, worldExtent, magProduct, readGeochem,
 } from "./lib/formats.js";
 
 let worker = null;
@@ -618,6 +618,11 @@ export function classify(file) {
 
   // Drills come as three named files. Match the part, not just the kind, so a
   // multi-file drop can fill all three at once.
+  // Geochem before drilling: a file called "soil_assays.csv" is a soil survey,
+  // not a drill assay table, and "assay" would otherwise claim it.
+  if (/soil|stream|silt|rockchip|rock_chip|talus|geochem|till/.test(n)) {
+    return { kind: "geochem", part: "samples" };
+  }
   if (/collar/.test(n)) return { kind: "drills", part: "collars" };
   if (/survey|desurvey/.test(n)) return { kind: "drills", part: "surveys" };
   if (/assay|sample/.test(n)) return { kind: "drills", part: "assays" };
@@ -749,6 +754,28 @@ async function parseAux(kind, chosen) {
         grade_column: assays?.gradeColumn || null,
         assumed_vertical: assumedVertical,
       },
+    };
+  }
+
+  if (kind === "geochem") {
+    const all = [];
+    let element = null, unit = null, st = null;
+    for (const c of chosen) {
+      readable(c.file);
+      const g = readGeochem(await textOf(c.file), c.file.name);
+      element = element || g.element; unit = unit || g.unit; st = g.stats;
+      g.points.forEach((pt) => all.push({ ...pt, projected: g.projected }));
+    }
+    return {
+      payload: { format: "orebody-geochem/1", element, unit,
+                 projected: all[0]?.projected !== false, points: all },
+      stats: { samples: all.length, element, unit, ...st },
+      // Below-detection substitution is a decision about someone's data and
+      // has to travel with it. A map where a third of the points are half a
+      // detection limit is a different map, and only the provenance says so.
+      provenance: { parsed: "geochem", element, unit,
+                    below_detection_halved: st?.below_detection || 0,
+                    rows_skipped: st?.skipped || 0 },
     };
   }
 

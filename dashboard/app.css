@@ -355,3 +355,7 @@ tbody tr:last-child td { border-bottom: 0; }
 .dropmini input[type=file]{flex:0 0 auto;max-width:60%}
 .dzname{font-size:11.5px;color:#6b7580;font-family:'JetBrains Mono',monospace}
 .zone.dropping{outline:2px dashed #C99A3A;outline-offset:3px;background:rgba(201,154,58,.06)}
+/* Schematic, not a preview — see candidateGlyph(). Enough to tell a section
+   from a plan from a drill slide without rendering anything. */
+.scard .sglyph{flex:0 0 auto;line-height:0;border-radius:3px;overflow:hidden;
+  border:1px solid rgba(255,255,255,.08)}

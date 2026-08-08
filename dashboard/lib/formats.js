@@ -67,7 +67,14 @@ export function sniff(file) {
 }
 
 // -------------------------------------------------------------- helpers ----
-const num = (v) => { const x = Number(String(v).trim()); return Number.isFinite(x) ? x : NaN; };
+// Number("") is 0, which is how an empty easting becomes a sample at the
+// origin and an empty grade becomes a barren interval. Blank is missing.
+const num = (v) => {
+  const t = String(v ?? "").trim();
+  if (t === "") return NaN;
+  const x = Number(t);
+  return Number.isFinite(x) ? x : NaN;
+};
 
 /** Split a delimited line, honouring quotes. Comma or tab, sniffed per file. */
 function splitRow(line, sep) {
@@ -94,16 +101,33 @@ export function parseTable(text, what = "file") {
   return { header, rows, sep };
 }
 
-/** Find a column by any of several candidate names, loosely. */
+/** Exact column match, punctuation and case ignored. */
+export function colExact(header, ...names) {
+  const low = header.map((h) => h.toLowerCase().replace(/[^a-z0-9]/g, ""));
+  for (const want of names) {
+    const i = low.indexOf(want.toLowerCase().replace(/[^a-z0-9]/g, ""));
+    if (i >= 0) return i;
+  }
+  return -1;
+}
+
+/**
+ * Find a column by any of several candidate names.
+ *
+ * Exact first, then substring — but substring only for names of four
+ * characters or more. Short names are catastrophic as substrings: "as" is
+ * inside "east", so an arsenic lookup returned the EASTING column and would
+ * have mapped a soil survey's coordinates as an assay. "x" is inside
+ * "max_depth" for the same reason. Four is the shortest length at which the
+ * mining vocabulary stops colliding with itself.
+ */
 export function col(header, ...names) {
+  const exact = colExact(header, ...names);
+  if (exact >= 0) return exact;
   const low = header.map((h) => h.toLowerCase().replace(/[^a-z0-9]/g, ""));
   for (const want of names) {
     const w = want.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const i = low.indexOf(w);
-    if (i >= 0) return i;
-  }
-  for (const want of names) {
-    const w = want.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (w.length < 4) continue;
     const i = low.findIndex((h) => h.includes(w));
     if (i >= 0) return i;
   }
@@ -472,4 +496,89 @@ export function magProduct(name) {
   if (/rad|k_|th_|u_|potass|thorium|uranium/.test(n)) return { key: "rad", label: "Radiometrics", unit: "" };
   if (/grav|bouguer/.test(n)) return { key: "grav", label: "Gravity", unit: "mGal" };
   return { key: "grid", label: "Geophysical grid", unit: "" };
+}
+
+// ---------------------------------------------------------- geochemistry ----
+// TRACKING.md #5. Soil, rock-chip and stream-sediment sampling is often the
+// only assay data an early project has, and it is what the first target map is
+// drawn from. A sample file is points with values, which sounds trivial until
+// you meet real ones: coordinates may be projected or lat/lon, values carry
+// units in the header, and below-detection results are written as a negative
+// number, a "<" prefix, or the detection limit itself.
+
+/** Elements worth offering by default. Not exhaustive — any numeric column can
+ *  be chosen — but these are recognised without being told. */
+const ELEMENTS = ["au", "ag", "cu", "pb", "zn", "mo", "ni", "co", "as", "sb",
+                  "bi", "w", "sn", "li", "u", "ce", "la", "s", "fe", "hg", "te"];
+
+/**
+ * Sample points with one chosen element.
+ *
+ * Below-detection handling is explicit rather than incidental. "<0.005" and
+ * "-0.005" both mean "under the limit", and both are extremely common. Treating
+ * the negative literally puts impossible values on the map; dropping the row
+ * loses the fact that the sample was taken and came back clean. Convention is
+ * half the detection limit, and the count of substitutions is reported so
+ * nobody has to guess how much of a map is made of them.
+ */
+export function readGeochem(text, what = "geochem", element) {
+  const { header, rows } = parseTable(text, what);
+  const ix = col(header, "east", "easting", "x", "utme", "utm_e");
+  const iy = col(header, "north", "northing", "y", "utmn", "utm_n");
+  const ilon = col(header, "lon", "long", "longitude");
+  const ilat = col(header, "lat", "latitude");
+  const iid = col(header, "sampleid", "sample", "id", "station", "site");
+  const projected = ix >= 0 && iy >= 0;
+  if (!projected && !(ilon >= 0 && ilat >= 0)) {
+    throw new Error(`${what}: no coordinates. Expected easting/northing or ` +
+      `longitude/latitude. Columns present: ${header.join(", ")}`);
+  }
+
+  // Which element? Named one wins; otherwise the first recognised element
+  // column. Never silently pick an arbitrary numeric column — "the third
+  // column happened to be numeric" is not an assay.
+  let iv = -1, name = element || null;
+  if (element) iv = colExact(header, element);
+  if (iv < 0) {
+    for (const e of ELEMENTS) {
+      // Exact only. An element symbol is one or two letters and matches inside
+      // half the column names in a survey file.
+      const i = colExact(header, e + "_ppm", e + "_ppb", e + "ppm", e + "ppb", e);
+      if (i >= 0) { iv = i; name = header[i]; break; }
+    }
+  }
+  if (iv < 0) {
+    throw new Error(`${what}: could not find an element column. ` +
+      `Columns present: ${header.join(", ")}`);
+  }
+
+  const pts = [];
+  let belowDetection = 0, skipped = 0;
+  for (const r of rows) {
+    const raw = String(r[iv] ?? "").trim();
+    let v;
+    if (/^</.test(raw)) { v = num(raw.slice(1)) / 2; belowDetection++; }
+    else {
+      v = num(raw);
+      if (Number.isFinite(v) && v < 0) { v = Math.abs(v) / 2; belowDetection++; }
+    }
+    const a = projected ? num(r[ix]) : num(r[ilon]);
+    const b = projected ? num(r[iy]) : num(r[ilat]);
+    if (![a, b, v].every(Number.isFinite)) { skipped++; continue; }
+    pts.push({ id: iid >= 0 ? String(r[iid] ?? "").trim() : "", a, b, v });
+  }
+  if (!pts.length) throw new Error(`${what}: no rows with coordinates and a value.`);
+
+  const sorted = pts.map((p) => p.v).sort((m, n) => m - n);
+  const q = (f) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * f))];
+  return {
+    element: name,
+    // Units from the header where it says so; assays are quoted per-unit and a
+    // ppb map read as ppm is off by a thousand.
+    unit: /ppb/i.test(name) ? "ppb" : /pct|%/i.test(name) ? "%" : "ppm",
+    projected, points: pts,
+    stats: { samples: pts.length, below_detection: belowDetection, skipped,
+             min: sorted[0], max: sorted[sorted.length - 1],
+             p50: q(0.5), p90: q(0.9), p98: q(0.98) },
+  };
 }

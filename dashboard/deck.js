@@ -11,7 +11,7 @@ import {
 } from "./lib/ui.js";
 import { CONFIG } from "./config.js";
 // Shared with the viewer: one definition of what a slide is.
-import { projectCandidates, toChapter } from "./lib/slides.js";
+import { projectCandidates, toChapter, candidateGlyph } from "./lib/slides.js";
 
 const VIEWER = "/index.html";
 let deck = null, chapters = [], project = null, links = [];
@@ -182,6 +182,7 @@ let order = [];      // candidate objects, in presentation order
 
 function cardHtml(c, inOrder) {
   return `<div class="scard" draggable="true" data-cid="${c.id}">
+    <span class="sglyph">${candidateGlyph(c)}</span>
     <div class="grow">
       <b>${esc(c.title)}</b>
       <span class="ssec">${esc(c.section || "")}</span>

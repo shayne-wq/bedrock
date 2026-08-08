@@ -100,7 +100,15 @@ model), and two sources of truth is one too many.
   (#5), a targets slide, and "the ask" — the slide that says what the money
   is for, which no dataset implies and an author has to write.
   <https://github.com/shayne-wq/orebody/issues/4>
-- [ ] 🔴 **#5 — Geochemistry dataset kind** (soil / rock / stream sediment).
+- [x] 🟢 **#5 — Geochemistry dataset kind.** Soil, rock-chip, stream sediment
+  and till. Reader, ingest slot, viewer rendering, legend and a candidate slide.
+  Coordinates may be projected or lat/lon. Below-detection results are handled
+  explicitly — `<5` and `-5` both mean "under the limit" and both become half
+  of it, which is convention, and **the substitution count travels in the
+  provenance** because a map where a third of the points are half a detection
+  limit is a different map. Points are coloured on a **percentile** scale: a
+  soil survey is lognormal and one 40 g/t rock chip on a linear ramp renders
+  every other sample as background.
   <https://github.com/shayne-wq/orebody/issues/5>
 
 ## P1 — authoring: generate, curate, transition
@@ -126,9 +134,12 @@ them. Authoring becomes curation rather than construction.
   HTML5 drag-and-drop with positional insert, Add/Remove, and Save order which
   replaces `chapters` wholesale (the running order IS the deck — diffing would
   only risk orphans). Re-opening seeds the order from saved chapters.
-  **Not done:** a thumbnail per candidate. `tools/capture_thumbs.py` already
-  generates them from a built page, so this is wiring rather than invention,
-  and the builder is noticeably harder to skim without it.
+  **Thumbnails done**, as schematic glyphs rather than previews — and the
+  distinction is deliberate. A real preview means rendering the slide, and a
+  candidate has not been rendered; it does not exist until it is chosen. What a
+  chooser needs is to tell a section from a plan from a drill slide at a
+  glance, which a shape does as well as a photograph and instantly, with no
+  request and nothing to invalidate.
 - [x] 🟢 **#11 — Computed transitions between consecutive slides.**
   This is geometry, not intelligence, and should be built as rules that can be
   reasoned about:
@@ -266,6 +277,14 @@ them. Authoring becomes curation rather than construction.
 ---
 
 ## Log
+
+- **2026-08-08** — #5 geochemistry shipped end to end, and the deck builder got
+  thumbnails. Two latent bugs in the shared readers surfaced while testing it,
+  both affecting every reader written so far: `Number("")` is 0, so a blank
+  easting placed a sample at the origin and a blank grade read as barren; and
+  `col()` matched short names as substrings, so looking up arsenic (`"as"`)
+  returned the **easting** column — a soil survey's coordinates read as an
+  assay. Substring matching is now limited to names of four characters or more.
 
 - **2026-08-08** — Tracker correction: #6 and #7 were still marked not-started
   and had in fact shipped. #4 downgraded to partial — the candidate generator

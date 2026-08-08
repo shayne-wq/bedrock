@@ -92,6 +92,24 @@ export function zoneCandidates(zone, datasets, project) {
     });
   }
 
+  // ---- geochemistry ------------------------------------------------------
+  // Often the only assay data an early project has, and the slide a targeting
+  // argument is actually made from.
+  if (K.has("geochem")) {
+    const g = statsOf(datasets, zone.id, "geochem");
+    const el = g?.element ? String(g.element).replace(/_(ppm|ppb)$/i, "") : "Geochemistry";
+    push("geochem", {
+      section: zone.name, title: `${el} in soils`,
+      body: g?.samples
+        ? `${g.samples.toLocaleString()} samples, coloured on a percentile scale — ` +
+          `a soil survey is lognormal and a linear ramp hides everything but the peak.`
+        : "Surface sampling across the target area.",
+      camera: { h: 0, p: -72, r: 3200 },
+      layers: { ground: 1.0, geochem: true, site: K.has("site"), blocks: false },
+      needs: ["geochem"],
+    });
+  }
+
   // ---- drilling ----------------------------------------------------------
   if (K.has("drills")) {
     push("drills", {
@@ -240,4 +258,98 @@ export function toChapter(candidate, ord) {
     layers: candidate.layers || {},
     dwell_ms: 9000,
   };
+}
+
+// ------------------------------------------------------------ thumbnails ----
+/**
+ * A schematic glyph for a candidate.
+ *
+ * NOT a preview, and it must not pretend to be one. A real preview means
+ * rendering the slide, and a candidate has not been rendered — it does not
+ * exist until it is chosen. What a chooser actually needs is to tell a section
+ * from a plan from a drill slide at a glance, which a shape does as well as a
+ * photograph and instantly.
+ *
+ * Returns an inline SVG string, so there is no request, no cache and nothing
+ * to invalidate when the data changes.
+ */
+export function candidateGlyph(c) {
+  const L = c.layers || {};
+  const A = "#C99A3A", G = "#6b7580", W = "#8C948C";
+  const wrap = (inner) =>
+    `<svg viewBox="0 0 64 40" width="64" height="40" aria-hidden="true">` +
+    `<rect width="64" height="40" rx="3" fill="#0d1113"/>${inner}</svg>`;
+  const horizon = `<path d="M0 26 Q18 20 32 24 T64 21 L64 40 L0 40 Z" fill="#161c1f"/>`;
+
+  if (L.property) {                        // property-wide grade columns
+    let bars = "";
+    [6, 12, 18, 24, 30, 36, 42, 48, 54].forEach((x, i) => {
+      const h = [7, 13, 22, 30, 18, 26, 11, 16, 8][i];
+      bars += `<rect x="${x}" y="${32 - h}" width="4" height="${h}" fill="${
+        h > 24 ? "#D053B8" : h > 16 ? "#9B7BE8" : "#3B82D6"}"/>`;
+    });
+    return wrap(`<rect width="64" height="40" fill="#07090A"/>${bars}`);
+  }
+  if (L.geo) {                             // a magnetics product
+    return wrap(`<defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#2C5FA8"/>` +
+      `<stop offset=".5" stop-color="#5EC8E8"/><stop offset="1" stop-color="#D053B8"/></linearGradient></defs>` +
+      `<rect x="6" y="8" width="52" height="24" rx="2" fill="url(#g)" opacity=".85"/>`);
+  }
+  if (L.geochem) {                         // sample points
+    let dots = "";
+    for (let i = 0; i < 22; i++) {
+      const x = 8 + (i * 13) % 48, y = 9 + ((i * 7) % 22);
+      const r = 1.2 + (i % 4) * 0.7;
+      dots += `<circle cx="${x}" cy="${y}" r="${r}" fill="${
+        i % 7 === 0 ? "#D053B8" : i % 3 === 0 ? "#5EC8E8" : "#3B82D6"}"/>`;
+    }
+    return wrap(dots);
+  }
+  if (L.plan) {                            // plan-view grade x thickness
+    return wrap(`<ellipse cx="32" cy="20" rx="20" ry="11" fill="#E8433C" opacity=".55"/>` +
+      `<ellipse cx="32" cy="20" rx="12" ry="6" fill="#F2A33C" opacity=".85"/>` +
+      `<ellipse cx="32" cy="20" rx="5" ry="2.6" fill="#E05CC8"/>`);
+  }
+  if (L.section3d) {                       // a slab through the model
+    const v = L.section3d === "ns";
+    return wrap(horizon + (v
+      ? `<rect x="28" y="4" width="8" height="32" fill="${A}" opacity=".5"/>`
+      : `<rect x="4" y="16" width="56" height="8" fill="${A}" opacity=".5"/>`));
+  }
+  if (L.surfaces) {                        // solid bodies
+    return wrap(`<path d="M12 26 C20 12 40 12 52 20 C44 30 22 32 12 26 Z" fill="#E8433C" opacity=".6"/>` +
+      `<path d="M18 22 C26 14 38 15 45 20 C38 26 24 27 18 22 Z" fill="#E05CC8" opacity=".8"/>`);
+  }
+  if (L.callouts || L.highlights) {        // intercepts called out
+    return wrap(horizon +
+      `<line x1="20" y1="6" x2="30" y2="34" stroke="${W}" stroke-width="1"/>` +
+      `<line x1="34" y1="6" x2="44" y2="34" stroke="${W}" stroke-width="1"/>` +
+      `<circle cx="25" cy="20" r="2.6" fill="#E8433C"/><circle cx="39" cy="20" r="2.6" fill="#E8433C"/>` +
+      `<rect x="46" y="15" width="14" height="4" rx="1" fill="${G}"/>`);
+  }
+  if (L.drills) {                          // traces with beads
+    let holes = "";
+    [16, 26, 36, 46].forEach((x, i) => {
+      holes += `<line x1="${x}" y1="8" x2="${x + 5}" y2="34" stroke="${W}" stroke-width="1"/>`;
+      holes += `<circle cx="${x + 2}" cy="20" r="1.8" fill="${A}"/>`;
+      if (i % 2 === 0) holes += `<circle cx="${x + 3}" cy="26" r="1.4" fill="${A}"/>`;
+    });
+    return wrap(horizon + holes);
+  }
+  if (L.mode === "class") {                // classification reveal
+    const n = (L.classes || [1]).length;
+    let bands = "";
+    ["#4FD1C5", "#F2C14E", "#D9584A"].slice(0, n).forEach((c, i) => {
+      bands += `<ellipse cx="32" cy="${22 - i * 4}" rx="${20 - i * 5}" ry="${8 - i * 2}" fill="${c}" opacity=".7"/>`;
+    });
+    return wrap(horizon + bands);
+  }
+  if (L.site && !L.drills) {               // the claim block
+    return wrap(`<path d="M10 10 L40 8 L54 16 L50 32 L16 34 Z" fill="none" stroke="${A}" stroke-width="1.6"/>` +
+      `<path d="M18 16 L34 15 L40 20 L37 27 L22 28 Z" fill="${A}" opacity=".18"/>`);
+  }
+  // Default: the deposit on ground.
+  return wrap(horizon +
+    `<ellipse cx="32" cy="21" rx="16" ry="7" fill="#E8433C" opacity=".55"/>` +
+    `<ellipse cx="32" cy="20" rx="8" ry="3.4" fill="#E05CC8" opacity=".9"/>`);
 }
