@@ -34,9 +34,9 @@ function ask(msg, onProgress) {
   });
 }
 
-export function ingestWizard(project, onDone) {
+export function ingestWizard(project, zone, onDone) {
   modal(`
-    <h2>Load a block model</h2>
+    <h2>Load a block model${zone ? ` — ${esc(zone.name)}` : ""}</h2>
     <p class="sub">Read in this browser. The file is not uploaded — only the
        geometry and rollups a deck needs, which is a few megabytes.</p>
     <div class="drop" id="drop">
@@ -52,7 +52,7 @@ export function ingestWizard(project, onDone) {
 
   const drop = $("drop"), input = $("file");
   $("pick").onclick = () => input.click();
-  input.onchange = () => { if (input.files[0]) step2(project, input.files[0], onDone); };
+  input.onchange = () => { if (input.files[0]) step2(project, zone, input.files[0], onDone); };
   ["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => {
     e.preventDefault(); drop.classList.add("over");
   }));
@@ -61,12 +61,12 @@ export function ingestWizard(project, onDone) {
   }));
   drop.addEventListener("drop", (e) => {
     const f = e.dataTransfer?.files?.[0];
-    if (f) step2(project, f, onDone);
+    if (f) step2(project, zone, f, onDone);
   });
 }
 
 // ------------------------------------------------------- step 2: mapping ---
-async function step2(project, file, onDone) {
+async function step2(project, zone, file, onDone) {
   modal(`
     <h2>Reading ${esc(file.name)}</h2>
     <p class="sub">Sampling the first rows to work out the grid.</p>
@@ -83,7 +83,7 @@ async function step2(project, file, onDone) {
         export, re-export it as CSV from your modelling package.</div>
       <div class="row-actions" style="margin-top:16px">
         <button class="btn" id="back">Choose another file</button></div>`);
-    $("back").onclick = () => ingestWizard(project, onDone);
+    $("back").onclick = () => ingestWizard(project, zone, onDone);
     return;
   }
 
@@ -172,7 +172,7 @@ async function step2(project, file, onDone) {
       return toast("Block dimensions must all be greater than zero.", true);
     }
     const denRaw = $("den").value.trim();
-    step3(project, file, {
+    step3(project, zone, file, {
       mapping, dx, dy, dz,
       density: denRaw === "" ? null : Number(denRaw),
       cutoff: Number($("cut").value) || 0,
@@ -184,7 +184,7 @@ async function step2(project, file, onDone) {
 const line = (k, v, cls = "") =>
   `<div class="ln ${cls}"><span class="k">${k}</span><span class="v">${v}</span></div>`;
 
-async function step3(project, file, cfg, onDone) {
+async function step3(project, zone, file, cfg, onDone) {
   modal(`
     <h2>Reading the model</h2>
     <p class="sub">${esc(file.name)} · ${fmtBytes(file.size)}</p>
@@ -212,7 +212,7 @@ async function step3(project, file, cfg, onDone) {
     modal(`<h2>Extraction failed</h2>
       <p class="sub">${esc(e.message)}</p>
       <div class="row-actions"><button class="btn" id="back">Try again</button></div>`);
-    $("back").onclick = () => ingestWizard(project, onDone);
+    $("back").onclick = () => ingestWizard(project, zone, onDone);
     return;
   }
 
@@ -282,11 +282,11 @@ async function step3(project, file, cfg, onDone) {
     $("synthwrap").style.display = $("synth").checked ? "" : "none";
   };
   $("discard").onclick = closeModal;
-  $("save").onclick = () => save(project, file, out, onDone);
+  $("save").onclick = () => save(project, zone, file, out, onDone);
 }
 
 // ---------------------------------------------------------------- saving ---
-async function save(project, file, out, onDone) {
+async function save(project, zone, file, out, onDone) {
   const synthetic = $("synth").checked;
   const note = $("synthnote")?.value.trim() || "";
   if (synthetic && !note) {
@@ -296,10 +296,10 @@ async function save(project, file, out, onDone) {
   const btn = $("save");
   btn.disabled = true; btn.textContent = "Saving…";
   try {
-    // Path is <org>/<project>/<dataset>/… — the first segment is the tenant
-    // boundary every storage policy checks.
+    // Path is <org>/<project>/<zone>/<dataset>/… — the first segment is the
+    // tenant boundary every storage policy checks, so org_id stays leading.
     const id = crypto.randomUUID();
-    const base = `${project.org_id}/${project.id}/${id}`;
+    const base = `${project.org_id}/${project.id}/${zone.id}/${id}`;
     const blocksPath = `${base}/blocks.bin`;
 
     // Uploads of a few megabytes are quick, but a storage endpoint that accepts
@@ -319,17 +319,17 @@ async function save(project, file, out, onDone) {
     await up(`${base}/buckets.json`,
       new Blob([JSON.stringify(out.buckets)]), "application/json");
 
-    // Replace rather than accumulate: a project has one block model, and
-    // leaving the previous one would leave decks silently reading stale
-    // tonnages.
+    // Replace rather than accumulate: a zone has one block model, and leaving
+    // the previous one would leave decks silently reading stale tonnages.
     const { data: old } = await db.from("datasets")
-      .select("id").eq("project_id", project.id).eq("kind", "blocks");
+      .select("id").eq("zone_id", zone.id).eq("kind", "blocks");
     if (old?.length) {
       await db.from("datasets").delete().in("id", old.map((d) => d.id));
     }
 
     const { error } = await db.from("datasets").insert({
       project_id: project.id,
+      zone_id: zone.id,
       kind: "blocks",
       label: file.name,
       storage_path: blocksPath,
@@ -353,6 +353,153 @@ async function save(project, file, out, onDone) {
     onDone?.();
   } catch (e) {
     btn.disabled = false; btn.textContent = "Save to project";
+    fail("Save", e);
+  }
+}
+
+// ============================================================ aux datasets ===
+// Block models are read in the browser and only their rollups are stored. The
+// other four dataset kinds — drills, surfaces, site and geophysics — are small
+// enough (a few MB at most) to store as uploaded, so this is a plainer flow:
+// pick the file(s), say whether they are real, upload, record a dataset row.
+// Parsing (desurveying drill traces, triangulating surfaces) happens later in
+// the build; the console's job here is to collect the inputs, per zone.
+const AUX = {
+  drills: {
+    label: "Drill holes",
+    blurb: "Three CSVs — collars, downhole surveys and assays. Standard columns; "
+         + "the build desurveys the traces and pulls the intercepts.",
+    parts: [
+      { key: "collars", label: "Collars",
+        hint: "hole_id, easting, northing, elevation, total_depth_m, azimuth, dip", accept: ".csv" },
+      { key: "surveys", label: "Downhole surveys",
+        hint: "hole_id, depth_m, azimuth, dip", accept: ".csv" },
+      { key: "assays", label: "Assays",
+        hint: "hole_id, from_m, to_m, length_m, au_gpt", accept: ".csv" },
+    ],
+  },
+  surfaces: {
+    label: "Surfaces",
+    blurb: "Vein or grade-shell wireframes as triangulated mesh (OBJ / DXF) or "
+         + "the viewer's surfaces JSON. Optional — the build can also derive "
+         + "shells from the block model itself.",
+    parts: [{ key: "surfaces", label: "Surface mesh", hint: ".obj, .dxf or .json",
+              accept: ".obj,.dxf,.json" }],
+  },
+  site: {
+    label: "Property & claims",
+    blurb: "Claim or tenure polygons as GeoJSON, in the project's coordinate "
+         + "system or WGS84. Drives the property extent and the claim colour-pop.",
+    parts: [{ key: "site", label: "Claims / tenure", hint: ".geojson or .json",
+              accept: ".geojson,.json" }],
+  },
+  geophysics: {
+    label: "Geophysics",
+    blurb: "Georeferenced raster images (magnetics, radiometrics…) as PNG or "
+         + "JPEG. Draped on the terrain over the deposit.",
+    parts: [{ key: "images", label: "Raster image(s)", hint: ".png or .jpg — "
+              + "you can pick several", accept: ".png,.jpg,.jpeg", multiple: true }],
+  },
+};
+
+export function uploadAux(project, zone, kind, onDone) {
+  const spec = AUX[kind];
+  if (!spec) return;
+  modal(`
+    <h2>${esc(spec.label)} — ${esc(zone.name)}</h2>
+    <p class="sub">${esc(spec.blurb)}</p>
+    ${spec.parts.map((pt) => `
+      <div class="field">
+        <label for="f_${pt.key}">${esc(pt.label)}</label>
+        <input type="file" id="f_${pt.key}" accept="${pt.accept}" ${pt.multiple ? "multiple" : ""}>
+        <p class="hintline">${esc(pt.hint)}</p>
+      </div>`).join("")}
+    <div class="checkline" style="margin-top:8px">
+      <input type="checkbox" id="synth">
+      <label for="synth" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;font-family:var(--sans);color:var(--ink-2)">
+        This data is fabricated or illustrative, not real results
+      </label>
+    </div>
+    <div class="field" id="synthwrap" style="display:none">
+      <label for="synthnote">What is fabricated about it</label>
+      <input type="text" id="synthnote" placeholder="Synthetic ${esc(kind)} for demonstration">
+      <p class="hintline">Required. Shown on screen in every deck and burned into exports.</p>
+    </div>
+    <div class="row-actions" style="margin-top:16px">
+      <button class="btn primary" id="auxsave">Save to zone</button>
+      <button class="btn" id="auxcancel">Cancel</button>
+    </div>`);
+
+  $("synth").onchange = () => { $("synthwrap").style.display = $("synth").checked ? "" : "none"; };
+  $("auxcancel").onclick = closeModal;
+  $("auxsave").onclick = () => saveAux(project, zone, kind, spec, onDone);
+}
+
+async function saveAux(project, zone, kind, spec, onDone) {
+  // Collect the chosen files part-by-part. Every part is required except where
+  // a part is explicitly multiple (geophysics), which just needs at least one.
+  const chosen = [];
+  for (const pt of spec.parts) {
+    const el = $(`f_${pt.key}`);
+    const files = [...(el?.files || [])];
+    if (!files.length) return toast(`Choose the ${pt.label.toLowerCase()} file.`, true);
+    files.forEach((f) => chosen.push({ part: pt.key, file: f }));
+  }
+  const synthetic = $("synth").checked;
+  const note = $("synthnote")?.value.trim() || "";
+  if (synthetic && !note) {
+    return toast("Say what is fabricated about it — that label travels with every deck.", true);
+  }
+
+  const btn = $("auxsave");
+  btn.disabled = true; btn.textContent = "Saving…";
+  try {
+    const id = crypto.randomUUID();
+    const base = `${project.org_id}/${project.id}/${zone.id}/${id}`;
+    const up = async (path, body, type) => {
+      const timeout = new Promise((_, rej) =>
+        setTimeout(() => rej(new Error("the storage service did not respond within two minutes")), 120000));
+      const { error } = await Promise.race([
+        db.storage.from("artifacts").upload(path, body, { contentType: type, upsert: true }),
+        timeout,
+      ]);
+      if (error) throw error;
+    };
+
+    const files = [];
+    let total = 0;
+    for (const c of chosen) {
+      const safe = c.file.name.replace(/[^\w.\-]+/g, "_");
+      const path = `${base}/${c.part}__${safe}`;
+      await up(path, c.file, c.file.type || "application/octet-stream");
+      files.push({ part: c.part, name: c.file.name, path, bytes: c.file.size });
+      total += c.file.size;
+    }
+
+    // One dataset of each kind per zone — replace, do not accumulate.
+    const { data: old } = await db.from("datasets")
+      .select("id").eq("zone_id", zone.id).eq("kind", kind);
+    if (old?.length) await db.from("datasets").delete().in("id", old.map((d) => d.id));
+
+    const { error } = await db.from("datasets").insert({
+      project_id: project.id,
+      zone_id: zone.id,
+      kind,
+      label: files.length === 1 ? files[0].name : `${files.length} files`,
+      storage_path: files[0].path,
+      bytes: total,
+      stats: { files: files.length },
+      provenance: { uploaded_at: new Date().toISOString(), files },
+      synthetic,
+      synthetic_note: synthetic ? note : null,
+    });
+    if (error) throw error;
+
+    closeModal();
+    toast(`${spec.label} saved to ${zone.name}`);
+    onDone?.();
+  } catch (e) {
+    btn.disabled = false; btn.textContent = "Save to zone";
     fail("Save", e);
   }
 }
