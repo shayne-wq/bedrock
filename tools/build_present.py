@@ -1393,6 +1393,10 @@ let TONNES_PER_BLOCK=675;
 // stats.block_dims. Drawing a 12 m block as a 10 m box leaves gaps you can see.
 let BLOCK_DIMS=[10,5,5], BLOCK_DENSITY=2.7;
 let BLOCKS_SYNTHETIC=false;   // set by a hydrated deck or a fabricated deposit
+// TRACKING.md #1. True when the deck has no block model — an exploration
+// project, which is most of them. Nothing about that is an error state; it
+// means there is no resource yet, so there is nothing to report a tonnage for.
+let EXPLORATION=false;
 const GEOID=-18, rad=Cesium.Math.toRadians, $=id=>document.getElementById(id);
 const setStat=t=>$('status').textContent=t;
 // Names the step boot is currently on, so a failure inside a vendor bundle can
@@ -1657,7 +1661,73 @@ async function hydrate(token){
   if(!payload) throw new Error('incorrect passcode');
 
   const blocks=(payload.assets||[]).find(a=>a.kind==='blocks');
-  if(!blocks||!blocks.url) throw new Error('this deck has no block model attached');
+
+  // ---- exploration decks: no block model, and that is not an error --------
+  // TRACKING.md #1. Most projects are pure exploration — drilling, magnetics
+  // and geochem, no resource and therefore no tonnage, grade or ounces. This
+  // used to throw "this deck has no block model attached", which locked out
+  // the majority of the market on the grounds that they had not finished yet.
+  //
+  // N=0 is the mechanism. Every model-driven loop in this file walks RUNS or
+  // counts to N, so an empty model makes all of them no-ops without a single
+  // conditional in the render path. What remains is to say the right thing
+  // instead of reporting a deposit of zero tonnes, and to find a camera.
+  if(!blocks||!blocks.url){
+    EXPLORATION=true;
+    N=0; F=new Float32Array(0); M=new Uint8Array(0);
+    RUNS=[]; BUCKETS=[]; BY_CB=[]; VEINS=[]; VGROUP={}; VGROUP_NAMES=[];
+    CLASS_LABELS={}; CLASS_CONFIRMED=false;
+
+    // A camera still needs somewhere to look. Any dataset that knows its own
+    // extent will do; a deck may also declare one. Guessing is not an option —
+    // an exploration deck pointed at the wrong hemisphere is worse than one
+    // that says it cannot place itself.
+    const ext=(payload.deck&&payload.deck.settings&&payload.deck.settings.extent)||
+      ((payload.assets||[]).map(a=>a.stats&&a.stats.bounds).filter(Boolean)[0])||null;
+    if(!ext||!ext.x||!ext.y)
+      throw new Error('this deck has no block model and nothing that declares '+
+                      'where it is — add a property outline, a survey grid, or '+
+                      'an extent on the deck');
+    const z=ext.z||[0,0];
+    EMIN=ext.x[0]; NMIN=ext.y[0];
+    EX=Math.max(1,ext.x[1]-ext.x[0]); EY=Math.max(1,ext.y[1]-ext.y[0]);
+    CE=(ext.x[0]+ext.x[1])/2; CN=(ext.y[0]+ext.y[1])/2; CZ=(z[0]+z[1])/2;
+    ZTOP=z[1]; ZBOT=z[0];
+    TONNES_PER_BLOCK=0;
+
+    PROV={source:(payload.deck&&payload.deck.title)||null,
+          exploration:true,
+          total:{blocks:0,tonnes:0,grade_gt:0,oz:0}, by_class:{},
+          class_confirmed:false, drills_synthetic:false, site_synthetic:false,
+          geophys_synthetic:false, blocks_synthetic:false,
+          datasets:(payload.assets||[]).map(a=>a.kind)};
+    BLOCKS_SYNTHETIC=false;
+    HOLES=[]; HIGHLIGHTS=[]; SITE={areas:[],roads:[],labels:[],claims:[]};
+    SITE_SYNTHETIC=false; REAL_CLAIMS=[]; CLAIMS_ATTRIB='';
+    GEOPHYS={}; GEOPHYS_SYNTHETIC=false; THUMBS=[]; STATIONS=[];
+
+    const chs0=(payload.chapters||[]).map(mapChapter);
+    CHAPTERS=chs0.length?chs0:[{h:30,p:-28,r:Math.max(2500,Math.max(EX,EY)*1.6),
+      ground:1.0,mode:'grade',dwell:10,section:'Overview',
+      title:(payload.deck&&payload.deck.title)||'The property',
+      body:'An exploration-stage project. There is no resource estimate, so no '+
+           'tonnage, grade or contained metal is reported.'}];
+    if(payload.deck&&payload.deck.title){
+      document.title=payload.deck.title+' · Orebody Present';
+      const bn2=document.querySelector('#brand .n');
+      if(bn2){ bn2.textContent=payload.deck.title;
+        const pn=(payload.project||{}).name;
+        if(pn){ bn2.appendChild(document.createElement('br'));
+                bn2.appendChild(document.createTextNode(pn)); } }
+      const it2=$('intro_t'), is2=$('intro_s');
+      if(it2) it2.textContent=payload.deck.title;
+      if(is2) is2.textContent=(payload.deck.subtitle)||
+        [(payload.project||{}).name,(payload.project||{}).location].filter(Boolean).join(' — ')||
+        'Exploration stage — no resource estimate.';
+    }
+    setStat('');
+    return;
+  }
   // Refuse rather than guess. The readout sums share-weighted rollups because
   // 10.9% of blocks in a typical vein model straddle two domains — deriving
   // vein tonnage from the dominant-domain column instead overstates some veins
@@ -2501,37 +2571,61 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     const L=[];
     L.push('OREBODY — AUDIT TRAIL');
     L.push('');
-    L.push('Source            '+PROV.source);
-    L.push('Rows scanned      '+PROV.scanned_rows.toLocaleString());
-    L.push('Mineralized       '+PROV.mineralized_blocks.toLocaleString()+' blocks');
-    L.push('Dropped           '+PROV.dropped_blocks+' (blocks with no vein share)');
-    L.push('Straddling >1 dom '+PROV.straddlers.toLocaleString()+
-           ' — vein tonnage is share-weighted, never credited whole');
-    L.push('Block             '+PROV.block_m3+' m3 @ '+PROV.density+
-           ' t/m3 = '+PROV.tonnes_per_block+' t; ore tonnes = that x Percent_Env');
+    L.push('Source            '+(PROV.source||'—'));
+    // Every line below describes a block model. An exploration deck has none,
+    // and reaching through the absent fields threw — which took the audit
+    // trail down on exactly the decks whose provenance matters most, because
+    // there are no numbers to speak for themselves.
+    const num=v=>(v===undefined||v===null)?'—':Number(v).toLocaleString();
+    if(!PROV.exploration){
+      L.push('Rows scanned      '+num(PROV.scanned_rows));
+      L.push('Mineralized       '+num(PROV.mineralized_blocks)+' blocks');
+      L.push('Dropped           '+(PROV.dropped_blocks||0)+' (blocks with no vein share)');
+      L.push('Straddling >1 dom '+num(PROV.straddlers)+
+             ' — vein tonnage is share-weighted, never credited whole');
+      L.push('Block             '+PROV.block_m3+' m3 @ '+PROV.density+
+             ' t/m3 = '+PROV.tonnes_per_block+' t; ore tonnes = that x Percent_Env');
+      L.push('');
+      L.push('DEPOSIT TOTAL (no cut-off)');
+      L.push('  '+num(PROV.total.tonnes)+' t @ '+PROV.total.grade_gt+
+             ' g/t = '+num(PROV.total.oz)+' oz');
+    }
     L.push('');
-    L.push('DEPOSIT TOTAL (no cut-off)');
-    L.push('  '+PROV.total.tonnes.toLocaleString()+' t @ '+PROV.total.grade_gt+
-           ' g/t = '+PROV.total.oz.toLocaleString()+' oz');
-    L.push('');
-    L.push('CURRENTLY ON SCREEN');
-    currentPredicate().forEach(x=>L.push('  '+x));
-    L.push('  => '+fmt(r.t)+' @ '+r.g.toFixed(2)+' g/t = '+fmtoz(r.oz)+
-           '  ('+r.n.toLocaleString()+' blocks)');
-    L.push('');
-    L.push('BY CLASS');
-    Object.keys(PROV.by_class).forEach(k=>{
+    if(!PROV.exploration){
+      L.push('CURRENTLY ON SCREEN');
+      currentPredicate().forEach(x=>L.push('  '+x));
+      L.push('  => '+fmt(r.t)+' @ '+r.g.toFixed(2)+' g/t = '+fmtoz(r.oz)+
+             '  ('+r.n.toLocaleString()+' blocks)');
+      L.push('');
+    }
+    if(Object.keys(PROV.by_class||{}).length) L.push('BY CLASS');
+    Object.keys(PROV.by_class||{}).forEach(k=>{
       const v=PROV.by_class[k];
       if(!v.tonnes) return;
       L.push('  '+(CLASS_LABELS[k]+'              ').slice(0,14)+
              v.tonnes.toLocaleString()+' t @ '+v.grade_gt+' g/t = '+
              v.oz.toLocaleString()+' oz');
     });
+    if(PROV.exploration){
+      L.push('');
+      L.push('EXPLORATION STAGE');
+      L.push('  No block model, and therefore no resource estimate. Nothing in');
+      L.push('  this deck states a tonnage, a grade or contained metal, because');
+      L.push('  none has been established.');
+      L.push('  Datasets present: '+((PROV.datasets||[]).join(', ')||'none'));
+    }
     L.push('');
     L.push('CAVEATS');
-    if(!PROV.class_confirmed)
+    // Only when there are classes to caveat. On an exploration deck this read
+    // "Resource class labels ... UNCONFIRMED against the Nov-2021 technical
+    // report" for a project that has no classes, no resource and no technical
+    // report — a caveat about something that does not exist reads as though it
+    // does. The second line was also unconditional, so it printed even when the
+    // sentence it continued had been suppressed.
+    if(!PROV.class_confirmed && Object.keys(PROV.by_class||{}).length){
       L.push('  Resource class labels follow MineSight convention and are UNCONFIRMED');
-    L.push('  against the Nov-2021 technical report.');
+      L.push('  against the source technical report.');
+    }
     if(PROV.drills_synthetic) L.push('  Drill holes are FABRICATED. Not real results.');
     if(PROV.site_synthetic)   L.push('  Site features and pit stages are FABRICATED. Not a mine plan.');
     if(PROV.blocks_synthetic){
@@ -2546,7 +2640,11 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       L.push('  corroborating it. Real gold systems are frequently magnetite-');
       L.push('  destructive and could read as a magnetic LOW over this ground.');
     }
-    L.push('  Silver is absent from the source; AuEq is effectively gold-only.');
+    // True of the baked Elk Gold export, and of nothing else. It was printed
+    // unconditionally, so every hydrated deck inherited a claim about a source
+    // file it has never seen.
+    if(PROV.silver_absent)
+      L.push('  Silver is absent from the source; AuEq is effectively gold-only.');
     L.push('  Illustrative visualization — not a mineral resource statement.');
     return L.join('\n');
   }
@@ -3472,6 +3570,17 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
 
   // Numbers come from the exact per-bucket rollups, never from what is drawn.
   function readout(){
+    if(EXPLORATION){
+      // "0 t @ 0 g/t" is a claim, and a false one: it says the deposit was
+      // measured and found empty. An exploration project has not been
+      // measured. Say that instead.
+      $('r_t').textContent='—'; $('r_g').textContent='—'; $('r_oz').textContent='—';
+      $('r_n').textContent='—';
+      $('r_nl').textContent='Exploration stage';
+      $('veincav').textContent='No resource estimate for this project, so no '+
+        'tonnage, grade or contained metal is reported.';
+      return {t:0,g:0,oz:0,n:0};
+    }
     const cut=cutVal(); let n=0,t=0,m=0;
     if(sectAxis && sectStat){
       $('r_t').textContent=sectStat.t?fmt(sectStat.t):'—';
@@ -4519,6 +4628,22 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   const chips=$('clschips');
   const vsel=$('vsel');
   paintModelUI();
+  // Controls that interrogate a block model have nothing to act on without
+  // one. Hidden rather than disabled: a row of dead inputs invites a presenter
+  // to keep pressing them mid-sentence, and the honest statement is that this
+  // project has no resource to filter, not that filtering is switched off.
+  if(EXPLORATION){
+    ['modeseg','cutrow','clschips','vsel','surfseg','planseg','sectseg',
+     'blockseg','deprow'].forEach(id=>{
+      const el=$(id); if(!el) return;
+      el.style.display='none';
+      const h=el.previousElementSibling;
+      if(h&&h.tagName==='H3') h.style.display='none';
+    });
+    const cav=$('caveat');
+    if(cav) cav.textContent='Exploration stage — no resource estimate. '+
+      'Illustrative visualization, not a mineral resource statement.';
+  }
   vsel.onchange=e=>{vein=+e.target.value;setStat(vein===-1?'all veins':'isolating '+VEINS[vein]);apply();};
   $('xbtn').onclick=()=>{const on=$('panel').classList.toggle('on');
     $('xbtn').classList.toggle('on',on); $('xbtn').textContent=on?'Explore ◂':'Explore ▸';
@@ -5331,6 +5456,9 @@ for k, v in {
         "drills_synthetic": DRILL_SYNTHETIC,
         "site_synthetic": SITE_SYNTHETIC,
         "geophys_synthetic": GEOPHYS_SYNTHETIC,
+        # Ag_ppm is zero across all 495,074 source blocks. A property of THIS
+        # export, so it is a flag rather than a sentence the viewer always says.
+        "silver_absent": True,
     }),
     "__VGROUP__": js(VGROUP),
     "__VGROUP_NAMES__": js(VGROUP_NAMES),
