@@ -1390,7 +1390,49 @@ let N=__N__,
 let CHAPTERS=__CHAPTERS__, RUNS=__RUNS__, BUCKETS=__BUCKETS__, VEINS=__VEINS__,
       LADDER=__LADDER__, CLASS_LABELS=__CLASS_LABELS__, CLASS_CONFIRMED=__CLASS_CONFIRMED__,
       PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, REAL_CLAIMS=__REAL_CLAIMS__, CLAIMS_ATTRIB=__CLAIMS_ATTRIB__, CLAIMS_SUBJECT=__CLAIMS_SUBJECT__, GEOPHYS=__GEOPHYS__, GEOPHYS_SYNTHETIC=__GEOPHYS_SYNTHETIC__, STATIONS=__STATIONS__, DEPOSITS=__DEPOSITS__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
-proj4.defs('EPSG:26910','+proj=utm +zone=10 +datum=NAD83 +units=m +no_defs');
+// ---- projections -------------------------------------------------------
+// The viewer used to hard-code EPSG:26910 — NAD83 / UTM 10N, which is Elk
+// Gold's grid and nobody else's. Every project outside one zone of British
+// Columbia was refused at the door.
+//
+// Definitions are generated rather than listed: a UTM zone's proj4 string is
+// a formula, and 180 of them typed out is 180 chances to fatfinger a zone
+// number. Coverage is deliberate — WGS84 and NAD83 UTM cover most of the
+// world's exploration ground, MGA covers Australia, and the named grids are
+// the ones that turn up in mining data often enough to be worth the bytes.
+const PROJ_NAMED={
+  'EPSG:4326':'+proj=longlat +datum=WGS84 +no_defs',
+  'EPSG:3857':'+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +no_defs',
+  'EPSG:3005':'+proj=aea +lat_0=45 +lon_0=-126 +lat_1=50 +lat_2=58.5 +x_0=1000000 +y_0=0 +datum=NAD83 +units=m +no_defs',
+  'EPSG:2154':'+proj=lcc +lat_0=46.5 +lon_0=3 +lat_1=49 +lat_2=44 +x_0=700000 +y_0=6600000 +datum=WGS84 +units=m +no_defs',
+  'EPSG:2193':'+proj=tmerc +lat_0=0 +lon_0=173 +k=0.9996 +x_0=1600000 +y_0=10000000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs',
+  'EPSG:27700':'+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +datum=OSGB36 +units=m +no_defs'
+};
+function projDef(code){
+  const c=+code;
+  if(PROJ_NAMED['EPSG:'+c]) return PROJ_NAMED['EPSG:'+c];
+  const utm=(z,extra)=>'+proj=utm +zone='+z+' '+extra+' +units=m +no_defs';
+  if(c>=32601&&c<=32660) return utm(c-32600,'+datum=WGS84');           // WGS84 N
+  if(c>=32701&&c<=32760) return utm(c-32700,'+south +datum=WGS84');    // WGS84 S
+  if(c>=26901&&c<=26923) return utm(c-26900,'+datum=NAD83');           // NAD83 N
+  if(c>=26701&&c<=26722) return utm(c-26700,'+datum=NAD27');           // NAD27 N
+  if(c>=28348&&c<=28358) return utm(c-28300,'+south +ellps=GRS80 +towgs84=0,0,0,0,0,0,0'); // GDA94 MGA
+  if(c>=7846&&c<=7859)   return utm(c-7800,'+south +ellps=GRS80 +towgs84=0,0,0,0,0,0,0');  // GDA2020 MGA
+  return null;
+}
+// The grid the loaded model is in. A hydrated deck replaces it.
+let PROJ='EPSG:26910';
+function useProjection(code){
+  const name='EPSG:'+(+code);
+  if(proj4.defs(name)) return name;
+  const def=projDef(code);
+  if(!def) throw new Error('this project is in EPSG:'+code+', which this '+
+    'viewer does not have a definition for. UTM (WGS84, NAD83, NAD27, MGA) '+
+    'and a few national grids are built in.');
+  proj4.defs(name,def);
+  return name;
+}
+useProjection(26910);
 // 10 x 5 x 5 m at 2.7 t/m3 for the demo. A hydrated deck takes its own value
 // from stats.tonnes_per_block — a customer's model is not on this lattice, and
 // carrying the demo's number across would misreport every tonne on screen.
@@ -1794,8 +1836,8 @@ async function hydrate(token){
   VEINS.forEach((v,i)=>{VGROUP[i]=i%9;});
 
   const p=payload.project||{};
-  if(p.epsg && +p.epsg!==26910)
-    throw new Error('this project is in EPSG:'+p.epsg+'; this viewer is built for EPSG:26910');
+  // Whatever grid the project is in, provided we can define it.
+  if(p.epsg) PROJ=useProjection(p.epsg);
 
   PROV={
     source:blocks.label||null,
@@ -2074,20 +2116,20 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // globe translucent turns the surrounding landscape into a dark wash, which
   // costs the terrain context that made this worth georeferencing. A rectangle
   // leaves the mountain solid and cuts a window over the orebody instead.
-  const sw=proj4('EPSG:26910','WGS84',[EMIN-30,NMIN-30]);
-  const ne=proj4('EPSG:26910','WGS84',[EMIN+EX+30,NMIN+EY+30]);
+  const sw=proj4(PROJ,'WGS84',[EMIN-30,NMIN-30]);
+  const ne=proj4(PROJ,'WGS84',[EMIN+EX+30,NMIN+EY+30]);
   // Property extent for the colour-pop cutout — the claim ring if the site
   // layer supplies one, otherwise a margin around the deposit itself.
   const POP_RECT=(function(){
     const ring=(SITE.claims&&SITE.claims[0]&&SITE.claims[0].ring)||null;
     if(ring){
       let w=180,e=-180,s=90,n=-90;
-      ring.forEach(c=>{const ll=proj4('EPSG:26910','WGS84',c);
+      ring.forEach(c=>{const ll=proj4(PROJ,'WGS84',c);
         w=Math.min(w,ll[0]); e=Math.max(e,ll[0]); s=Math.min(s,ll[1]); n=Math.max(n,ll[1]);});
       return Cesium.Rectangle.fromDegrees(w,s,e,n);
     }
-    const a=proj4('EPSG:26910','WGS84',[EMIN-700,NMIN-700]);
-    const b=proj4('EPSG:26910','WGS84',[EMIN+EX+700,NMIN+EY+700]);
+    const a=proj4(PROJ,'WGS84',[EMIN-700,NMIN-700]);
+    const b=proj4(PROJ,'WGS84',[EMIN+EX+700,NMIN+EY+700]);
     return Cesium.Rectangle.fromDegrees(a[0],a[1],b[0],b[1]);
   })();
   viewer.scene.globe.translucency.rectangle=Cesium.Rectangle.fromDegrees(sw[0],sw[1],ne[0],ne[1]);
@@ -2128,17 +2170,17 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // 2.5 km away shares none of them.
   let center=null, RADIUS=0;
   function reframeModel(){
-    const c=proj4('EPSG:26910','WGS84',[CE,CN]);
+    const c=proj4(PROJ,'WGS84',[CE,CN]);
     center=Cesium.Cartesian3.fromDegrees(c[0],c[1],CZ+GEOID);
     RADIUS=Math.max(EX,EY)*0.62;
-    const a=proj4('EPSG:26910','WGS84',[EMIN-30,NMIN-30]);
-    const b=proj4('EPSG:26910','WGS84',[EMIN+EX+30,NMIN+EY+30]);
+    const a=proj4(PROJ,'WGS84',[EMIN-30,NMIN-30]);
+    const b=proj4(PROJ,'WGS84',[EMIN+EX+30,NMIN+EY+30]);
     viewer.scene.globe.translucency.rectangle=
       Cesium.Rectangle.fromDegrees(a[0],a[1],b[0],b[1]);
   }
   bootPhase('placing the model on the globe');
   reframeModel();
-  const toCart=(E,Nn,h)=>Cesium.Cartesian3.fromDegrees(...proj4('EPSG:26910','WGS84',[E,Nn]),h+GEOID);
+  const toCart=(E,Nn,h)=>Cesium.Cartesian3.fromDegrees(...proj4(PROJ,'WGS84',[E,Nn]),h+GEOID);
 
   // One geometry per grade tier so the low tiers can be drawn undersized
   // without touching the data. Dimensions come from the model rather than being
@@ -2272,10 +2314,10 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     hiEnts=[];
     const zf=z=>EXAG===1?z:(CZ+(z-CZ)*EXAG);
     HIGHLIGHTS.forEach((d,i)=>{
-      const ll=proj4('EPSG:26910','WGS84',[d.at[0],d.at[1]]);
+      const ll=proj4(PROJ,'WGS84',[d.at[0],d.at[1]]);
       const at=Cesium.Cartesian3.fromDegrees(ll[0],ll[1],zf(d.at[2])+GEOID);
       const side=i%2?1:-1, tier=Math.floor(i/2);
-      const off=proj4('EPSG:26910','WGS84',
+      const off=proj4(PROJ,'WGS84',
         [d.at[0]+side*(430+tier*70), d.at[1]-tier*130]);
       const lab=Cesium.Cartesian3.fromDegrees(off[0],off[1],
         zf(d.at[2])+GEOID+150+tier*45);
@@ -2710,7 +2752,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(!Cesium.defined(pos)) return null;
     const carto=Cesium.Cartographic.fromCartesian(pos);
     const ll=[Cesium.Math.toDegrees(carto.longitude), Cesium.Math.toDegrees(carto.latitude)];
-    const utm=proj4('WGS84','EPSG:26910',ll);
+    const utm=proj4('WGS84',PROJ,ll);
     let z=carto.height-GEOID;
     if(EXAG!==1) z=CZ+(z-CZ)/EXAG;
     buildCellIndex();
@@ -2976,8 +3018,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       img.data[o+3]=Math.round(18+232*Math.pow(u,0.7));
     }
     cx.putImageData(img,0,0);
-    const sw2=proj4('EPSG:26910','WGS84',[EMIN-5,NMIN-2.5]);
-    const ne2=proj4('EPSG:26910','WGS84',[EMIN+EX+5,NMIN+EY+2.5]);
+    const sw2=proj4(PROJ,'WGS84',[EMIN-5,NMIN-2.5]);
+    const ne2=proj4(PROJ,'WGS84',[EMIN+EX+5,NMIN+EY+2.5]);
     // A UTM grid is not exactly axis-aligned in geographic space, but over
     // 1.4 km the rotation is well under a block, so a rectangle is fine here.
     planLayer=viewer.imageryLayers.addImageryProvider(
@@ -3008,7 +3050,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   function utm2cart(x,y,z){
     const k=x+','+y;
     let ll=utmCache.get(k);
-    if(!ll){ ll=proj4('EPSG:26910','WGS84',[x,y]); utmCache.set(k,ll); }
+    if(!ll){ ll=proj4(PROJ,'WGS84',[x,y]); utmCache.set(k,ll); }
     return Cesium.Cartesian3.fromDegrees(ll[0],ll[1],(EXAG===1?z:(CZ+(z-CZ)*EXAG))+GEOID);
   }
   async function buildSurfaces(){
@@ -3241,7 +3283,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   function buildSite(){
     if(siteEnts||!SITE.areas) return siteEnts;
     siteEnts=[];
-    const deg=r=>r.reduce((acc,c)=>{const ll=proj4('EPSG:26910','WGS84',c);acc.push(ll[0],ll[1]);return acc;},[]);
+    const deg=r=>r.reduce((acc,c)=>{const ll=proj4(PROJ,'WGS84',c);acc.push(ll[0],ll[1]);return acc;},[]);
     // Claims are REAL public BC tenures, so they are drawn solid while every
     // fabricated site feature stays dashed. The dash is the tell across this
     // whole layer: invented geometry is dashed and captioned "conceptual",
@@ -3323,7 +3365,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
           const shrink=1-(b/NB)*0.66;
           const z=ZTOP+GEOID-(depth*b/NB);
           const pos=a.ring.map(c=>{
-            const ll=proj4('EPSG:26910','WGS84',
+            const ll=proj4(PROJ,'WGS84',
               [mx+(c[0]-mx)*shrink, my+(c[1]-my)*shrink]);
             return Cesium.Cartesian3.fromDegrees(ll[0],ll[1],
               EXAG===1?z:(CZ+GEOID+(z-CZ-GEOID)*EXAG));});
@@ -3340,7 +3382,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         material:Cesium.Color.fromCssColorString('#E8B33C').withAlpha(0.9)}})));
     // Labels on leader lines, the way a map annotation reads.
     (SITE.labels||[]).forEach(l=>{
-      const ll=proj4('EPSG:26910','WGS84',l.at);
+      const ll=proj4(PROJ,'WGS84',l.at);
       const base=Cesium.Cartesian3.fromDegrees(ll[0],ll[1],ZTOP+GEOID-40);
       const tip=Cesium.Cartesian3.fromDegrees(ll[0],ll[1],ZTOP+GEOID+(l.dz||250));
       siteEnts.push(viewer.entities.add({polyline:{positions:[base,tip],width:1,
@@ -3383,8 +3425,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(p){
       // Same proj4 hop as the plan map. Over 2.6 km the UTM grid's rotation in
       // geographic space is well under one raster cell, so a rectangle holds.
-      const sw=proj4('EPSG:26910','WGS84',[GEOPHYS.emin,GEOPHYS.nmin]);
-      const ne=proj4('EPSG:26910','WGS84',[GEOPHYS.emax,GEOPHYS.nmax]);
+      const sw=proj4(PROJ,'WGS84',[GEOPHYS.emin,GEOPHYS.nmin]);
+      const ne=proj4(PROJ,'WGS84',[GEOPHYS.emax,GEOPHYS.nmax]);
       geoLayer=viewer.imageryLayers.addImageryProvider(
         new Cesium.SingleTileImageryProvider({
           url:GEOPHYS.dir+p.file,
@@ -3409,7 +3451,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   function setPin(pin){
     if(pinEnt){ viewer.entities.remove(pinEnt); pinEnt=null; }
     if(!pin) return;
-    const ll=proj4('EPSG:26910','WGS84',pin.at);
+    const ll=proj4(PROJ,'WGS84',pin.at);
     pinEnt=viewer.entities.add({
       position:Cesium.Cartesian3.fromDegrees(ll[0],ll[1],
         (EXAG===1?ZTOP:(CZ+(ZTOP-CZ)*EXAG))+GEOID+(pin.dz||300)),
@@ -3430,7 +3472,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   function buildStages(){
     if(stageEnts||!STAGES.length) return stageEnts;
     stageEnts=STAGES.map(st=>{
-      const deg=st.ring.reduce((acc,c)=>{const ll=proj4('EPSG:26910','WGS84',c);
+      const deg=st.ring.reduce((acc,c)=>{const ll=proj4(PROJ,'WGS84',c);
         acc.push(ll[0],ll[1]);return acc;},[]);
       const ents=[];
       // benches: concentric rings stepping down, the way a pit actually reads
@@ -3443,7 +3485,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         const my=st.ring.reduce((s,q)=>s+q[1],0)/st.ring.length;
         for(let i=0;i<st.ring.length;i++){
           const c=st.ring[i];
-          const ll=proj4('EPSG:26910','WGS84',[mx+(c[0]-mx)*shrink, my+(c[1]-my)*shrink]);
+          const ll=proj4(PROJ,'WGS84',[mx+(c[0]-mx)*shrink, my+(c[1]-my)*shrink]);
           pos.push(Cesium.Cartesian3.fromDegrees(ll[0],ll[1],EXAG===1?z:(CZ+GEOID+(z-CZ-GEOID)*EXAG)));
         }
         ents.push(viewer.entities.add({polyline:{positions:pos,width:2,
@@ -4742,7 +4784,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   async function stGo(i,fly){
     stIdx=Math.max(0,Math.min(STATIONS.length-1,i));
     const s=STATIONS[stIdx];
-    const ll=proj4('EPSG:26910','WGS84',[s.e,s.n]);
+    const ll=proj4(PROJ,'WGS84',[s.e,s.n]);
     const h=await stGround(ll[0],ll[1])+(s.eye||40);
     viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
     const dest=Cesium.Cartesian3.fromDegrees(ll[0],ll[1],h);

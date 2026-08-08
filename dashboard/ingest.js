@@ -12,6 +12,10 @@ import {
   db, state, $, esc, fmtInt, fmtT, fmtOz, fmtBytes,
   toast, fail, modal, closeModal,
 } from "./lib/ui.js";
+import {
+  sniff, readGeoJSON, readKML, readOBJ, readGOCAD, readDXF,
+  readCollars, readSurveys, readAssays, desurvey,
+} from "./lib/formats.js";
 
 let worker = null;
 function getWorker() {
@@ -533,6 +537,11 @@ async function saveAux(project, zone, kind, spec, onDone, dropped) {
  */
 export async function putAux(project, zone, kind, chosen, synthetic, note) {
   {
+    // Read the files before uploading anything. Storing first and parsing
+    // later means a project accumulates blobs nobody can render and nobody is
+    // told about — which is the state this replaces. A file we cannot read is
+    // refused here, by name, with what to export instead.
+    const derived = await parseAux(kind, chosen);
     const id = crypto.randomUUID();
     const base = `${project.org_id}/${project.id}/${zone.id}/${id}`;
     const up = async (path, body, type) => {
@@ -560,15 +569,26 @@ export async function putAux(project, zone, kind, chosen, synthetic, note) {
       .select("id").eq("zone_id", zone.id).eq("kind", kind);
     if (old?.length) await db.from("datasets").delete().in("id", old.map((d) => d.id));
 
+    // Derived geometry rides alongside the originals, so the viewer never
+    // re-parses a customer's CSV and the original stays available for audit.
+    let derivedPath = null;
+    if (derived?.payload) {
+      derivedPath = `${base}/derived.json`;
+      await up(derivedPath, new Blob([JSON.stringify(derived.payload)]), "application/json");
+    }
+
     const { error } = await db.from("datasets").insert({
       project_id: project.id,
       zone_id: zone.id,
       kind,
       label: files.length === 1 ? files[0].name : `${files.length} files`,
-      storage_path: files[0].path,
+      storage_path: derivedPath || files[0].path,
       bytes: total,
-      stats: { files: files.length },
-      provenance: { uploaded_at: new Date().toISOString(), files },
+      stats: { files: files.length, ...(derived?.stats || {}) },
+      provenance: { uploaded_at: new Date().toISOString(), files,
+                    formats: chosen.map((c) => sniff(c.file).format),
+                    derived_path: derivedPath,
+                    ...(derived?.provenance || {}) },
       synthetic,
       synthetic_note: synthetic ? note : null,
     });
@@ -601,7 +621,7 @@ export function classify(file) {
   if (/survey|desurvey/.test(n)) return { kind: "drills", part: "surveys" };
   if (/assay|sample/.test(n)) return { kind: "drills", part: "assays" };
 
-  if (/\.(obj|dxf)$/.test(n)) return { kind: "surfaces", part: "mesh" };
+  if (/\.(obj|dxf|ts)$/.test(n)) return { kind: "surfaces", part: "mesh" };
 
   // Magnetics and other grids. Name carries the product more reliably than the
   // extension does — a .tif could be anything.
@@ -610,10 +630,14 @@ export function classify(file) {
     return { kind: "geophysics", part: "grids" };
   }
 
-  if (/\.(geojson|kml|kmz|shp|zip)$/.test(n) ||
+  if (/\.(geojson|kml)$/.test(n) ||
       /(claim|tenure|property|boundary|outline)/.test(n)) {
     return { kind: "site", part: "outline" };
   }
+  // .kmz/.shp/.zip look like claims but are not readable, so they are routed
+  // there deliberately: putAux refuses them by name and says what to export
+  // instead, which beats "unrecognised" for a file that plainly is a boundary.
+  if (/\.(kmz|shp|zip)$/.test(n)) return { kind: "site", part: "outline" };
 
   // A CSV is the ambiguous one: it could be a block model, or collars whose
   // filename says nothing. Size is the only honest discriminator here — a
@@ -634,4 +658,102 @@ export function routeFiles(files) {
     (byKind[c.kind] ||= []).push({ part: c.part, file: f });
   }
   return { byKind, unknown };
+}
+
+// --------------------------------------------------------- parsing aux ----
+/**
+ * Turn uploaded files into the geometry the viewer draws.
+ *
+ * Refuses rather than stores. Before this, every non-block upload was kept as
+ * an opaque blob: a customer could load drilling and claims, see the slot go
+ * green, and find nothing in their deck. Green meant "a file arrived", not
+ * "we can render this", and nothing said so.
+ *
+ * @returns {{payload:object, stats:object, provenance:object}|null}
+ */
+async function parseAux(kind, chosen) {
+  const textOf = (f) => f.text();
+  const readable = (f) => {
+    const s = sniff(f);
+    if (!s.readable) {
+      throw new Error(`${f.name} is ${s.label ? "a " + s.label + " file" : "not a format this reads"}. ${s.advice}`);
+    }
+    return s.format;
+  };
+
+  if (kind === "site") {
+    const rings = [];
+    for (const c of chosen) {
+      const fmt = readable(c.file);
+      const text = await textOf(c.file);
+      const got = fmt === "kml" ? readKML(text, c.file.name)
+                : fmt === "geojson" ? readGeoJSON(text, c.file.name)
+                : (() => { throw new Error(`${c.file.name}: claims must be GeoJSON or KML.`); })();
+      got.forEach((g) => rings.push(g));
+    }
+    return {
+      payload: { format: "orebody-claims/1", crs: "EPSG:4326", rings },
+      stats: { rings: rings.length },
+      provenance: { parsed: "claims", ring_count: rings.length },
+    };
+  }
+
+  if (kind === "surfaces") {
+    const meshes = [];
+    for (const c of chosen) {
+      const fmt = readable(c.file);
+      const text = await textOf(c.file);
+      const m = fmt === "obj" ? readOBJ(text, c.file.name)
+              : fmt === "gocad" ? readGOCAD(text, c.file.name)
+              : fmt === "dxf" ? readDXF(text, c.file.name)
+              : (() => { throw new Error(`${c.file.name}: surfaces must be OBJ, GOCAD .ts or DXF.`); })();
+      meshes.push({ name: c.file.name, verts: m.verts, faces: m.faces });
+    }
+    const nv = meshes.reduce((a, m) => a + m.verts.length, 0);
+    const nf = meshes.reduce((a, m) => a + m.faces.length, 0);
+    return {
+      payload: { format: "orebody-surfaces/1", meshes },
+      stats: { meshes: meshes.length, vertices: nv, triangles: nf },
+      provenance: { parsed: "surfaces", vertices: nv, triangles: nf },
+    };
+  }
+
+  if (kind === "drills") {
+    const byPart = {};
+    for (const c of chosen) { readable(c.file); byPart[c.part] = c.file; }
+    if (!byPart.collars) throw new Error("Drilling needs a collars file at minimum.");
+    const collars = readCollars(await textOf(byPart.collars), byPart.collars.name);
+    const surveys = byPart.surveys
+      ? readSurveys(await textOf(byPart.surveys), byPart.surveys.name) : new Map();
+    const assays = byPart.assays
+      ? readAssays(await textOf(byPart.assays), byPart.assays.name) : null;
+    const { traces, assumedVertical } = desurvey(collars, surveys, 5);
+    return {
+      payload: {
+        format: "orebody-drills/1", traces,
+        assays: assays ? [...assays.byHole.entries()].map(([id, iv]) => ({ id, iv })) : [],
+      },
+      stats: {
+        holes: traces.length,
+        metres: Math.round(traces.reduce((a, t) => a + t.td, 0)),
+        intervals: assays ? [...assays.byHole.values()].reduce((a, v) => a + v.length, 0) : 0,
+        assumed_vertical: assumedVertical.length,
+      },
+      // Said out loud rather than buried: a hole drawn vertical because no
+      // survey came with it is a guess, and it is the reader's job to admit it.
+      provenance: {
+        parsed: "drills", desurvey: "minimum-curvature", step_m: 5,
+        grade_column: assays?.gradeColumn || null,
+        assumed_vertical: assumedVertical,
+      },
+    };
+  }
+
+  if (kind === "geophysics") {
+    // Grids are not parsed yet (TRACKING.md #2) — but the file is still
+    // checked, so a .dm dropped on this slot is refused rather than stored.
+    chosen.forEach((c) => sniff(c.file));
+    return null;
+  }
+  return null;
 }

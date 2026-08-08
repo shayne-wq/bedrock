@@ -176,15 +176,27 @@ them. Authoring becomes curation rather than construction.
     **name** is a fact from a public register; a logo is branding. Names by
     default.
 
-- [ ] 🔴 **#13 — Ingest beyond a CSV export.** Today the answer to "can you
+- [x] 🟡 **#13 — Ingest beyond a CSV export.** Substantially done; OMF outstanding. Today the answer to "can you
   take data from the popular mining packages" is: only via CSV, and only the
   block model is actually parsed.
-  - **Formats.** One input: `.csv`. Every package can export it, so the door is
-    open, but Datamine `.dm`, Vulcan `.bmf`, Surpac `.mdl`, Micromine `.dat`,
-    Deswik `.dwbm` and Leapfrog/Seequent native are all closed. The answer is
-    **not** N proprietary parsers — it is **OMF (Open Mining Format)**, the
-    GMG's open interchange format, already exported by Seequent, Deswik,
-    Hexagon and Micromine. One reader, most of the market.
+  - **Formats — SHIPPED** in `dashboard/lib/formats.js`, 43 assertions in
+    `tools/verify_formats.mjs`:
+    | Data | Formats read |
+    |---|---|
+    | Block model | CSV / TSV, columns detected and correctable |
+    | Drill holes | collars + surveys + assays CSV / TSV → **desurveyed by minimum curvature** |
+    | Surfaces | **OBJ**, **GOCAD TSurf `.ts`**, **DXF** (3DFACE) |
+    | Claims | **GeoJSON**, **KML** |
+    Column names are matched loosely, so `HOLEID`/`BHID`/`DHID`, `RL`/`ELEV`/`Z`
+    and `AT`/`DEPTH`/`MD` all resolve. Tab-separated exports work.
+    Every non-block upload is now **parsed before it is stored** — a file that
+    cannot be read is refused by name with what to export instead, rather than
+    landing as a green slot containing a blob nothing can draw.
+    Unreadable formats are *named*: `.omf`, `.dm`, `.bmf`, `.mdl`, `.dwbm`,
+    `.dat`, `.lfview`, a lone `.shp`. Each says what to export instead.
+    **Still open: OMF.** It remains the right long-term answer — one reader for
+    most of the market — and is deliberately not attempted from a guess at the
+    binary layout, because a parser written blind mis-reads silently.
   - **Sub-blocked models.** Tonnage is `dx·dy·dz × density × ore fraction`, one
     volume for every block. A sub-blocked model breaks that. Now REFUSED when
     the file carries per-block dimension columns (XINC/YINC/ZINC and friends).
@@ -193,8 +205,12 @@ them. Authoring becomes curation rather than construction.
     on a synthetic case. A sub-blocked export with no dimension columns still
     gets through, and would report a confident wrong tonnage.
   - **Rotated models.** Not representable at all; no bearing/dip/plunge.
-  - **One projection.** The viewer hard-codes EPSG:26910 and `hydrate()`
-    refuses anything else.
+  - **Projections — SHIPPED.** `useProjection()` generates proj4 definitions
+    rather than listing them: WGS84 UTM (both hemispheres), NAD83, NAD27, GDA94
+    and GDA2020 MGA — around 180 zones — plus BC Albers, NZTM, OSGB, RGF93 and
+    Web Mercator. A project's EPSG drives every reprojection in the viewer; an
+    unknown code fails with a sentence naming it rather than rendering the
+    deposit in the wrong hemisphere.
   - **One grade column.** No multi-element, no by-element cut-offs.
   - **Only blocks are parsed.** Drills, surfaces, geophysics and claims are
     stored as opaque blobs (#2, #6, #7).
@@ -225,6 +241,16 @@ them. Authoring becomes curation rather than construction.
 ---
 
 ## Log
+
+- **2026-08-08** — #13 largely done. Projections unblocked (~180 UTM zones +
+  named grids, generated not listed). Readers for OBJ / GOCAD / DXF / GeoJSON /
+  KML and full collar-survey-assay desurvey by minimum curvature. Aux uploads
+  now parse before storing, so an unreadable file is refused by name instead of
+  becoming a green slot with nothing behind it. 43 format assertions; the
+  desurvey ones check against independently computed trigonometry, which is how
+  an inverted dip sign that drilled every hole upwards got caught.
+  **Open: OMF, geophysics grids (#2), sub-blocked models without dimension
+  columns.**
 
 - **2026-08-08** — Ingest audit (#13). Found that a sub-blocked model would
   have been read at one block volume and reported a confident wrong tonnage,

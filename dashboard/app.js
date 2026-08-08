@@ -9,6 +9,7 @@ import {
   toast, fail, modal, closeModal, skeleton, wire,
 } from "./lib/ui.js";
 import { ingestWizard, uploadAux, putAux, routeFiles } from "./ingest.js";
+import { sniff } from "./lib/formats.js";
 import { renderDeck } from "./deck.js";
 
 const view = $("view");
@@ -464,7 +465,13 @@ async function renderProject(id) {
       if (!files.length) return;
       const { byKind, unknown } = routeFiles(files);
       const kinds = Object.keys(byKind);
+      // Name what we cannot take. "Unrecognised" for a file we can identify
+      // precisely as a Vulcan block model is a worse answer than telling the
+      // user to export CSV — they came here to get their data in, not to be
+      // told it is unfamiliar.
+      const named = unknown.map((f) => sniff(f)).filter((x) => x.label && x.advice);
       if (!kinds.length) {
+        if (named.length) return toast(`${named[0].label}: ${named[0].advice}`, true);
         return toast(`Could not tell what ${files.length === 1 ? "that file is" : "those files are"}. Use Add on the right slot.`, true);
       }
       const done = [];
