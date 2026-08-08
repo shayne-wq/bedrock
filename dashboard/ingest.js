@@ -34,7 +34,10 @@ function ask(msg, onProgress) {
   });
 }
 
-export function ingestWizard(project, zone, onDone) {
+export function ingestWizard(project, zone, onDone, presetFile) {
+  // Dropped straight onto the zone's slot: the picker step has already been
+  // answered, so do not make the user answer it again.
+  if (presetFile) return step2(project, zone, presetFile, onDone);
   modal(`
     <h2>Load a block model${zone ? ` — ${esc(zone.name)}` : ""}</h2>
     <p class="sub">Read in this browser. The file is not uploaded — only the
@@ -402,16 +405,23 @@ const AUX = {
   },
 };
 
-export function uploadAux(project, zone, kind, onDone) {
+export function uploadAux(project, zone, kind, onDone, presetFile) {
   const spec = AUX[kind];
   if (!spec) return;
+  // A file dropped on the slot fills the first part. Drills needs three files
+  // and only the first can be inferred, so the modal still opens — it just
+  // opens with one of them already answered.
+  const preset = presetFile ? { key: spec.parts[0].key, file: presetFile } : null;
   modal(`
     <h2>${esc(spec.label)} — ${esc(zone.name)}</h2>
     <p class="sub">${esc(spec.blurb)}</p>
     ${spec.parts.map((pt) => `
       <div class="field">
         <label for="f_${pt.key}">${esc(pt.label)}</label>
-        <input type="file" id="f_${pt.key}" accept="${pt.accept}" ${pt.multiple ? "multiple" : ""}>
+        <div class="dropmini" id="dz_${pt.key}">
+          <input type="file" id="f_${pt.key}" accept="${pt.accept}" ${pt.multiple ? "multiple" : ""}>
+          <span class="dzname" id="dn_${pt.key}">${preset && preset.key === pt.key ? esc(preset.file.name) : "or drop a file here"}</span>
+        </div>
         <p class="hintline">${esc(pt.hint)}</p>
       </div>`).join("")}
     <div class="checkline" style="margin-top:8px">
@@ -432,16 +442,45 @@ export function uploadAux(project, zone, kind, onDone) {
 
   $("synth").onchange = () => { $("synthwrap").style.display = $("synth").checked ? "" : "none"; };
   $("auxcancel").onclick = closeModal;
-  $("auxsave").onclick = () => saveAux(project, zone, kind, spec, onDone);
+
+  // Files dropped after the modal is open, per field. A File cannot be written
+  // into an <input type=file> by script, so dropped files are held here and
+  // saveAux prefers them over the input when both exist.
+  const dropped = preset ? { [preset.key]: [preset.file] } : {};
+  spec.parts.forEach((pt) => {
+    const dz = $(`dz_${pt.key}`), nm = $(`dn_${pt.key}`), inp = $(`f_${pt.key}`);
+    if (!dz) return;
+    inp.onchange = () => {
+      delete dropped[pt.key];
+      nm.textContent = inp.files.length
+        ? [...inp.files].map((f) => f.name).join(", ") : "or drop a file here";
+    };
+    ["dragenter", "dragover"].forEach((t) => dz.addEventListener(t, (e) => {
+      e.preventDefault(); dz.classList.add("over");
+    }));
+    ["dragleave", "drop"].forEach((t) => dz.addEventListener(t, (e) => {
+      e.preventDefault(); dz.classList.remove("over");
+    }));
+    dz.addEventListener("drop", (e) => {
+      const fs = [...(e.dataTransfer?.files || [])];
+      if (!fs.length) return;
+      dropped[pt.key] = pt.multiple ? fs : [fs[0]];
+      nm.textContent = dropped[pt.key].map((f) => f.name).join(", ");
+    });
+  });
+
+  $("auxsave").onclick = () => saveAux(project, zone, kind, spec, onDone, dropped);
 }
 
-async function saveAux(project, zone, kind, spec, onDone) {
+async function saveAux(project, zone, kind, spec, onDone, dropped) {
   // Collect the chosen files part-by-part. Every part is required except where
   // a part is explicitly multiple (geophysics), which just needs at least one.
   const chosen = [];
   for (const pt of spec.parts) {
     const el = $(`f_${pt.key}`);
-    const files = [...(el?.files || [])];
+    // Dropped files win: the input is empty in that case, and an empty input
+    // would otherwise report "choose the file" for one the user just dropped.
+    const files = (dropped && dropped[pt.key]) || [...(el?.files || [])];
     if (!files.length) return toast(`Choose the ${pt.label.toLowerCase()} file.`, true);
     files.forEach((f) => chosen.push({ part: pt.key, file: f }));
   }

@@ -432,6 +432,31 @@ async function renderProject(id) {
       else uploadAux(p, z, kind, route);
     };
   });
+
+  // Drop a file straight onto the slot. This is the gesture everyone tries
+  // first, and until now the boxes ignored it — you had to click Add, wait for
+  // a modal, and drop into that instead. The modal still opens, because a
+  // block model needs its columns confirmed and drills need three files, but
+  // the file you dropped is already answered when it does.
+  view.querySelectorAll(".slot").forEach((el) => {
+    const btn = el.querySelector("[data-load]");
+    if (!btn) return;
+    const kind = btn.dataset.load;
+    const z = zs.find((x) => x.id === btn.dataset.zone);
+    if (!z) return;
+    ["dragenter", "dragover"].forEach((t) => el.addEventListener(t, (e) => {
+      e.preventDefault(); el.classList.add("dropping");
+    }));
+    ["dragleave", "drop"].forEach((t) => el.addEventListener(t, (e) => {
+      e.preventDefault(); el.classList.remove("dropping");
+    }));
+    el.addEventListener("drop", (e) => {
+      const f = e.dataTransfer?.files?.[0];
+      if (!f) return;
+      if (kind === "blocks") ingestWizard(p, z, route, f);
+      else uploadAux(p, z, kind, route, f);
+    });
+  });
   for (const k of ["addzone", "addzone2"]) if ($(k)) $(k).onclick = () => addZone(p);
   for (const k of ["newdeck", "newdeck2"]) if ($(k)) $(k).onclick = () => newDeck(p, zonesWithBlocks);
 }

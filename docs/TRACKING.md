@@ -203,6 +203,13 @@ them. Authoring becomes curation rather than construction.
 
 ## Log
 
+- **2026-08-08** — Upload UX: slots are now drop targets. Previously only the
+  block-model modal accepted a dropped file; the aux modals (property,
+  geophysics, drills, surfaces) had bare file inputs, and the slot boxes
+  themselves ignored drops entirely — so the first gesture anyone tries did
+  nothing. Dropping on a slot now opens the right modal with the file already
+  answered, and every field inside accepts a drop too.
+
 - **2026-08-08** — #9/#10/#11 shipped: candidate generation (shared module),
   the drag-and-drop builder, and computed transitions. Found and fixed a
   latent crash on the deck page — renderChapters() dereferenced a #chlist the

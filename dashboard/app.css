@@ -345,3 +345,12 @@ tbody tr:last-child td { border-bottom: 0; }
 .scard .sbody{display:block;font-size:11.5px;color:#8C948C;line-height:1.5;margin-top:4px}
 .empty.sm{padding:22px 12px;text-align:center}
 .empty.sm p{margin:0;font-size:12px;color:#6b7580}
+
+/* Slots accept a dropped file directly — the gesture everyone tries first. */
+.slot.dropping{border-color:#C99A3A;background:rgba(201,154,58,.10)}
+.slot.dropping *{pointer-events:none}
+.dropmini{position:relative;border:1px dashed rgba(255,255,255,.16);border-radius:5px;
+  padding:10px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dropmini.over{border-color:#C99A3A;background:rgba(201,154,58,.08)}
+.dropmini input[type=file]{flex:0 0 auto;max-width:60%}
+.dzname{font-size:11.5px;color:#6b7580;font-family:'JetBrains Mono',monospace}
