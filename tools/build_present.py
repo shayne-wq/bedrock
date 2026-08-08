@@ -3181,6 +3181,25 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(msg) el.textContent=msg;
   }
 
+  // A decoration must never be able to stop the deck.
+  //
+  // Every overlay below is optional — drill traces, the depth grid, site
+  // infrastructure, surfaces, the plan raster, the property columns. The
+  // deposit and the camera are not. Before this, one Cesium throw anywhere in
+  // that list took down apply(), and at boot that meant the whole viewer
+  // refused to start over a layer nobody had asked for yet. Each is reported
+  // once, by name, and then skipped.
+  const layerFailed={};
+  function layer(name,fn){
+    if(layerFailed[name]) return;
+    try{ fn(); }
+    catch(err){
+      layerFailed[name]=true;
+      console.error('Orebody: the "'+name+'" layer failed and is disabled',err);
+      toast(name+' unavailable on this device',5000);
+    }
+  }
+
   function apply(){
     const cut=cutVal();
     const vis=g=>g.lo>=cut-1e-9 && g.lo>=GRADE_FLOOR-1e-9 && clsOn[g.c];
@@ -3204,18 +3223,17 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     // re-adding a tile per tick would flicker the survey off and on.
     if(assetOnly){ drills=false; hiOn=false; siteOn=false; depthOn=false; planOn=false;
                    if(geoKey) geoShow(''); }
-    if(drills) buildDrills();
-    showDrills(drills);
+    layer('drill traces',()=>{ if(drills) buildDrills(); showDrills(drills); });
     // The ledger follows the traces. A deposit with no drill data disables it
     // outright rather than leaving an empty panel that looks broken.
     $('ledgbtn').disabled=!HOLES.length;
     if(ledgerOn && (!drills || !HOLES.length)) setLedger(false);
     else if(ledgerOn) ledgerQueue();
-    showHi(hiOn&&drills);
-    showDepth(depthOn);
-    showSite(siteOn);
-    showSurfaces(surfOn);
-    showPlan(planOn);
+    layer('intercept highlights',()=>showHi(hiOn&&drills));
+    layer('depth grid',()=>showDepth(depthOn));
+    layer('site features',()=>showSite(siteOn));
+    layer('vein surfaces',()=>showSurfaces(surfOn));
+    layer('grade map',()=>showPlan(planOn));
     // Async because the other deposit's model may still need fetching. Not
     // awaited — the rest of the frame applies now and the columns land when
     // they land — but the rejection must be caught or a failed fetch becomes a
@@ -3235,8 +3253,9 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     // rather than layer on top of it — leaving the cubes underneath is what
     // made plan views blobby, and at property scale it is worse.
     if(surfOn||planOn||sectAxis||propOn) RUNS.forEach(r=>{ if(r.prim) r.prim.show=false; });
-    if(sectAxis) buildSection();
-    if(sectPrims) sectPrims.forEach(o=>o.prim.show=blocksOn);
+    layer('cross-section',()=>{
+      if(sectAxis) buildSection();
+      if(sectPrims) sectPrims.forEach(o=>o.prim.show=blocksOn); });
     syncWarn();
 
     readout(); syncHash();
@@ -5000,7 +5019,14 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     apply();
     $('intro').style.display='none';
   } else {
-    go(0,true);
+    // Wrapped for the same reason as the layers: a throw while applying the
+    // opening chapter used to leave the viewer built, the data loaded, and the
+    // user staring at "Could not start".
+    try{ go(0,true); }
+    catch(err){
+      console.error('Orebody: the opening chapter failed to apply',err);
+      toast('The opening view failed — use the chapter list',7000);
+    }
   }
   $('load').style.display='none';
   $('begin').onclick=()=>{$('intro').style.opacity='0';setTimeout(()=>$('intro').style.display='none',800);
