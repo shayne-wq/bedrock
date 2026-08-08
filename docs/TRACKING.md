@@ -93,8 +93,12 @@ model), and two sources of truth is one too many.
   zone's tonnage as the deck's, with no symptom.
   Verified on a two-zone fixture: both zones listed and named, first active,
   switching loads the second. Deployed to the hosted project.
-- [ ] 🔴 **#4 — Exploration-first deck template.** Property, geology, magnetics,
-  geochem, drill highlights, targets, the ask — seeded from available data.
+- [ ] 🟡 **#4 — Exploration-first deck template.** Largely covered by #9: the
+  candidate generator already emits property, claims, each magnetics product,
+  drilling and intercepts, and proposes no resource slides without a model —
+  8 candidates for an exploration zone. **Still missing:** geology, geochem
+  (#5), a targets slide, and "the ask" — the slide that says what the money
+  is for, which no dataset implies and an author has to write.
   <https://github.com/shayne-wq/orebody/issues/4>
 - [ ] 🔴 **#5 — Geochemistry dataset kind** (soil / rock / stream sediment).
   <https://github.com/shayne-wq/orebody/issues/5>
@@ -230,10 +234,18 @@ them. Authoring becomes curation rather than construction.
 
 ## P2 — parsing & authoring polish
 
-- [ ] 🔴 **#6 — Parse & desurvey drill data on upload** (traces + intercepts).
-  Currently the collars/surveys/assays CSVs are stored but not parsed.
+- [x] 🟢 **#6 — Parse & desurvey drill data on upload.** Collars, surveys and
+  assays are read (CSV or TSV, column names matched loosely) and desurveyed by
+  **minimum curvature** — the tangent method is off by metres over a few
+  hundred, and a trace that misses its own intercepts is worse than no trace.
+  A hole with no survey is drawn vertical and *reported* as assumed, never
+  silently. Headline intercepts are derived grade × length, two per hole.
   <https://github.com/shayne-wq/orebody/issues/6>
-- [ ] 🔴 **#7 — Parse surface meshes (OBJ/DXF)** into the viewer's format.
+- [x] 🟢 **#7 — Parse surface meshes.** OBJ (quads fan-triangulated, negative
+  indices resolved), GOCAD TSurf (non-contiguous VRTX ids remapped) and DXF
+  3DFACE. Uint32 indices unconditionally — a triangulated DTM passes 65k
+  vertices easily and a silent wrap folds the mesh in on itself. Rendered and
+  labelled in scene.
   <https://github.com/shayne-wq/orebody/issues/7>
 - [ ] 🔴 **#8 — Deck editor: choose/reorder zones, per-zone cut-off & economics
   toggle.** <https://github.com/shayne-wq/orebody/issues/8>
@@ -254,6 +266,10 @@ them. Authoring becomes curation rather than construction.
 ---
 
 ## Log
+
+- **2026-08-08** — Tracker correction: #6 and #7 were still marked not-started
+  and had in fact shipped. #4 downgraded to partial — the candidate generator
+  covers most of it.
 
 - **2026-08-08** — Uploaded data now renders: drills (desurveyed, with beads,
   grade bars and headline intercepts), surfaces (OBJ/GOCAD/DXF, labelled in
