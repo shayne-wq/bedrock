@@ -13,10 +13,11 @@ Status: 🔴 not started · 🟡 in progress · 🟢 done
 Two facts reshape the roadmap:
 
 1. **Most projects are pure exploration.** They have drilling, geophysics and
-   geochem but **no block model and no economics** — a resource (and therefore
-   tonnage/grade/ounces) comes much later. The console today *requires* a block
-   model per zone, which locks these projects out. Making the block model
-   optional is the highest-priority change.
+   geochem but **no block model and no economics**. A block model is a
+   **production / feasibility-stage** artifact — built only once a mineable
+   resource is being defined — so greenfield and drill-stage projects won't
+   have one for years, if ever. Making the block model optional is the
+   highest-priority change.
 2. **Magnetics is the backbone of exploration data.** The current geophysics
    slot only stores an uploaded image. Real magnetic grids — georeferenced,
    typed (TMI/RTP/1VD…), with a legend — need first-class support.
@@ -30,9 +31,10 @@ surfaces, property and geophysics; a deck records the zones it spans. The
 
 ## P0 — exploration blockers
 
-- [ ] 🔴 **#1 — Support pure-exploration projects: make the block model optional.**
-  Allow a zone/deck with no block model; skip economics slides cleanly.
-  <https://github.com/shayne-wq/orebody/issues/1>
+- [ ] 🟡 **#1 — Support pure-exploration projects: make the block model optional.**
+  Console side **done** (block model no longer required; decks gate on any data;
+  economics drop out without a model). Remaining: viewer/edge must boot & present
+  a model-less hydrated deck. <https://github.com/shayne-wq/orebody/issues/1>
 - [ ] 🔴 **#2 — First-class magnetic / geophysics data.** Grids (GeoTIFF, XYZ,
   Geosoft), georeferencing + CRS, product typing, legend, draped rendering.
   <https://github.com/shayne-wq/orebody/issues/2>

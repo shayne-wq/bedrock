@@ -287,6 +287,11 @@ async function renderProject(id) {
   (datasets || []).forEach((d) => { (dsByZone[d.zone_id] ||= []).push(d); });
   const zoneKind = (z, k) => (dsByZone[z.id] || []).find((d) => d.kind === k);
   const zonesWithBlocks = zs.filter((z) => zoneKind(z, "blocks"));
+  // A zone joins a deck when it has ANY data. A block model is a production-
+  // stage artifact — most exploration projects won't have one for years, if
+  // ever — so it cannot be the gate. Economics slides key off block stats and
+  // simply drop out for a zone without one.
+  const zonesWithData = zs.filter((z) => (dsByZone[z.id] || []).length > 0);
   const fabricated = (datasets || []).filter((d) => d.synthetic);
 
   // Project totals sum every zone's block model. Grade is tonnage-weighted —
@@ -300,7 +305,7 @@ async function renderProject(id) {
   const grade = T ? (OZ * 31.10348) / T : 0;
 
   const KINDS = [
-    { key: "blocks", label: "Block model", req: true },
+    { key: "blocks", label: "Block model" },   // production-stage; most exploration projects won't have one
     { key: "drills", label: "Drill holes" },
     { key: "surfaces", label: "Surfaces" },
     { key: "site", label: "Property & claims" },
@@ -325,7 +330,7 @@ async function renderProject(id) {
         <p>${esc(p.location || "No location set")} · EPSG ${p.epsg}
            · ${zs.length} zone${zs.length === 1 ? "" : "s"}</p>
       </div>
-      <button class="btn primary" id="newdeck" ${zonesWithBlocks.length ? "" : "disabled"}>New deck</button>
+      <button class="btn primary" id="newdeck" ${zonesWithData.length ? "" : "disabled"}>New deck</button>
     </div></header>
 
     ${fabricated.length ? `<div class="note warn" style="margin-bottom:16px">
@@ -352,7 +357,9 @@ async function renderProject(id) {
         return `<div class="zone">
           <div class="row"><div class="grow"><b>${esc(z.name)}</b>
             ${s ? `<span class="zsub">${fmtT(s.tonnes)} · ${s.grade_gt} g/t · ${fmtOz(s.oz)}</span>`
-                : `<span class="zsub">No block model yet — load one to include this zone in a deck</span>`}</div>
+                : `<span class="zsub">${(dsByZone[z.id] || []).length
+                     ? `${(dsByZone[z.id] || []).length} dataset${(dsByZone[z.id] || []).length === 1 ? "" : "s"} · exploration (no block model)`
+                     : "No data yet — add a dataset to include this zone in a deck"}</span>`}</div>
             <button class="btn sm danger" data-delzone="${z.id}">Delete zone</button></div>
           <div class="slots">${KINDS.map((k) => slot(z, k)).join("")}</div>
         </div>`;
@@ -371,9 +378,9 @@ async function renderProject(id) {
       ${!decks?.length ? `
         <div class="empty">
           <h3>No decks yet</h3>
-          <p>${zonesWithBlocks.length ? "A deck is the walkthrough you present, share and embed — one deck flies across every zone in this project."
-                      : "Load a block model into at least one zone first — a deck has nothing to show without one."}</p>
-          ${zonesWithBlocks.length ? `<button class="btn primary" id="newdeck2">Create a deck</button>` : ""}
+          <p>${zonesWithData.length ? "A deck is the walkthrough you present, share and embed — one deck flies across every zone in this project."
+                      : "Add data to at least one zone first — drilling, geophysics, property or a block model. A deck has nothing to show without it."}</p>
+          ${zonesWithData.length ? `<button class="btn primary" id="newdeck2">Create a deck</button>` : ""}
         </div>` : `
         <div class="tablewrap"><table>
           <thead><tr><th>Deck</th><th>Status</th><th class="n">Chapters</th>
@@ -417,7 +424,7 @@ async function renderProject(id) {
     };
   });
   for (const k of ["addzone", "addzone2"]) if ($(k)) $(k).onclick = () => addZone(p);
-  for (const k of ["newdeck", "newdeck2"]) if ($(k)) $(k).onclick = () => newDeck(p, zonesWithBlocks);
+  for (const k of ["newdeck", "newdeck2"]) if ($(k)) $(k).onclick = () => newDeck(p, zonesWithData);
 }
 
 // ------------------------------------------------------------------ zones ---
@@ -455,11 +462,12 @@ function addZone(p) {
   };
 }
 
-async function newDeck(p, zonesWithBlocks = []) {
+async function newDeck(p, zonesWithData = []) {
   // A deck spans zones: it records which ones are in play so the viewer's
-  // deposit switcher can offer them. Every zone that has a block model is
-  // included by default — the presenter can narrow it later in the editor.
-  const zoneIds = zonesWithBlocks.map((z) => z.id);
+  // deposit switcher can offer them. Every zone that has any data is included
+  // by default — a block model is production-stage and most exploration
+  // projects won't have one — and the presenter can narrow it in the editor.
+  const zoneIds = zonesWithData.map((z) => z.id);
   const { data, error } = await db.from("decks")
     .insert({
       project_id: p.id, title: p.name, status: "draft",
