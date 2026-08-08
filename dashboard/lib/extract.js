@@ -101,6 +101,14 @@ export function detect(header) {
     density: FIRST(header, "fixeddensity", "density", "sg", "bulk_density"),
     // A single categorical domain column, used only when no share columns exist.
     domain: FIRST(header, "type", "domain", "vein", "zone", "lode"),
+    // PER-ROW BLOCK DIMENSIONS. Their presence is the signature of a
+    // sub-blocked model, where cells near a domain boundary are split finer
+    // than the parent grid. Datamine writes XINC/YINC/ZINC, Vulcan and Deswik
+    // export similar. We cannot yet honour them — see the guard in extract() —
+    // but detecting them is what stops a wrong tonnage going out silently.
+    dimX: FIRST(header, "xinc", "dx", "xsize", "xlength", "xdim", "blockx"),
+    dimY: FIRST(header, "yinc", "dy", "ysize", "ylength", "ydim", "blocky"),
+    dimZ: FIRST(header, "zinc", "dz", "zsize", "zlength", "zdim", "blockz"),
     domainShare,
     // Filled by probe(), overridable by the user.
     dx: null, dy: null, dz: null,
@@ -123,19 +131,37 @@ export function naturalCompare(a, b) {
   return a.localeCompare(b);
 }
 
-/** Modal positive spacing of a sorted unique coordinate list. */
-function spacing(values) {
+/** Modal positive spacing, plus how dominant that mode actually is.
+ *
+ *  The share matters as much as the value. On a regular lattice nearly every
+ *  gap is the cell size (larger gaps only appear across holes, and are
+ *  multiples of it). On a sub-blocked model the gaps are a mixture, and taking
+ *  the mode silently assigns one volume to cells that do not share it. */
+function spacingProfile(values) {
   const u = [...new Set(values)].sort((a, b) => a - b);
-  if (u.length < 2) return null;
+  if (u.length < 2) return { value: null, share: 0 };
   const counts = new Map();
+  let total = 0;
   for (let i = 1; i < u.length; i++) {
     const d = Math.round((u[i] - u[i - 1]) * 1000) / 1000;
-    if (d > 0) counts.set(d, (counts.get(d) || 0) + 1);
+    if (d > 0) { counts.set(d, (counts.get(d) || 0) + 1); total++; }
   }
   let best = null, n = -1;
   for (const [d, c] of counts) if (c > n) { best = d; n = c; }
-  return best;
+  // Share of gaps that ARE the mode, exactly. Larger gaps are holes in the
+  // grid and are expected; the number is a texture measure, not a verdict.
+  //
+  // Be clear about what this cannot do: a 2.5 m sub-block inside a 10 m parent
+  // produces gaps of 2.5 and 10, which is indistinguishable by coordinates
+  // alone from a 2.5 m grid with holes. Detected on a synthetic case and it
+  // sailed through at share 1.00. Coordinates cannot answer this question —
+  // per-block dimension columns can, and that is the signal the refusal
+  // actually rests on.
+  let exact = 0;
+  for (const [d, c] of counts) if (Math.abs(d - best) < 1e-6) exact += c;
+  return { value: best, share: total ? exact / total : 0 };
 }
+function spacing(values) { return spacingProfile(values).value; }
 
 /** Read a sample to infer block dimensions and a representative density.
  *
@@ -174,9 +200,21 @@ export async function probe(lines, mapping, sampleRows = 40000) {
     if (++n >= sampleRows) break;
   }
   ds.sort((a, b) => a - b);
+  const px = spacingProfile(xs), py = spacingProfile(ys), pz = spacingProfile(zs);
+  // Two independent signals that this is not one uniform lattice: the file
+  // carries per-row dimensions, or the observed spacings do not agree on one
+  // cell size. Either means a single dx*dy*dz is the wrong volume for some
+  // proportion of the blocks, and tonnage is the output nobody checks.
+  // Only the dimension columns block. `ragged` is advisory: a low share can
+  // mean sub-blocking, or simply a grid with a lot of holes, and refusing a
+  // legitimate patchy model would be its own kind of wrong.
+  const dimCols = !!(m.dimX && m.dimY && m.dimZ);
+  const ragged = Math.min(px.share, py.share, pz.share) < 0.55;
   return {
     header, mapping: m, sampled: n,
-    dx: spacing(xs), dy: spacing(ys), dz: spacing(zs),
+    dx: px.value, dy: py.value, dz: pz.value,
+    spacingShare: { x: px.share, y: py.share, z: pz.share },
+    dimCols, ragged, subBlocked: dimCols,
     densityMedian: ds.length ? ds[ds.length >> 1] : null,
     densityUniform: ds.length ? ds[0] === ds[ds.length - 1] : false,
   };
@@ -215,6 +253,18 @@ export async function extract(lines, opts) {
 
   const blockM3 = dx * dy * dz;
   if (!(blockM3 > 0)) throw new Error("Block dimensions must all be positive.");
+  // Refuse a sub-blocked model rather than report a confident wrong number.
+  // Every tonne here is blockM3 x density x ore fraction, so one volume for
+  // blocks that do not share one volume is not an approximation — it is a
+  // tonnage that looks right, reconciles against itself, and is false.
+  if (opts.subBlocked && !opts.acceptUniform) {
+    throw new Error(
+      "This looks like a SUB-BLOCKED model: the file carries per-block " +
+      "dimensions, or the block centres do not sit on one regular grid. " +
+      "Orebody computes tonnage from a single block volume, so it would " +
+      "report a confident wrong number for a model like this. Export on a " +
+      "regular grid, or re-block it, before loading.");
+  }
 
   // Domain order is presentation, but it is also identity: a domain's index
   // here becomes its id in the packed column and in every bucket key. Sort it

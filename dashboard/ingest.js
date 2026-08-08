@@ -156,8 +156,27 @@ async function step2(project, zone, file, onDone) {
     ${!p.dx || !p.dy || !p.dz ? `<div class="note warn">Could not infer every
       block dimension from the sample. Enter them by hand before continuing.</div>` : ""}
 
+    ${!p.subBlocked && p.ragged ? `<div class="note warn">
+      <b>The block centres are unevenly spaced.</b> Only
+      ${Math.round(Math.min(p.spacingShare.x, p.spacingShare.y, p.spacingShare.z) * 100)}%
+      of the gaps match the inferred cell size. That is normal for a model with
+      a lot of empty ground, and it is also what a sub-blocked model looks
+      like. Tonnage here assumes every block is
+      ${p.dx} × ${p.dy} × ${p.dz} m — check that is true before you rely on it.
+    </div>` : ""}
+
+    ${p.subBlocked ? `<div class="note bad">
+      <b>This looks like a sub-blocked model.</b>
+      ${p.dimCols ? "The file carries per-block dimensions"
+                  : "The block centres do not all sit on one regular grid"} —
+      which means the cells are not all the same size. Orebody computes tonnage
+      from a single block volume, so it would report a confident wrong number
+      for a model like this rather than fail. Re-block it onto a regular grid,
+      or export the parent cells only, and load that instead.
+    </div>` : ""}
+
     <div class="row-actions" style="margin-top:18px">
-      <button class="btn primary" id="run">Read the model</button>
+      <button class="btn primary" id="run" ${p.subBlocked ? "disabled" : ""}>Read the model</button>
       <button class="btn" id="cancel">Cancel</button>
     </div>`);
 
@@ -179,6 +198,10 @@ async function step2(project, zone, file, onDone) {
       mapping, dx, dy, dz,
       density: denRaw === "" ? null : Number(denRaw),
       cutoff: Number($("cut").value) || 0,
+      // Carried through so extract() can refuse rather than compute a
+      // confident wrong tonnage. Surfaced in step 2 as well, because being
+      // told at the end of a two-minute read is a worse way to find out.
+      subBlocked: p.subBlocked,
     }, onDone);
   };
 }

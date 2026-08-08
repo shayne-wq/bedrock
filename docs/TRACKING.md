@@ -176,6 +176,29 @@ them. Authoring becomes curation rather than construction.
     **name** is a fact from a public register; a logo is branding. Names by
     default.
 
+- [ ] 🔴 **#13 — Ingest beyond a CSV export.** Today the answer to "can you
+  take data from the popular mining packages" is: only via CSV, and only the
+  block model is actually parsed.
+  - **Formats.** One input: `.csv`. Every package can export it, so the door is
+    open, but Datamine `.dm`, Vulcan `.bmf`, Surpac `.mdl`, Micromine `.dat`,
+    Deswik `.dwbm` and Leapfrog/Seequent native are all closed. The answer is
+    **not** N proprietary parsers — it is **OMF (Open Mining Format)**, the
+    GMG's open interchange format, already exported by Seequent, Deswik,
+    Hexagon and Micromine. One reader, most of the market.
+  - **Sub-blocked models.** Tonnage is `dx·dy·dz × density × ore fraction`, one
+    volume for every block. A sub-blocked model breaks that. Now REFUSED when
+    the file carries per-block dimension columns (XINC/YINC/ZINC and friends).
+    **Honest limit:** coordinates alone cannot detect it — a 2.5 m sub-block in
+    a 10 m parent is indistinguishable from a 2.5 m grid with holes, verified
+    on a synthetic case. A sub-blocked export with no dimension columns still
+    gets through, and would report a confident wrong tonnage.
+  - **Rotated models.** Not representable at all; no bearing/dip/plunge.
+  - **One projection.** The viewer hard-codes EPSG:26910 and `hydrate()`
+    refuses anything else.
+  - **One grade column.** No multi-element, no by-element cut-offs.
+  - **Only blocks are parsed.** Drills, surfaces, geophysics and claims are
+    stored as opaque blobs (#2, #6, #7).
+
 ## P2 — parsing & authoring polish
 
 - [ ] 🔴 **#6 — Parse & desurvey drill data on upload** (traces + intercepts).
@@ -202,6 +225,12 @@ them. Authoring becomes curation rather than construction.
 ---
 
 ## Log
+
+- **2026-08-08** — Ingest audit (#13). Found that a sub-blocked model would
+  have been read at one block volume and reported a confident wrong tonnage,
+  silently. Now refused when the file declares per-block dimensions. Verified
+  the real Elk Gold export still passes 36/36, so the guard does not
+  false-positive on a regular grid.
 
 - **2026-08-08** — Upload is drag-and-drop properly now: drop a folder of
   exports onto a zone and they are classified by filename and routed into
