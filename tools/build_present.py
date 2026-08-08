@@ -135,17 +135,62 @@ def depth_band(x, y, z):
 rows = [r + (depth_band(r[0], r[1], r[2]),) for r in rows]
 rows.sort(key=lambda r: (r[5], binof(r[3]), r[7], r[6]))
 
-buf = bytearray()
-meta = bytearray()
-# penv rides along so the viewer can total an arbitrary spatial selection (a
-# cross-section slab) exactly, rather than reporting the whole deposit while
-# showing a slice of it.
-for x, y, z, g, penv, cls, vein, dband in rows:
-    buf += struct.pack("<fffff", x - EMIN, y - NMIN, z, g, penv)
-    meta += struct.pack("<BB", cls, vein)
-b64 = base64.b64encode(bytes(buf)).decode()
-b64m = base64.b64encode(bytes(meta)).decode()
 N = len(rows)
+
+# The block model travels as a FETCHED BINARY, not as base64 in the document.
+#
+# It used to be inlined, which made the page one self-contained artifact — and
+# a 5.8 MB one, of which 4.5 MB was a base64 string literal. That string is
+# parsed, retained as source, decoded into typed arrays, and only then freed.
+# On an iPhone the result was Safari refusing the page a WebGL context while
+# happily granting one to a bare canvas on the same device: WebGL worked, this
+# page was simply too heavy to be given a drawing buffer. Externalising takes
+# the document to roughly 1.3 MB.
+#
+# Format is OREB v1 — the same struct-of-arrays layout dashboard/lib/extract.js
+# writes and unpackOreb() reads, so the demo now loads through exactly the path
+# a customer's own upload takes. One loader, exercised by everything.
+#
+# Order is NOT the extractor's. These rows are already sorted by
+# (class, bin, depth band) and RUNS are index ranges into that order, so the
+# file must preserve it — hence writing `rows` as-is rather than re-deriving.
+# Origin is [EMIN, NMIN, 0] so x and y come back relative (as the viewer's F
+# expects) while z stays absolute.
+_cols = [
+    ("x", "Float32Array", 4, "<f", [r[0] - EMIN for r in rows]),
+    ("y", "Float32Array", 4, "<f", [r[1] - NMIN for r in rows]),
+    ("z", "Float32Array", 4, "<f", [r[2] for r in rows]),
+    ("g", "Float32Array", 4, "<f", [r[3] for r in rows]),
+    ("p", "Float32Array", 4, "<f", [r[4] for r in rows]),
+    ("c", "Uint8Array", 1, "<B", [r[5] for r in rows]),
+    ("v", "Uint16Array", 2, "<H", [r[6] for r in rows]),
+]
+_layout, _off = [], 0
+for _n, _t, _a, _f, _arr in _cols:
+    if _off % _a:
+        _off += _a - (_off % _a)
+    _layout.append({"name": _n, "type": _t, "offset": _off, "count": len(_arr)})
+    _off += len(_arr) * _a
+_hdr = json.dumps({"format": "orebody-blocks/1", "n": N,
+                   "origin": [EMIN, NMIN, 0.0], "arrays": _layout},
+                  separators=(",", ":")).encode()
+_pad = (16 - ((16 + len(_hdr)) % 16)) % 16
+_base = 16 + len(_hdr) + _pad
+_blob = bytearray(_base + _off)
+struct.pack_into(">I", _blob, 0, 0x4F524542)      # "OREB"
+struct.pack_into("<I", _blob, 4, 1)
+struct.pack_into("<I", _blob, 8, len(_hdr))
+struct.pack_into("<I", _blob, 12, _base)
+_blob[16:16 + len(_hdr)] = _hdr
+for (_n, _t, _a, _f, _arr), _lay in zip(_cols, _layout):
+    _pos = _base + _lay["offset"]
+    for _v in _arr:
+        struct.pack_into(_f, _blob, _pos, _v)
+        _pos += _a
+BLOCKS_BIN = ROOT / "data" / "elk_blocks.bin"
+BLOCKS_BIN.write_bytes(bytes(_blob))
+
+assert len(VEINS) <= 256, f"{len(VEINS)} vein domains exceeds the uint8 packing in META"
 assert len(VEINS) <= 256, f"{len(VEINS)} vein domains exceeds the uint8 packing in META"
 
 def runkey(r):
@@ -1332,7 +1377,7 @@ HTML = r"""<!DOCTYPE html>
 // with ?t=<share token> now replaces every value below from the `deck` edge
 // function before the scene is built. Bake-time values are the demo's defaults,
 // not the viewer's assumptions; do not re-freeze them.
-let DATA="__B64__", META="__META__", N=__N__,
+let N=__N__,
       EMIN=__EMIN__, NMIN=__NMIN__, CE=__CE__, CN=__CN__, CZ=__CZ__, EX=__EX__, EY=__EY__,
       ZTOP=__ZTOP__, ZBOT=__ZBOT__;
 let CHAPTERS=__CHAPTERS__, RUNS=__RUNS__, BUCKETS=__BUCKETS__, VEINS=__VEINS__,
@@ -1466,8 +1511,8 @@ if(EMBED) document.body.classList.add('embed');
 
 function unb64(b){const s=atob(b);const u=new Uint8Array(s.length);for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i);return u;}
 // F is [x,y,z,grade,orefraction] x N; M is [class,vein] x N. Both are filled by
-// bootData() — baked from base64 for the demo, rebuilt from the customer's
-// artifact for a hydrated deck.
+// bootData() — fetched as OREB v1 for the demo, and for a hydrated deck too.
+// One format, one loader, whoever the model belongs to.
 let F=null, M=null;
 
 // ---- reading a customer's block model -----------------------------------
@@ -1718,11 +1763,22 @@ async function hydrate(token){
 async function bootData(){
   const t=QS.get('t');
   if(!t){
-    F=new Float32Array(unb64(DATA).buffer); M=unb64(META);
-    // Drop the base64 source once decoded. Together these are ~6 MB of string
-    // held for the life of the page, on a device that may already be refusing
-    // WebGL contexts for want of memory. The typed arrays are the real data.
-    DATA=''; META='';
+    bootPhase('downloading the block model');
+    setStat('loading block model…');
+    const buf=await fetch('data/elk_blocks.bin').then(r=>{
+      if(!r.ok) throw new Error('the block model could not be downloaded ('+r.status+')');
+      return r.arrayBuffer(); });
+    const cols=unpackOreb(buf);
+    if(cols.n!==N) throw new Error('block model has '+cols.n+' blocks, expected '+N);
+    // Interleaved into F because everything downstream indexes it that way,
+    // and in FILE order because RUNS are index ranges into exactly this order.
+    F=new Float32Array(N*5); M=new Uint8Array(N*2);
+    for(let i=0;i<N;i++){
+      F[i*5]=cols.x[i]; F[i*5+1]=cols.y[i]; F[i*5+2]=cols.z[i];
+      F[i*5+3]=cols.g[i]; F[i*5+4]=cols.p[i];
+      M[i*2]=cols.c[i]; M[i*2+1]=cols.v[i];
+    }
+    setStat('');
     return; }
   await hydrate(t);
 }
@@ -5251,7 +5307,7 @@ def js(o):
 
 for k, v in {
     "__FONTS__": FONTS,
-    "__B64__": b64, "__META__": b64m, "__N__": str(N), "__RAMPMAX__": f"{RAMPMAX}",
+    "__N__": str(N), "__RAMPMAX__": f"{RAMPMAX}",
     "__EMIN__": f"{EMIN:.1f}", "__NMIN__": f"{NMIN:.1f}", "__CE__": f"{cE:.1f}",
     "__CN__": f"{cN:.1f}", "__CZ__": f"{cZ:.1f}", "__EX__": f"{EX:.0f}", "__EY__": f"{EY:.0f}",
     "__ZTOP__": f"{ZTOP:.0f}", "__ZBOT__": f"{ZBOT:.0f}",
