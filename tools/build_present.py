@@ -574,6 +574,11 @@ HTML = r"""<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Elk Gold — Siwash North · Orebody Present</title>
+<!-- Inline, not a file. Without it every load 404s on /favicon.ico — harmless
+     but visible in the console of a deck embedded on a customer's site, and a
+     separate .ico would break the promise that this page is one artifact you
+     can copy anywhere. -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23090c0d'/><path d='M5 23 L12 9 L17 18 L22 11 L27 23 Z' fill='%23C99A3A'/></svg>">
 <script>window.CESIUM_BASE_URL='https://cdn.jsdelivr.net/npm/cesium@1.120/Build/Cesium/';</script>
 <link href="https://cdn.jsdelivr.net/npm/cesium@1.120/Build/Cesium/Widgets/widgets.css" rel="stylesheet"
       integrity="sha384-ghEeMdcWWzRv/BPeUcX835vcKDGrxvROXisl/Btpv3GeekBUXTSPVcFJpI1Tcrgp" crossorigin="anonymous">
@@ -3145,11 +3150,19 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     // The property view sums every deposit, so if any of them is invented the
     // columns on screen are part invention — even when the deposit currently
     // loaded is the real one.
-    if(propOn&&propSyn&&!BLOCKS_SYNTHETIC) parts.push('one deposit in the property view');
+    //
+    // Its own sentence, not another item in the list: as a list item it came
+    // out as "Synthetic one deposit in the property view — fabricated…", which
+    // is not English. A warning nobody can parse is not a warning.
+    const propMix=propOn&&propSyn&&!BLOCKS_SYNTHETIC;
     const el=$('synwarn');
-    el.classList.toggle('on',parts.length>0);
-    if(parts.length) el.textContent='Synthetic '+parts.join(' + ')+
+    el.classList.toggle('on',parts.length>0||propMix);
+    let msg='';
+    if(parts.length) msg='Synthetic '+parts.join(' + ')+
       ' — fabricated, not real results or a real mine plan';
+    if(propMix) msg=(msg?msg+'.  ':'')+
+      'One of the deposits in this property view is FABRICATED';
+    if(msg) el.textContent=msg;
   }
 
   function apply(){
@@ -3581,6 +3594,19 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   function setCallouts(on){
     calloutsOn=on;
     $('cobtn').classList.toggle('on',on);
+    // Callouts annotate the headline intercepts, so asking for them is asking
+    // for those. calloutPaint bails when highlights are off, which meant the
+    // button did nothing at all on any chapter that had not already turned
+    // them on — it looked broken rather than empty. Turn on what it needs,
+    // the way clicking a ledger row turns the traces on.
+    if(on&&HIGHLIGHTS.length&&(!hiOn||!drills)){
+      if(!drills) setDrills(true);
+      hiOn=true;
+      $('hiseg').querySelectorAll('button').forEach(x=>
+        x.classList.toggle('on',(x.dataset.h==='1')===hiOn));
+      apply();                       // repaints the callouts on its way through
+      return;
+    }
     if(on) calloutPaint(); else calloutClear();
   }
   $('cobtn').onclick=()=>setCallouts(!calloutsOn);
