@@ -1354,6 +1354,10 @@ const setStat=t=>$('status').textContent=t;
 // still be attributed to a call site. Cheap, and the difference between
 // "something threw" and "the viewer threw while building block geometry".
 let BOOT_PHASE='loading libraries';
+// Set only when the deck has fallen back to text because 3D was impossible.
+// buildDataMode reads it to explain itself; ?data=1 leaves it null, because
+// that is a deliberate choice rather than a failure.
+let TEXT_FALLBACK=null;
 const bootPhase=p=>{ BOOT_PHASE=p; };
 const QS=new URLSearchParams(location.search);
 const EMBED=QS.has('embed');
@@ -1713,7 +1717,13 @@ async function hydrate(token){
 // it is looking at.
 async function bootData(){
   const t=QS.get('t');
-  if(!t){ F=new Float32Array(unb64(DATA).buffer); M=unb64(META); return; }
+  if(!t){
+    F=new Float32Array(unb64(DATA).buffer); M=unb64(META);
+    // Drop the base64 source once decoded. Together these are ~6 MB of string
+    // held for the life of the page, on a device that may already be refusing
+    // WebGL contexts for want of memory. The typed arrays are the real data.
+    DATA=''; META='';
+    return; }
   await hydrate(t);
 }
 
@@ -1818,6 +1828,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   };
   function toTextMode(why){
     bootPhase('falling back to the text version');
+    TEXT_FALLBACK=why;
     try{ $('load').style.display='none'; $('intro').style.display='none'; }catch(e){}
     setDataMode(true);
     const t=$('datatoggle'); if(t) t.textContent='3D';
@@ -1826,7 +1837,12 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     console.warn('Orebody: '+why+'; rendered as text instead.');
   }
   if(!webglOk()){
-    toTextMode('This device could not start WebGL');
+    // No context from a bare canvas either, so this is the device or the
+    // browser, not this page's memory footprint. On iOS the usual causes are
+    // Lockdown Mode (which disables WebGL outright), WebGL turned off under
+    // Settings > Safari > Advanced > Experimental Features, or every WebGL
+    // context in the process already spoken for by other tabs.
+    toTextMode('WebGL is unavailable in this browser');
     return;
   }
 
@@ -1844,17 +1860,24 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // attempt fails, drop it and keep the deck — export is worth less than the
   // deck opening at all.
   let noExport=false;
-  const mkViewer=preserve=>new Cesium.Viewer('cesiumContainer',{
+  const mkViewer=(preserve,webgl1)=>new Cesium.Viewer('cesiumContainer',{
     baseLayer:new Cesium.ImageryLayer(imagery),terrainProvider:terrain,
     baseLayerPicker:false,geocoder:false,homeButton:false,sceneModePicker:false,navigationHelpButton:false,
     animation:false,timeline:false,fullscreenButton:false,infoBox:false,selectionIndicator:false,requestRenderMode:false,
-    contextOptions:{webgl:{preserveDrawingBuffer:preserve,failIfMajorPerformanceCaveat:false}}});
+    contextOptions:{requestWebgl1:!!webgl1,
+      webgl:{preserveDrawingBuffer:preserve,failIfMajorPerformanceCaveat:false}}});
   let viewer=null;
   try{ viewer=mkViewer(true); }
   catch(e1){
     console.warn('Orebody: no context with preserveDrawingBuffer; retrying without it',e1);
     try{ viewer=mkViewer(false); noExport=true; }
-    catch(e2){ toTextMode('This device could not start WebGL'); return; }
+    catch(e2){
+      // Last try: WebGL1. iOS will sometimes hand out a v1 context when it has
+      // refused a v2 one, and every feature this deck uses predates WebGL2.
+      console.warn('Orebody: no WebGL2 context; retrying with WebGL1',e2);
+      try{ viewer=mkViewer(false,true); noExport=true; }
+      catch(e3){ toTextMode('Safari refused a WebGL context to this page'); return; }
+    }
   }
   if(noExport){
     // Say so rather than leaving three buttons that fail when pressed.
@@ -2258,7 +2281,25 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     lead.textContent='Every chapter of the presentation, with its figures, as text. '+
       'No 3D required. Figures are computed from the same rollups the interactive '+
       'view uses.';
-    h.appendChild(lead); wrap.appendChild(h);
+    h.appendChild(lead);
+    // Only shown when this page IS the fallback. Context limits are per
+    // process and shared across tabs, so closing a few and retrying genuinely
+    // works — but only if there is something to retry with.
+    if(TEXT_FALLBACK){
+      const why=document.createElement('p'); why.className='lead';
+      why.style.color='#8C948C';
+      why.textContent=TEXT_FALLBACK+'. The 3D view needs WebGL. On iPhone the '+
+        'usual causes are Lockdown Mode, which disables WebGL entirely, or too '+
+        'many other Safari tabs — contexts are shared across all of them. '+
+        'Close a few and try again.';
+      const b=document.createElement('button');
+      b.textContent='Try the 3D view again';
+      b.style.cssText='margin-top:14px;font:600 13px system-ui;padding:12px 18px;'+
+        'border-radius:5px;border:1px solid #C99A3A;background:#C99A3A;color:#07090A;cursor:pointer';
+      b.onclick=()=>location.reload();
+      h.appendChild(why); h.appendChild(b);
+    }
+    wrap.appendChild(h);
 
     const totals=document.createElement('section');
     totals.innerHTML='<h2>Deposit total</h2>';
