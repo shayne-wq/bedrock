@@ -1771,19 +1771,98 @@ const fmtoz=n=>n>=1e6?(n/1e6).toFixed(3)+' Moz':Math.round(n).toLocaleString()+'
 function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on');
   clearTimeout(toast._t);toast._t=setTimeout(()=>$('toast').classList.remove('on'),ms||2600);}
 
+  // ---- state ----
+  // Hoisted above the WebGL check on purpose. When no context is available the
+  // module bails to the text edition and RETURNS, so everything declared below
+  // that point never initialises — and the text edition reaches cutVal through
+  // buildDataMode -> provText -> readout. Leaving these in place put the
+  // fallback in its own temporal dead zone: "Cannot access 'cutVal' before
+  // initialization", thrown by the very code meant to rescue a dead page.
+  //
+  // 0.5 g/t is the house default everywhere: below it the low-grade halo
+  // bridges the gaps between veins and the whole system merges into one mass.
+  const CUT_DEFAULT=GRADE_FLOOR, CUT_DEFAULT_IDX=LADDER.indexOf(CUT_DEFAULT);
+  let blocksOn=true;
+  // cutHold: the presenter has taken the cut-off off the deck's rails. Chapter
+  // navigation stops writing to it until Reset, so an answer given live to
+  // "what if we only mined above 5 grams" survives the next slide.
+  let cutHold=false;
+  let mode='grade', cutIdx=CUT_DEFAULT_IDX, vein=-1, clsOn={0:true,1:true,2:true,3:true},
+      cur=0, drills=false, playing=false, narrating=false, dwellTimer=null, restoring=false;
+  const cutVal=()=>LADDER[cutIdx];
+  // Section state, for the same reason: readout() consults it on every call.
+  let sectAxis=null, sectPos=0, sectStat=null;
+
 (async()=>{
   // Before anything is built. A hydrated deck replaces the model, the extents,
   // the rollups and the chapters, and every line below reads those.
+  bootPhase('loading the block model');
   await bootData();
+
+  // ---- WebGL, or the honest alternative --------------------------------
+  // iOS Safari refuses a WebGL context when it is out of them — the limit is
+  // per process and shared across every open tab — and also under memory
+  // pressure and in Low Power Mode. Cesium's response is to throw "Error
+  // constructing CesiumWidget", which this file then reported as a dead page.
+  // On an iPhone 18.7 that is exactly what happened.
+  //
+  // The whole deck already renders without WebGL at ?data=1, as semantic HTML
+  // with every figure in a real table. Failing over to it beats failing.
+  bootPhase('checking WebGL support');
+  const webglOk=()=>{
+    try{
+      const c=document.createElement('canvas');
+      return !!(c.getContext('webgl2')||c.getContext('webgl')||
+                c.getContext('experimental-webgl'));
+    }catch(e){ return false; }
+  };
+  function toTextMode(why){
+    bootPhase('falling back to the text version');
+    try{ $('load').style.display='none'; $('intro').style.display='none'; }catch(e){}
+    setDataMode(true);
+    const t=$('datatoggle'); if(t) t.textContent='3D';
+    const s=$('status'); if(s){ s.className=''; s.textContent=''; }
+    toast(why+' — showing the text version of the deck',9000);
+    console.warn('Orebody: '+why+'; rendered as text instead.');
+  }
+  if(!webglOk()){
+    toTextMode('This device could not start WebGL');
+    return;
+  }
+
+  bootPhase('contacting terrain and imagery services');
   let imagery, terrain;
   try{ imagery=await Cesium.ArcGisMapServerImageryProvider.fromUrl('https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer'); }
   catch(e){ imagery=new Cesium.UrlTemplateImageryProvider({url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',maximumLevel:19,credit:'© OpenStreetMap'}); }
   try{ terrain=await Cesium.ArcGISTiledElevationTerrainProvider.fromUrl('https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer'); }
   catch(e){ terrain=new Cesium.EllipsoidTerrainProvider(); }
-  const viewer=new Cesium.Viewer('cesiumContainer',{baseLayer:new Cesium.ImageryLayer(imagery),terrainProvider:terrain,
+
+  bootPhase('creating the 3D viewer');
+  // preserveDrawingBuffer is needed only to read pixels back for PNG/PPTX/PDF
+  // export, and it roughly doubles what a context costs. On a phone that is
+  // often the difference between getting a context and not, so if the first
+  // attempt fails, drop it and keep the deck — export is worth less than the
+  // deck opening at all.
+  let noExport=false;
+  const mkViewer=preserve=>new Cesium.Viewer('cesiumContainer',{
+    baseLayer:new Cesium.ImageryLayer(imagery),terrainProvider:terrain,
     baseLayerPicker:false,geocoder:false,homeButton:false,sceneModePicker:false,navigationHelpButton:false,
     animation:false,timeline:false,fullscreenButton:false,infoBox:false,selectionIndicator:false,requestRenderMode:false,
-    contextOptions:{webgl:{preserveDrawingBuffer:true}}});   // needed for PNG/PPTX/PDF capture
+    contextOptions:{webgl:{preserveDrawingBuffer:preserve,failIfMajorPerformanceCaveat:false}}});
+  let viewer=null;
+  try{ viewer=mkViewer(true); }
+  catch(e1){
+    console.warn('Orebody: no context with preserveDrawingBuffer; retrying without it',e1);
+    try{ viewer=mkViewer(false); noExport=true; }
+    catch(e2){ toTextMode('This device could not start WebGL'); return; }
+  }
+  if(noExport){
+    // Say so rather than leaving three buttons that fail when pressed.
+    ['expPng','expPptx','expPdf','recbtn'].forEach(id=>{
+      const b=$(id); if(b){ b.disabled=true;
+        b.title='Image export is unavailable on this device'; }});
+    toast('Running in reduced-memory mode — image export is off',7000);
+  }
   viewer.scene.screenSpaceCameraController.enableCollisionDetection=false;
   // Chapters ran with depthTestAgainstTerrain off, which paints the deposit ON
   // TOP of the mountain — the single biggest reason it never read as buried.
@@ -2252,7 +2331,29 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     });
 
     const foot=document.createElement('footer');
-    const pre=document.createElement('pre'); pre.textContent=provText();
+    const pre=document.createElement('pre');
+    // The audit trail reports what is CURRENTLY ON SCREEN, so it reads live
+    // viewer state — the cut-off, the section, the surface mode. When this
+    // page is the WebGL fallback there is no viewer and that state was never
+    // initialised, so computing it throws and used to take the whole text
+    // edition down with it. The chapters and their figures do not depend on
+    // any of that, and they are the reason someone opened this page.
+    try{
+      pre.textContent=provText();
+    }catch(err){
+      console.warn('Orebody: audit trail unavailable in text mode',err);
+      pre.textContent=
+        'The audit trail is unavailable here because it describes the live 3D\n'+
+        'view, and this device could not start WebGL.\n\n'+
+        'Deposit total: '+Math.round(PROV.total.tonnes).toLocaleString()+' t @ '+
+        PROV.total.grade_gt+' g/t = '+PROV.total.oz.toLocaleString()+' oz\n'+
+        'Source: '+(PROV.source||'—')+'\n\n'+
+        (PROV.blocks_synthetic?'THE BLOCK MODEL ITSELF IS FABRICATED.\n':'')+
+        (PROV.drills_synthetic?'Drill holes are FABRICATED.\n':'')+
+        (PROV.site_synthetic?'Site features and pit stages are FABRICATED.\n':'')+
+        (PROV.geophys_synthetic?'Geophysics is FABRICATED.\n':'')+
+        'Illustrative visualization — not a mineral resource statement.';
+    }
     foot.innerHTML='<h2>Audit trail</h2>'; foot.appendChild(pre);
     wrap.appendChild(foot);
   }
@@ -2500,7 +2601,11 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // removed so the sheets read in true relationship instead of overlapping in
   // projection. Cesium primitives do not take clipping planes, so the slab is
   // built as its own geometry from the blocks inside it and cached per section.
-  let sectEnts=null, sectPrims=null, sectAxis=null, sectPos=0, sectStat=null;
+  // sectAxis / sectPos / sectStat are declared at the top of the module, above
+  // the WebGL check — readout() consults them and the text fallback calls
+  // readout() before this line would ever run. Re-declaring them here shadowed
+  // the hoisted pair and put the fallback straight back in a dead zone.
+  let sectEnts=null, sectPrims=null;
   const SECT_HALF=45;                       // slab half-width, metres
   function clearSection(){
     sectStat=null;
@@ -3118,18 +3223,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   const showDepth=on=>{ if(on) buildDepthGrid();
     if(depthEnts) depthEnts.forEach(e=>e.show=on); };
 
-  // ---- state ----
-  // 0.5 g/t is the house default everywhere: below it the low-grade halo
-  // bridges the gaps between veins and the whole system merges into one mass.
-  const CUT_DEFAULT=GRADE_FLOOR, CUT_DEFAULT_IDX=LADDER.indexOf(CUT_DEFAULT);
-  let blocksOn=true;
-  // cutHold: the presenter has taken the cut-off off the deck's rails. Chapter
-  // navigation stops writing to it until Reset, so an answer given live to
-  // "what if we only mined above 5 grams" survives the next slide.
-  let cutHold=false;
-  let mode='grade', cutIdx=CUT_DEFAULT_IDX, vein=-1, clsOn={0:true,1:true,2:true,3:true},
-      cur=0, drills=false, playing=false, narrating=false, dwellTimer=null, restoring=false;
-  const cutVal=()=>LADDER[cutIdx];
+  // ---- state ---- (hoisted to the top of this module; see there)
   // Vein-identity colouring needs geometry grouped by domain rather than by
   // (class, grade-bin), so it gets its own primitive set, built lazily once.
   let vgPrims=null;
