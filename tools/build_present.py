@@ -1822,8 +1822,17 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   const webglOk=()=>{
     try{
       const c=document.createElement('canvas');
-      return !!(c.getContext('webgl2')||c.getContext('webgl')||
-                c.getContext('experimental-webgl'));
+      const gl=c.getContext('webgl2')||c.getContext('webgl')||
+               c.getContext('experimental-webgl');
+      if(!gl) return false;
+      // Give it straight back. WebGL contexts are a capped, per-process
+      // resource on iOS, and a probe that holds one is competing with the
+      // viewer it was meant to clear the way for. Dropping the reference is
+      // not enough — that waits on GC, and Cesium asks for its context in the
+      // same turn.
+      const lose=gl.getExtension('WEBGL_lose_context');
+      if(lose) lose.loseContext();
+      return true;
     }catch(e){ return false; }
   };
   function toTextMode(why){
@@ -1878,6 +1887,15 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       try{ viewer=mkViewer(false,true); noExport=true; }
       catch(e3){ toTextMode('Safari refused a WebGL context to this page'); return; }
     }
+  }
+  // A phone does not need a 3x backing store for this, and on a device that
+  // is refusing contexts the drawing buffer is the biggest thing to give back.
+  // Set before the first render so the oversized buffer is never allocated.
+  const DPR=window.devicePixelRatio||1;
+  if(DPR>1.5 && Math.min(screen.width,screen.height)<=500){
+    viewer.resolutionScale=Math.max(0.5,1/DPR);
+    console.info('Orebody: reduced resolution scale to '+viewer.resolutionScale.toFixed(2)+
+                 ' for a '+DPR+'x display');
   }
   if(noExport){
     // Say so rather than leaving three buttons that fail when pressed.
@@ -5323,6 +5341,25 @@ self.addEventListener('fetch',e=>{
   const r=e.request;
   if(r.method!=='GET') return;
   if(bypass(r)) return;
+  // The DOCUMENT is network-first. Everything else here can be cache-first
+  // because it is immutable per build, but the page itself is the build, and
+  // cache-first on it meant a returning visitor ran the previous deploy until
+  // the new worker had activated AND they had loaded again — two reloads to
+  // see a fix, with no way to tell which one you were looking at. On a tool
+  // that quotes tonnage that is not a caching strategy, it is a correctness
+  // bug. Offline still works: the cached copy is the fallback, not the
+  // default.
+  if(r.mode==='navigate'||(r.destination==='document')){
+    e.respondWith(
+      fetch(r).then(res=>{
+        if(res&&res.status===200&&res.type!=='opaque'){
+          const copy=res.clone();
+          caches.open(CACHE).then(c=>c.put(r,copy)).catch(()=>{});
+        }
+        return res;
+      }).catch(()=>caches.match(r).then(hit=>hit||caches.match('index.html'))));
+    return;
+  }
   e.respondWith(caches.match(r).then(hit=>{
     if(hit) return hit;
     return fetch(r).then(res=>{
