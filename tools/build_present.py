@@ -1774,12 +1774,22 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
 (async()=>{
   // Before anything is built. A hydrated deck replaces the model, the extents,
   // the rollups and the chapters, and every line below reads those.
+  bootPhase('loading the block model');
   await bootData();
   let imagery, terrain;
+  // Provider construction is guarded, but the phase is not: it names the step
+  // for a throw that escapes the try (or a synchronous one in provider setup),
+  // so a network-shaped failure does not report as "loading libraries".
+  bootPhase('contacting terrain and imagery services');
   try{ imagery=await Cesium.ArcGisMapServerImageryProvider.fromUrl('https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer'); }
   catch(e){ imagery=new Cesium.UrlTemplateImageryProvider({url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',maximumLevel:19,credit:'© OpenStreetMap'}); }
   try{ terrain=await Cesium.ArcGISTiledElevationTerrainProvider.fromUrl('https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer'); }
   catch(e){ terrain=new Cesium.EllipsoidTerrainProvider(); }
+  // Viewer construction is the single most likely place for a synchronous
+  // vendor throw — a WebGL context the device refuses, an imagery layer that
+  // nulls out — and until now it ran under the 'loading libraries' label. This
+  // is the one phase a "v[0]" report most needs to be able to name.
+  bootPhase('creating the 3D viewer');
   const viewer=new Cesium.Viewer('cesiumContainer',{baseLayer:new Cesium.ImageryLayer(imagery),terrainProvider:terrain,
     baseLayerPicker:false,geocoder:false,homeButton:false,sceneModePicker:false,navigationHelpButton:false,
     animation:false,timeline:false,fullscreenButton:false,infoBox:false,selectionIndicator:false,requestRenderMode:false,
