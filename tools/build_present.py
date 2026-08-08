@@ -866,6 +866,13 @@ HTML = r"""<!DOCTYPE html>
   #hgbody .hgcap{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#8C948C;
                  letter-spacing:.08em;margin-top:6px}
 
+  /* Only ever visible when boot failed, so it can afford to be ugly and
+     complete rather than pretty and partial. */
+  #bootstack{position:fixed;left:0;right:0;bottom:0;max-height:46vh;overflow:auto;z-index:99;
+             margin:0;padding:14px 18px;background:rgba(7,9,10,.97);color:#C6CAC5;
+             border-top:2px solid #D9584A;font-family:'JetBrains Mono',monospace;
+             font-size:11px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
+
   #compass{position:fixed;right:40px;bottom:118px;z-index:6;width:52px;height:52px;opacity:.75}
   #scalebar{position:fixed;right:34px;bottom:86px;z-index:6;text-align:right;opacity:.75}
   #scalebar .l{height:3px;background:#EDEEEC;margin-left:auto;border-left:1px solid #EDEEEC;border-right:1px solid #EDEEEC}
@@ -1343,6 +1350,11 @@ let BLOCK_DIMS=[10,5,5], BLOCK_DENSITY=2.7;
 let BLOCKS_SYNTHETIC=false;   // set by a hydrated deck or a fabricated deposit
 const GEOID=-18, rad=Cesium.Math.toRadians, $=id=>document.getElementById(id);
 const setStat=t=>$('status').textContent=t;
+// Names the step boot is currently on, so a failure inside a vendor bundle can
+// still be attributed to a call site. Cheap, and the difference between
+// "something threw" and "the viewer threw while building block geometry".
+let BOOT_PHASE='loading libraries';
+const bootPhase=p=>{ BOOT_PHASE=p; };
 const QS=new URLSearchParams(location.search);
 const EMBED=QS.has('embed');
 
@@ -1845,6 +1857,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     viewer.scene.globe.translucency.rectangle=
       Cesium.Rectangle.fromDegrees(a[0],a[1],b[0],b[1]);
   }
+  bootPhase('placing the model on the globe');
   reframeModel();
   const toCart=(E,Nn,h)=>Cesium.Cartesian3.fromDegrees(...proj4('EPSG:26910','WGS84',[E,Nn]),h+GEOID);
 
@@ -1881,6 +1894,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         material:Cesium.Material.fromType('Color',{color})})});
   }
   setStat('building blocks…');
+  bootPhase('projecting block positions');
   buildPositions();
   function buildBase(){
     RUNS.forEach(r=>{
@@ -1891,7 +1905,9 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       viewer.scene.primitives.add(r.prim);
     });
   }
+  bootPhase('building block geometry');
   buildBase();
+  bootPhase('building the deck');
 
   // Per-vein sets are built lazily and cached — isolation is a deliberate click.
   const veinPrims={};
@@ -5012,7 +5028,30 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // Never leave the opaque boot overlay covering an error the user can't read.
   const l=$('load'); if(l) l.style.display='none';
   const s=$('status'); s.className='fatal';
-  s.textContent='Could not start: '+((e&&e.message)||e||'unknown error');
+  const msg=(e&&e.message)||String(e)||'unknown error';
+  // BOOT_PHASE and the stack are the whole diagnosis when the throw happens
+  // inside a minified vendor bundle. This used to print e.message alone, which
+  // for a Cesium failure reads "null is not an object (evaluating 'v[0]')" —
+  // naming a variable that exists in no file we ship, from a call site the
+  // message does not identify. Discarding the stack made a five-minute bug
+  // unfindable.
+  s.textContent='Could not start during "'+BOOT_PHASE+'" — '+msg;
+  try{
+    console.error('Orebody boot failed during "'+BOOT_PHASE+'"');
+    console.error(e);
+    if(e&&e.stack) console.error(e.stack);
+  }catch(_){}
+  // On screen as well as in the console: most people who hit this are on a
+  // phone or in someone else's meeting and will never open devtools, and
+  // "it didn't load" is not a bug report anyone can act on.
+  try{
+    const pre=document.createElement('pre');
+    pre.id='bootstack';
+    pre.textContent='phase: '+BOOT_PHASE+'\n'+msg+'\n\n'+
+                    ((e&&e.stack)||'(no stack)')+'\n\n'+
+                    navigator.userAgent;
+    document.body.appendChild(pre);
+  }catch(_){}
 });
 </script>
 </body>
