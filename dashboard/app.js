@@ -8,7 +8,7 @@ import {
   db, state, CONFIGURED, $, esc, fmtT, fmtOz, fmtInt, fmtDate, slugify,
   toast, fail, modal, closeModal, skeleton, wire,
 } from "./lib/ui.js";
-import { ingestWizard, uploadAux } from "./ingest.js";
+import { ingestWizard, uploadAux, putAux, routeFiles } from "./ingest.js";
 import { renderDeck } from "./deck.js";
 
 const view = $("view");
@@ -438,6 +438,52 @@ async function renderProject(id) {
   // a modal, and drop into that instead. The modal still opens, because a
   // block model needs its columns confirmed and drills need three files, but
   // the file you dropped is already answered when it does.
+  // Drop files anywhere on a zone and they are sorted into slots by what they
+  // are. This is the actual gesture: a geologist has a folder of exports, not
+  // a form to fill in five times.
+  //
+  // What is NOT inferred is whether anything is fabricated. That is a claim
+  // about provenance rather than a property of the bytes, and it stays a
+  // decision the person uploading makes — so a routed upload records real, and
+  // the slot's chip is how you say otherwise.
+  view.querySelectorAll(".zone").forEach((zel) => {
+    const zid = zel.querySelector("[data-delzone]")?.dataset.delzone;
+    const z = zs.find((x) => x.id === zid);
+    if (!z) return;
+    ["dragenter", "dragover"].forEach((t) => zel.addEventListener(t, (e) => {
+      if (!e.dataTransfer?.types?.includes("Files")) return;
+      e.preventDefault(); zel.classList.add("dropping");
+    }));
+    ["dragleave", "drop"].forEach((t) => zel.addEventListener(t, (e) => {
+      e.preventDefault(); zel.classList.remove("dropping");
+    }));
+    zel.addEventListener("drop", async (e) => {
+      // A slot handles its own drop; do not also route it at the zone level.
+      if (e.target.closest?.(".slot")) return;
+      const files = [...(e.dataTransfer?.files || [])];
+      if (!files.length) return;
+      const { byKind, unknown } = routeFiles(files);
+      const kinds = Object.keys(byKind);
+      if (!kinds.length) {
+        return toast(`Could not tell what ${files.length === 1 ? "that file is" : "those files are"}. Use Add on the right slot.`, true);
+      }
+      const done = [];
+      for (const kind of kinds) {
+        const chosen = byKind[kind];
+        // The block model is never routed silently: its column mapping has to
+        // be confirmed before any tonnage is computed from it.
+        if (kind === "blocks") { ingestWizard(p, z, route, chosen[0].file); return; }
+        try {
+          await putAux(p, z, kind, chosen, false, "");
+          done.push(`${kind} (${chosen.length})`);
+        } catch (err) { fail(`Save ${kind}`, err); return; }
+      }
+      const miss = unknown.length ? `, ${unknown.length} not recognised` : "";
+      toast(`Loaded ${done.join(", ")} into ${z.name}${miss}`);
+      route();
+    });
+  });
+
   view.querySelectorAll(".slot").forEach((el) => {
     const btn = el.querySelector("[data-load]");
     if (!btn) return;

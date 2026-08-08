@@ -493,6 +493,23 @@ async function saveAux(project, zone, kind, spec, onDone, dropped) {
   const btn = $("auxsave");
   btn.disabled = true; btn.textContent = "Saving…";
   try {
+    await putAux(project, zone, kind, chosen, synthetic, note);
+    closeModal();
+    toast(`${spec.label} saved`);
+    onDone?.();
+  } catch (e) {
+    btn.disabled = false; btn.textContent = "Save to zone";
+    fail("Save", e);
+  }
+}
+
+/**
+ * Upload files for one dataset kind and record the row. No DOM — so a drop
+ * can call it directly without opening anything, which is the difference
+ * between "drag and drop" and "drag, drop, then fill in a form".
+ */
+export async function putAux(project, zone, kind, chosen, synthetic, note) {
+  {
     const id = crypto.randomUUID();
     const base = `${project.org_id}/${project.id}/${zone.id}/${id}`;
     const up = async (path, body, type) => {
@@ -533,12 +550,65 @@ async function saveAux(project, zone, kind, spec, onDone, dropped) {
       synthetic_note: synthetic ? note : null,
     });
     if (error) throw error;
-
-    closeModal();
-    toast(`${spec.label} saved to ${zone.name}`);
-    onDone?.();
-  } catch (e) {
-    btn.disabled = false; btn.textContent = "Save to zone";
-    fail("Save", e);
+    // No closeModal here on purpose: a routed drop never opened one, and
+    // putAux must not assume a UI it did not create.
   }
+}
+
+
+// ------------------------------------------------------------- routing ----
+/**
+ * Decide what a dropped file is, from its name and extension.
+ *
+ * Deliberately conservative. Returning null means "ask", and asking is a fine
+ * outcome — guessing wrong puts a magnetics grid in the drill slot and the
+ * user finds out three screens later. The one thing never inferred is whether
+ * data is fabricated: that is a claim about provenance, not a property of the
+ * bytes, and it stays a decision the person uploading makes.
+ *
+ * @returns {{kind:string, part?:string}|null}
+ */
+export function classify(file) {
+  const n = (file.name || "").toLowerCase();
+  const ext = n.slice(n.lastIndexOf("."));
+
+  // Drills come as three named files. Match the part, not just the kind, so a
+  // multi-file drop can fill all three at once.
+  if (/collar/.test(n)) return { kind: "drills", part: "collars" };
+  if (/survey|desurvey/.test(n)) return { kind: "drills", part: "surveys" };
+  if (/assay|sample/.test(n)) return { kind: "drills", part: "assays" };
+
+  if (/\.(obj|dxf)$/.test(n)) return { kind: "surfaces", part: "mesh" };
+
+  // Magnetics and other grids. Name carries the product more reliably than the
+  // extension does — a .tif could be anything.
+  if (/\.(tif|tiff|grd|ers|gxf)$/.test(n)) return { kind: "geophysics", part: "grids" };
+  if (/(mag|tmi|rtp|1vd|vd1|analytic|geophys)/.test(n) && /\.(png|jpg|jpeg)$/.test(n)) {
+    return { kind: "geophysics", part: "grids" };
+  }
+
+  if (/\.(geojson|kml|kmz|shp|zip)$/.test(n) ||
+      /(claim|tenure|property|boundary|outline)/.test(n)) {
+    return { kind: "site", part: "outline" };
+  }
+
+  // A CSV is the ambiguous one: it could be a block model, or collars whose
+  // filename says nothing. Size is the only honest discriminator here — a
+  // block model is large — and below the threshold we ask rather than guess.
+  if (ext === ".csv") {
+    if (file.size > 5e6) return { kind: "blocks" };
+    return null;
+  }
+  return null;
+}
+
+/** Group classified files by kind, keeping their part assignment. */
+export function routeFiles(files) {
+  const byKind = {}, unknown = [];
+  for (const f of files) {
+    const c = classify(f);
+    if (!c) { unknown.push(f); continue; }
+    (byKind[c.kind] ||= []).push({ part: c.part, file: f });
+  }
+  return { byKind, unknown };
 }

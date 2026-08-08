@@ -354,3 +354,4 @@ tbody tr:last-child td { border-bottom: 0; }
 .dropmini.over{border-color:#C99A3A;background:rgba(201,154,58,.08)}
 .dropmini input[type=file]{flex:0 0 auto;max-width:60%}
 .dzname{font-size:11.5px;color:#6b7580;font-family:'JetBrains Mono',monospace}
+.zone.dropping{outline:2px dashed #C99A3A;outline-offset:3px;background:rgba(201,154,58,.06)}

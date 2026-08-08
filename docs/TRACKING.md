@@ -203,6 +203,14 @@ them. Authoring becomes curation rather than construction.
 
 ## Log
 
+- **2026-08-08** — Upload is drag-and-drop properly now: drop a folder of
+  exports onto a zone and they are classified by filename and routed into
+  slots, uploaded without a modal. Block models still open the mapping step
+  (their columns must be confirmed before tonnage is computed) and anything
+  unrecognised is reported rather than guessed. **Never inferred: whether data
+  is fabricated** — that is a claim about provenance, not a property of the
+  bytes, so a routed upload records real and the user says otherwise.
+
 - **2026-08-08** — Upload UX: slots are now drop targets. Previously only the
   block-model modal accepted a dropped file; the aux modals (property,
   geophysics, drills, surfaces) had bare file inputs, and the slot boxes
