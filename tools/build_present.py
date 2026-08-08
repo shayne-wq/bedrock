@@ -1193,6 +1193,9 @@ HTML = r"""<!DOCTYPE html>
   <h3>Vein domain</h3>
   <select id="vsel"></select>
 
+  <h3>Assay cut-off <span class="hint" id="assayv"></span></h3>
+  <div class="cutrow"><input type="range" id="assayr" min="0" max="5" step="1" value="0"></div>
+
   <h3>Drill holes</h3>
   <div class="seg" id="drillseg">
     <button data-d="0" class="on">Hidden</button>
@@ -1449,6 +1452,14 @@ let EXPLORATION=false;
 // Meshes from a customer's OBJ / GOCAD / DXF upload. Raw {verts,faces} rather
 // than the demo's packed int16 lattice, so they get their own builder.
 let UPLOADED_SURFACES=[];
+// Named places on the property that are not zones: targets, pits, portals,
+// showings. The reference decks live on these — "Minotaur Target", "Marathon
+// Pit" — because a land package with nothing named on it is a shape, and a
+// presenter cannot talk over a shape.
+//
+// Each is {name, e, n, kind}. Kind only chooses the styling; it asserts
+// nothing about the ground.
+let TARGETS=[];
 const GEOID=-18, rad=Cesium.Math.toRadians, $=id=>document.getElementById(id);
 const setStat=t=>$('status').textContent=t;
 // Names the step boot is currently on, so a failure inside a vendor bundle can
@@ -1941,6 +1952,12 @@ async function hydrate(token){
     bin:m.blocks.url, buckets:m.blocks.buckets_url, stats:m.blocks.stats||{},
   }));
 
+  // Targets ride on the deck's settings rather than a dataset: they are a
+  // handful of named points an author types, not a file anyone exports.
+  TARGETS=(((payload.deck||{}).settings||{}).targets||[])
+    .filter(t=>t&&t.name&&Number.isFinite(+t.e)&&Number.isFinite(+t.n))
+    .map(t=>({name:String(t.name),e:+t.e,n:+t.n,kind:t.kind||'target',dz:+t.dz||0}));
+
   const chs=(payload.chapters||[]).map(mapChapter);
   CHAPTERS=chs.length?chs:defaultChapters((payload.deck||{}).title);
   if(payload.deck&&payload.deck.title){
@@ -2009,6 +2026,20 @@ async function loadSideArtifacts(assets){
     REAL_CLAIMS=claimsFromArtifact(c.json);
     CLAIMS_ATTRIB=c.asset.label?('Boundaries as supplied: '+c.asset.label):'';
     SITE_SYNTHETIC=!!c.asset.synthetic;
+  }
+
+  // A customer's own survey. The artifact carries an extent in project
+  // coordinates per product; the viewer's GEOPHYS shape wants one extent for
+  // the set, so the union is used and each product keeps its own image.
+  const gp=await grab('geophysics');
+  if(gp&&gp.json&&gp.json.format==='orebody-geophys/1'&&(gp.json.products||[]).length){
+    const ps=gp.json.products;
+    const W=Math.min(...ps.map(x=>x.extent.west)), E=Math.max(...ps.map(x=>x.extent.east));
+    const S=Math.min(...ps.map(x=>x.extent.south)), Nn=Math.max(...ps.map(x=>x.extent.north));
+    GEOPHYS={emin:W,nmin:S,emax:E,nmax:Nn,grid:ps[0].width||512,
+             dir:'', products:ps.map(x=>({key:x.key,label:x.label,unit:x.unit||'',
+               note:x.file, file:x.url||x.file, extent:x.extent}))};
+    GEOPHYS_SYNTHETIC=!!gp.asset.synthetic;
   }
 
   const sf=await grab('surfaces');
@@ -2384,7 +2415,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
         material:new Cesium.Color(0.87,0.89,0.87,0.55),
         outline:false}});
       trace.__hole=h; drillEnts.push(trace);
-      h.segs.forEach(s=>{ if(s.g<GRADE_FLOOR) return;
+      h.segs.forEach(s=>{ if(s.g<Math.max(GRADE_FLOOR,assayMin)) return;
         const col=depthShade(ramp(s.g,false),s.d||0);
         // Assayed intervals as beads strung on the trace rather than fat rods:
         // a bead reads as a discrete sample and does not occlude the blocks
@@ -3203,7 +3234,26 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
               color:Cesium.Color.fromCssColorString(
                 VEIN_COLORS[i%VEIN_COLORS.length]).withAlpha(0.55)})})});
         viewer.scene.primitives.add(prim);
-        return {name:m.name||('Surface '+(i+1)), kind:'vein', prim:prim};
+        // Name it in the scene. A translucent body plunging through terrain is
+        // the most striking thing in a deck and the least self-explanatory —
+        // the reference decks label theirs "Valentine Lake Shear Zone", and an
+        // unlabelled one is just a coloured shape.
+        let cx=0,cy=0,cz=0;
+        m.verts.forEach(v=>{cx+=v[0];cy+=v[1];cz+=v[2];});
+        const k=m.verts.length||1;
+        const lab=viewer.entities.add({
+          position:utm2cart(cx/k,cy/k,cz/k+120),
+          label:{text:m.name||('Surface '+(i+1)),
+            font:'600 13px Archivo, system-ui, sans-serif',
+            fillColor:Cesium.Color.fromCssColorString(VEIN_COLORS[i%VEIN_COLORS.length]),
+            showBackground:true,
+            backgroundColor:new Cesium.Color(0.03,0.04,0.05,0.82),
+            backgroundPadding:new Cesium.Cartesian2(9,6),
+            verticalOrigin:Cesium.VerticalOrigin.BOTTOM,
+            scaleByDistance:new Cesium.NearFarScalar(1500,1.0,16000,0.55),
+            disableDepthTestDistance:Number.POSITIVE_INFINITY}});
+        lab.show=false;
+        return {name:m.name||('Surface '+(i+1)), kind:'vein', prim:prim, label:lab};
       });
       surfLoading=false; setStat('');
       return surfPrims;
@@ -3263,9 +3313,10 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(mode) await buildSurfaces();
     if(!surfPrims) return;
     surfPrims.forEach(s=>{
-      if(!mode){ s.prim.show=false; return; }
+      if(!mode){ s.prim.show=false; if(s.label) s.label.show=false; return; }
       if(mode==='cores') s.prim.show = s.kind==='shell';
       else s.prim.show = s.kind==='vein' && (vein===-1 || VEINS[vein]===s.name);
+      if(s.label) s.label.show=s.prim.show;
     });
   }
 
@@ -3433,7 +3484,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // ---- site features: claims, infrastructure, roads, labels ----
   // Clamped to terrain rather than floated at a guessed elevation, so they sit
   // on the actual ground the deposit is under.
-  let siteEnts=null, siteOn=false;
+  let siteEnts=null, siteOn=false, targetsOn=true;
   function buildSite(){
     if(siteEnts||!SITE.areas) return siteEnts;
     siteEnts=[];
@@ -3566,6 +3617,12 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // slide, provText() in the provenance report, and embFabricated() in the
   // embed snippet. The banner does not travel with an exported PNG or an
   // iframe someone pastes into WordPress; the other four are what cover that.
+  // The bead threshold. VRIFY's decks label their trace legend "> 0.3 g/t"
+  // because a drill programme has thousands of assays and most of them are
+  // background — drawing all of them turns the traces into a solid stripe and
+  // hides the intercepts that matter. Filtering is a display choice and the
+  // legend states the number, so nothing is hidden silently.
+  let assayMin=GRADE_FLOOR;
   const GEO_PRODUCTS={}; (GEOPHYS.products||[]).forEach(p=>{GEO_PRODUCTS[p.key]=p;});
   const GEO_RAMP=['#0c165c','#125caa','#1a9e94','#68ba4e','#e8ce3e','#e27a2a','#b01a26'];
   let geoLayer=null, geoKey='';
@@ -3579,8 +3636,13 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(p){
       // Same proj4 hop as the plan map. Over 2.6 km the UTM grid's rotation in
       // geographic space is well under one raster cell, so a rectangle holds.
-      const sw=proj4(PROJ,'WGS84',[GEOPHYS.emin,GEOPHYS.nmin]);
-      const ne=proj4(PROJ,'WGS84',[GEOPHYS.emax,GEOPHYS.nmax]);
+      // A product's own extent wins over the set's union: two grids of the
+      // same property are rarely clipped identically, and stretching one to
+      // the other's corners moves the anomaly.
+      const ex=p.extent||{west:GEOPHYS.emin,south:GEOPHYS.nmin,
+                          east:GEOPHYS.emax,north:GEOPHYS.nmax};
+      const sw=proj4(PROJ,'WGS84',[ex.west,ex.south]);
+      const ne=proj4(PROJ,'WGS84',[ex.east,ex.north]);
       geoLayer=viewer.imageryLayers.addImageryProvider(
         new Cesium.SingleTileImageryProvider({
           url:GEOPHYS.dir+p.file,
@@ -3593,10 +3655,52 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     }
     const el=$('geoleg');
     el.style.display=p?'flex':'none';
+    // FABRICATED only when it is. This was unconditional, so a customer's own
+    // airborne survey — real data, flown and paid for — came out captioned
+    // fabricated. Crying wolf devalues the word everywhere else it appears,
+    // which is the last thing this codebase can afford.
     if(p) el.innerHTML='<span>'+p.label+(p.unit?' ('+p.unit+')':'')+'</span>'+
       GEO_RAMP.map(c=>'<div class="k"><span class="sw" style="background:'+c+'"></span></div>').join('')+
-      '<span style="color:#D9584A">FABRICATED</span>';
+      (GEOPHYS_SYNTHETIC?'<span style="color:#D9584A">FABRICATED</span>':'');
   }
+
+  // ---- named targets -----------------------------------------------------
+  // Leader-line labels, like the site features, but driven by data rather than
+  // baked. Scaled by distance so a property view stays readable and a close-up
+  // does not have a label the size of the deposit.
+  let targetEnts=null;
+  function buildTargets(){
+    if(targetEnts||!TARGETS.length) return targetEnts;
+    targetEnts=[];
+    const STYLE={
+      target:{c:'#F2C14E', dz:340},
+      pit:{c:'#E4EAF0', dz:260},
+      portal:{c:'#4FD1C5', dz:220},
+      showing:{c:'#A78BFA', dz:300},
+    };
+    TARGETS.forEach(t=>{
+      const st=STYLE[t.kind]||STYLE.target;
+      const ll=proj4(PROJ,'WGS84',[t.e,t.n]);
+      const base=Cesium.Cartesian3.fromDegrees(ll[0],ll[1],ZTOP+GEOID-40);
+      const tip=Cesium.Cartesian3.fromDegrees(ll[0],ll[1],ZTOP+GEOID+(t.dz||st.dz));
+      targetEnts.push(viewer.entities.add({polyline:{positions:[base,tip],width:1,
+        material:Cesium.Color.fromCssColorString(st.c).withAlpha(.45),
+        arcType:Cesium.ArcType.NONE}}));
+      targetEnts.push(viewer.entities.add({position:tip,
+        label:{text:t.name,
+          font:'600 13px Archivo, system-ui, sans-serif',
+          fillColor:Cesium.Color.fromCssColorString(st.c),
+          showBackground:true,
+          backgroundColor:new Cesium.Color(0.03,0.04,0.05,0.84),
+          backgroundPadding:new Cesium.Cartesian2(9,6),
+          verticalOrigin:Cesium.VerticalOrigin.BOTTOM,
+          scaleByDistance:new Cesium.NearFarScalar(1200,1.0,18000,0.5),
+          disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+    });
+    return targetEnts;
+  }
+  const showTargets=on=>{ if(on) buildTargets();
+    if(targetEnts) targetEnts.forEach(e=>e.show=on); };
 
   // ---- pinned scene captions ----
   // A caption that names a thing should sit next to the thing. A fixed bar at
@@ -3802,6 +3906,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     layer('intercept highlights',()=>showHi(hiOn&&drills));
     layer('depth grid',()=>showDepth(depthOn));
     layer('site features',()=>showSite(siteOn));
+    layer('named targets',()=>showTargets(targetsOn&&!assetOnly));
     layer('vein surfaces',()=>showSurfaces(surfOn));
     layer('grade map',()=>showPlan(planOn));
     // Async because the other deposit's model may still need fetching. Not
@@ -3815,8 +3920,8 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     // The assay legend belongs to the traces, so it lives and dies with them.
     $('assayleg').style.display=drills?'flex':'none';
     if(drills) $('assayleg').innerHTML=
-      '<span>Drill assay g/t Au</span>'+
-      TIERS.map(T=>'<div class="k"><span class="sw" style="background:'+T.css+
+      '<span>Drill assay g/t Au &gt; '+assayMin.toFixed(2)+'</span>'+
+      TIERS.filter(T=>T.lo>=assayMin-1e-9).map(T=>'<div class="k"><span class="sw" style="background:'+T.css+
         '"></span><span>'+T.label+'</span></div>').join('')+
       (DRILL_SYNTHETIC?'<span style="color:#D9584A">FABRICATED</span>':'');
     // Surfaces, a plan map or the property columns all replace the block cloud
@@ -4166,6 +4271,16 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
       v.appendChild(document.createTextNode(it.hl.g.toFixed(2)+' g/t Au over '));
       const b=document.createElement('b'); b.textContent=it.hl.len.toFixed(1)+' m';
       v.appendChild(b);
+      // "over 13 m" with nothing after it reads as true width, and a drill
+      // release quotes true width. Downhole length can overstate it by a
+      // factor of two where a hole cuts a structure obliquely, so the word
+      // has to be there. ETW is only claimed when the structure's orientation
+      // is known — see intWidth() — and never inferred from the hole alone.
+      const w=document.createElement('span');
+      w.style.cssText='font-family:JetBrains Mono,monospace;font-size:9px;'+
+        'letter-spacing:.08em;color:#8C948C;margin-left:4px';
+      w.textContent=it.hl.etw?'ETW':'downhole';
+      v.appendChild(w);
       card.appendChild(id); card.appendChild(v);
       if(it.hl.incl){
         const inc=document.createElement('div'); inc.className='coincl';
@@ -4645,9 +4760,21 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     siteOn=b.dataset.s==='1';
     $('siteseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
     apply();});
-  // No geophysics baked, no control. An empty seg would read as a layer that
-  // failed to load rather than one that was never generated.
-  if(!(GEOPHYS.products||[]).length) $('georow').style.display='none';
+  // Built from whatever products this deck actually has. The markup listed the
+  // demo's three, so a hydrated deck offered TMI when it held only RTP and 1VD
+  // — a button that selects nothing.
+  (function(){
+    const seg=$('geoseg'), prods=GEOPHYS.products||[];
+    if(!prods.length){ $('georow').style.display='none'; return; }
+    seg.innerHTML='';
+    const mk=(k,label,on)=>{const b=document.createElement('button');
+      b.dataset.gp=k; b.textContent=label; if(on) b.classList.add('on');
+      seg.appendChild(b);};
+    mk('','Off',true);
+    prods.forEach(pr=>mk(pr.key,(pr.key||'').toUpperCase()||'GRID'));
+    const tag=$('georow').querySelector('.syntag');
+    if(tag) tag.style.display=GEOPHYS_SYNTHETIC?'':'none';
+  })();
   $('geoseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
     geoShow(b.dataset.gp||'');
     $('geoseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
@@ -4844,6 +4971,20 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     if(siteEnts){ siteEnts.forEach(e=>viewer.entities.remove(e)); siteEnts=null; }
     if(stageEnts){ stageEnts.forEach(es=>es.forEach(e=>viewer.entities.remove(e))); stageEnts=null; }
     buildBase(); apply(); if(stageIdx>=0) showStage(stageIdx); setStat('');});
+  // Steps rather than a continuous slider: these are the numbers a release
+  // actually quotes, and a presenter dragging to 0.37 g/t helps nobody.
+  const ASSAY_STEPS=[GRADE_FLOOR,1,2,3,5,10];
+  const paintAssay=()=>{ $('assayv').textContent='> '+assayMin.toFixed(2)+' g/t'; };
+  $('assayr').max=String(ASSAY_STEPS.length-1);
+  $('assayr').oninput=e=>{
+    assayMin=ASSAY_STEPS[+e.target.value]||GRADE_FLOOR;
+    paintAssay();
+    // The beads are baked into the entity set, so changing which are drawn
+    // means rebuilding it — cheap next to what it saves on a dense programme.
+    if(drillEnts){ drillEnts.forEach(x=>viewer.entities.remove(x)); drillEnts=null; }
+    apply();
+  };
+  paintAssay();
   $('drillseg').querySelectorAll('button').forEach(b=>b.onclick=()=>{setDrills(b.dataset.d==='1');apply();});
   // Legends are built from the same tables that colour the geometry, so they
   // cannot drift out of step with what is on screen.
@@ -5295,6 +5436,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     setCallouts(assetOnly?false:!!c.callouts);
     $('planseg').querySelectorAll('button').forEach(x=>
       x.classList.toggle('on',(x.dataset.l==='1')===planOn));
+    targetsOn=c.targets!==false;
     if(c.site!==undefined && !assetOnly){ siteOn=!!c.site;
       $('siteseg').querySelectorAll('button').forEach(x=>
         x.classList.toggle('on',(x.dataset.s==='1')===siteOn)); }
@@ -5714,6 +5856,7 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   window.__api={go:go,play:play,stop:stop,readout:readout,shoot:shoot,grab:grab,
     state:()=>({holes:HOLES.length, highlights:HIGHLIGHTS.length,
       claims:REAL_CLAIMS.length, uploadedSurfaces:UPLOADED_SURFACES.length,
+      targets:TARGETS.length,
       surfPrims:surfPrims?surfPrims.length:0, surfOn:surfOn,
       blocks:N, exploration:EXPLORATION, deposit:depKey, proj:PROJ})};
 })().catch(e=>{

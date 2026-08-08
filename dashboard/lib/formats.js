@@ -414,3 +414,62 @@ export function pointAt(trace, depth) {
   const f = Math.min(1, Math.max(0, (depth - i * trace.step) / trace.step));
   return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
 }
+
+// ----------------------------------------------------------- geophysics ----
+// TRACKING.md #2. A magnetics grid is an image plus the six numbers that say
+// where it sits. Those numbers live in a world file — .tfw beside a .tif, .pgw
+// beside a .png — which every GIS and geophysics package writes and which is
+// six lines of plain text.
+//
+// GeoTIFF is deliberately not decoded. It would need a real TIFF reader for
+// the tag soup, tiling and compression variants, and a reader written against
+// a guess mis-georeferences silently: the survey lands in the wrong place and
+// looks perfectly fine. Image + world file covers the same ground honestly,
+// and an explicit extent typed by the user covers the rest.
+
+/** World file: six numbers, one per line — pixel size and rotation, then the
+ *  centre of the top-left pixel. */
+export function readWorldFile(text, what = "world file") {
+  const n = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== "").map(Number);
+  if (n.length < 6 || n.some((v) => !Number.isFinite(v))) {
+    throw new Error(`${what}: expected six numbers (pixel size, rotation, rotation, ` +
+      `pixel size, top-left x, top-left y); got ${n.length}.`);
+  }
+  const [A, D, B, E, C, F] = n;
+  if (A === 0 || E === 0) throw new Error(`${what}: pixel size cannot be zero.`);
+  if (D !== 0 || B !== 0) {
+    throw new Error(`${what}: the grid is rotated (rotation terms are not zero). ` +
+      `A rotated raster cannot be draped as a rectangle — re-export it north-up.`);
+  }
+  return { A, D, B, E, C, F };
+}
+
+/**
+ * Corner coordinates of an image placed by a world file.
+ *
+ * The world file references the CENTRE of the top-left pixel, so the edge is
+ * half a pixel further out. Half a pixel is nothing on a 2 m grid and metres
+ * on a 200 m one, and getting it wrong shifts the whole survey.
+ */
+export function worldExtent(wf, widthPx, heightPx) {
+  if (!(widthPx > 0 && heightPx > 0)) throw new Error("Image dimensions are unknown.");
+  const x0 = wf.C - wf.A / 2, y0 = wf.F - wf.E / 2;
+  const x1 = x0 + wf.A * widthPx, y1 = y0 + wf.E * heightPx;
+  return { west: Math.min(x0, x1), east: Math.max(x0, x1),
+           south: Math.min(y0, y1), north: Math.max(y0, y1),
+           pixel: [Math.abs(wf.A), Math.abs(wf.E)] };
+}
+
+/** Product type from a filename. Advisory — the UI lets it be corrected — but
+ *  right nearly always, because geophysicists name their grids carefully. */
+export function magProduct(name) {
+  const n = (name || "").toLowerCase();
+  if (/1vd|firstvertical|first_vertical|fvd/.test(n)) return { key: "1vd", label: "RTP First Vertical Derivative", unit: "nT/m" };
+  if (/2vd|secondvertical/.test(n)) return { key: "2vd", label: "RTP Second Vertical Derivative", unit: "nT/m²" };
+  if (/rtp|reducedtopole|reduced_to_pole/.test(n)) return { key: "rtp", label: "TMI Reduced to Pole", unit: "nT" };
+  if (/tmi|totalmag|total_mag/.test(n)) return { key: "tmi", label: "Total Magnetic Intensity", unit: "nT" };
+  if (/analytic|asig|as_/.test(n)) return { key: "as", label: "Analytic Signal", unit: "nT/m" };
+  if (/rad|k_|th_|u_|potass|thorium|uranium/.test(n)) return { key: "rad", label: "Radiometrics", unit: "" };
+  if (/grav|bouguer/.test(n)) return { key: "grav", label: "Gravity", unit: "mGal" };
+  return { key: "grid", label: "Geophysical grid", unit: "" };
+}

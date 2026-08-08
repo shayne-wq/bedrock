@@ -60,8 +60,21 @@ model), and two sources of truth is one too many.
   Three Elk-specific lines were leaking into every hydrated deck and are now
   scoped: the class-mapping caveat (printed for projects with no classes), its
   orphaned second line, and "Silver is absent from the source".
-- [ ] 🔴 **#2 — First-class magnetic / geophysics data.** Grids (GeoTIFF, XYZ,
-  Geosoft), georeferencing + CRS, product typing, legend, draped rendering.
+- [x] 🟡 **#2 — First-class magnetic / geophysics data.** Mostly done.
+  A grid is an image plus the six numbers that place it. World files (.tfw /
+  .pgw / .jgw / .wld) are read, the half-pixel offset to the raster EDGE is
+  handled, rotated grids are refused with a reason, product type is inferred
+  from the filename (TMI / RTP / 1VD / 2VD / analytic signal / radiometrics /
+  gravity), and each product drapes on its OWN extent rather than the set's
+  union — two grids of one property are rarely clipped identically and
+  stretching one to the other's corners moves the anomaly.
+  The Explore control is built from the products the deck actually holds.
+  **GeoTIFF is deliberately not decoded**: it needs a real TIFF reader for the
+  tag soup, tiling and compression variants, and one written against a guess
+  mis-georeferences *silently* — the survey lands in the wrong place and looks
+  fine. PNG/JPEG plus a world file covers the same ground honestly.
+  **Still open:** GeoTIFF, Geosoft .grd, gridding raw XYZ, and a colour ramp
+  keyed to real nT values rather than percentile-clipped image colours.
   <https://github.com/shayne-wq/orebody/issues/2>
 
 ## P1 — makes multi-zone and exploration real
@@ -241,6 +254,16 @@ them. Authoring becomes curation rather than construction.
 ---
 
 ## Log
+
+- **2026-08-08** — Uploaded data now renders: drills (desurveyed, with beads,
+  grade bars and headline intercepts), surfaces (OBJ/GOCAD/DXF, labelled in
+  scene) and claims. Geophysics grids parse and drape from a world file (#2).
+  Named targets from `deck.settings.targets`. Assay threshold control. And
+  intercepts are labelled **downhole** rather than implying true width.
+  Two honesty bugs found and fixed on the way: the geophysics legend said
+  FABRICATED unconditionally, so a customer's own airborne survey was captioned
+  fabricated; and the product buttons were the demo's, so a hydrated deck
+  offered TMI when it held only RTP and 1VD.
 
 - **2026-08-08** — #13 largely done. Projections unblocked (~180 UTM zones +
   named grids, generated not listed). Readers for OBJ / GOCAD / DXF / GeoJSON /

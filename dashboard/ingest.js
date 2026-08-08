@@ -15,6 +15,7 @@ import {
 import {
   sniff, readGeoJSON, readKML, readOBJ, readGOCAD, readDXF,
   readCollars, readSurveys, readAssays, desurvey,
+  readWorldFile, worldExtent, magProduct,
 } from "./lib/formats.js";
 
 let worker = null;
@@ -626,6 +627,8 @@ export function classify(file) {
   // Magnetics and other grids. Name carries the product more reliably than the
   // extension does — a .tif could be anything.
   if (/\.(tif|tiff|grd|ers|gxf)$/.test(n)) return { kind: "geophysics", part: "grids" };
+  // The world file travels with its image and belongs in the same slot.
+  if (/\.(tfw|pgw|jgw|wld)$/.test(n)) return { kind: "geophysics", part: "grids" };
   if (/(mag|tmi|rtp|1vd|vd1|analytic|geophys)/.test(n) && /\.(png|jpg|jpeg)$/.test(n)) {
     return { kind: "geophysics", part: "grids" };
   }
@@ -750,10 +753,45 @@ async function parseAux(kind, chosen) {
   }
 
   if (kind === "geophysics") {
-    // Grids are not parsed yet (TRACKING.md #2) — but the file is still
-    // checked, so a .dm dropped on this slot is refused rather than stored.
-    chosen.forEach((c) => sniff(c.file));
-    return null;
+    // An image plus the six numbers that say where it goes. GeoTIFF is not
+    // decoded — see formats.js — so a .tif needs its .tfw alongside, and a
+    // .png its .pgw. Without one the grid cannot be placed, and a survey
+    // floated at a guessed extent is worse than no survey.
+    const imgs = [], worlds = {};
+    for (const c of chosen) {
+      const n = c.file.name.toLowerCase();
+      if (/\.(tfw|pgw|jgw|wld)$/.test(n)) { worlds[n.replace(/\.[^.]+$/, "")] = c.file; continue; }
+      imgs.push(c.file);
+    }
+    if (!imgs.length) throw new Error("No grid image found — add the .tif or .png as well as the world file.");
+
+    const products = [];
+    for (const f of imgs) {
+      const stem = f.name.toLowerCase().replace(/\.[^.]+$/, "");
+      const wfFile = worlds[stem];
+      if (!wfFile) {
+        throw new Error(`${f.name} has no world file. Add ${stem}` +
+          (/\.tif/.test(f.name.toLowerCase()) ? ".tfw" : ".pgw") +
+          " — six numbers saying where the grid sits — or the survey cannot be placed.");
+      }
+      const wf = readWorldFile(await wfFile.text(), wfFile.name);
+      // Pixel dimensions come from the image itself; nothing else knows them.
+      const bmp = await createImageBitmap(f).catch(() => null);
+      if (!bmp) {
+        throw new Error(`${f.name} could not be decoded as an image. ` +
+          "GeoTIFF is not read directly — export the grid as PNG or JPEG with its world file.");
+      }
+      const ext = worldExtent(wf, bmp.width, bmp.height);
+      const prod = magProduct(f.name);
+      products.push({ ...prod, file: f.name, width: bmp.width, height: bmp.height, extent: ext });
+      bmp.close?.();
+    }
+    return {
+      payload: { format: "orebody-geophys/1", products },
+      stats: { grids: products.length, products: products.map((p) => ({ key: p.key, label: p.label })) },
+      provenance: { parsed: "geophysics", georeferencing: "world file",
+                    pixel_m: products[0].extent.pixel },
+    };
   }
   return null;
 }
