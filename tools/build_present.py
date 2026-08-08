@@ -1660,7 +1660,21 @@ async function hydrate(token){
   }
   if(!payload) throw new Error('incorrect passcode');
 
-  const blocks=(payload.assets||[]).find(a=>a.kind==='blocks');
+  // ---- zones -> deposits ------------------------------------------------
+  // TRACKING.md #3. A project holds one or more zones and a deck spans them;
+  // the payload now says which dataset belongs to which. Zones that carry a
+  // block model become entries in the deposit switcher, in the deck's order,
+  // and the first is the one loaded now.
+  //
+  // Picking assets off a flat list — as this did — quietly rendered zone one's
+  // geometry for a deck spanning three, and reported its tonnage as the deck's.
+  const zones=(payload.zones&&payload.zones.length)?payload.zones:
+    [{id:null,name:(payload.project||{}).name||'Deposit',slug:'zone',ord:0}];
+  const assetsOf=zid=>(payload.assets||[]).filter(a=>(a.zone_id||null)===(zid||null));
+  const modelled=zones
+    .map(z=>({zone:z, blocks:assetsOf(z.id).find(a=>a.kind==='blocks'&&a.url)}))
+    .filter(x=>x.blocks);
+  const blocks=modelled.length?modelled[0].blocks:null;
 
   // ---- exploration decks: no block model, and that is not an error --------
   // TRACKING.md #1. Most projects are pure exploration — drilling, magnetics
@@ -1804,6 +1818,18 @@ async function hydrate(token){
   HOLES=[]; HIGHLIGHTS=[]; SITE={}; SITE_SYNTHETIC=false;
   REAL_CLAIMS=[]; CLAIMS_ATTRIB=''; GEOPHYS={}; GEOPHYS_SYNTHETIC=false;
   THUMBS=[]; STATIONS=[];
+
+  // Every modelled zone becomes a deposit. The first is already loaded, so it
+  // is marked baked and reads from the live snapshot; the rest are fetched on
+  // demand through the same OREB path the fabricated second deposit uses.
+  DEPOSITS=modelled.map((m,i)=>({
+    key:(m.zone.slug||('zone'+i)),
+    name:m.zone.name||('Zone '+(i+1)),
+    synthetic:!!m.blocks.synthetic,
+    baked:i===0,
+    note:m.blocks.synthetic_note||m.zone.name||'',
+    bin:m.blocks.url, buckets:m.blocks.buckets_url, stats:m.blocks.stats||{},
+  }));
 
   const chs=(payload.chapters||[]).map(mapChapter);
   CHAPTERS=chs.length?chs:defaultChapters((payload.deck||{}).title);
@@ -4412,7 +4438,12 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // vein list and the camera's frame of reference. The teardown below is the
   // same set the vertical-exaggeration rebuild clears, because it is the same
   // question — every one of these bakes model coordinates into static state.
-  let depKey='siwash', depBusy=false, bakedSnap=null;
+  // Whatever the first deposit is called — 'siwash' for the baked demo, the
+  // first zone's slug for a hydrated deck. Hard-coding the demo's key meant a
+  // hydrated deck started out claiming to be on a deposit that was not in its
+  // own list, so the switcher highlighted nothing and switching to the real
+  // first zone was a no-op.
+  let depKey=(DEPOSITS[0]&&DEPOSITS[0].key)||'siwash', depBusy=false, bakedSnap=null;
   const modelState=()=>({F:F,M:M,RUNS:RUNS,N:N,EMIN:EMIN,NMIN:NMIN,CE:CE,CN:CN,CZ:CZ,
     EX:EX,EY:EY,ZTOP:ZTOP,ZBOT:ZBOT,LADDER:LADDER,BUCKETS:BUCKETS,BY_CB:BY_CB,
     VEINS:VEINS,VGROUP:VGROUP,VGROUP_NAMES:VGROUP_NAMES,PROV:PROV,

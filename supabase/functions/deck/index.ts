@@ -97,9 +97,32 @@ Deno.serve(async (req) => {
     .eq("deck_id", deck.id)
     .order("ord");
 
+  // Zones. A project holds one or more; a zone owns the block model, drills,
+  // surfaces, property and geophysics describing that one deposit.
+  //
+  // Datasets were being selected by project alone and handed over as a flat
+  // list, so a two-zone project returned two block models with nothing to say
+  // which belonged to which. The viewer took the first — rendering one zone's
+  // geometry under a deck that spans both, and reporting its tonnage, with no
+  // symptom. Emitting zone_id is what makes the multi-zone authoring path
+  // already in the console mean anything downstream.
+  const { data: allZones } = await db
+    .from("zones")
+    .select("id, name, slug, ord")
+    .eq("project_id", deck.project_id)
+    .order("ord");
+
+  // A deck may span a subset of its project's zones, and in a chosen order.
+  const picked = Array.isArray((deck.settings as Record<string, unknown> | null)?.zones)
+    ? ((deck.settings as Record<string, unknown>).zones as string[])
+    : null;
+  const zones = picked
+    ? picked.map((id) => (allZones ?? []).find((z) => z.id === id)).filter(Boolean)
+    : (allZones ?? []);
+
   const { data: datasets } = await db
     .from("datasets")
-    .select("id, kind, label, storage_path, bytes, stats, provenance, synthetic, synthetic_note")
+    .select("id, zone_id, kind, label, storage_path, bytes, stats, provenance, synthetic, synthetic_note")
     .eq("project_id", deck.project_id);
 
   // Artifacts live in a private bucket, so hand out short-lived signed URLs
@@ -130,7 +153,8 @@ Deno.serve(async (req) => {
       if (k.endsWith("_path") || k === "storage_path") delete prov[k];
     }
     assets.push({
-      id: d.id, kind: d.kind, label: d.label, bytes: d.bytes,
+      id: d.id, zone_id: d.zone_id ?? null,
+      kind: d.kind, label: d.label, bytes: d.bytes,
       stats: d.stats, provenance: prov,
       synthetic: d.synthetic, synthetic_note: d.synthetic_note,
       url: await sign(d.storage_path),
@@ -149,6 +173,7 @@ Deno.serve(async (req) => {
       theme: deck.theme, settings: deck.settings,
     },
     project,
+    zones,
     chapters: chapters ?? [],
     assets,
     fabricated,

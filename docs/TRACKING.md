@@ -64,9 +64,20 @@ model), and two sources of truth is one too many.
 
 ## P1 — makes multi-zone and exploration real
 
-- [ ] 🔴 **#3 — Render multiple zones in the viewer.** Deposit switcher reads
-  `decks.settings.zones`; edge function emits one deposit per zone.
+- [x] 🟢 **#3 — Render multiple zones in the viewer.**
   <https://github.com/shayne-wq/orebody/issues/3>
+  The `deck` function now reads the `zones` table, honours
+  `decks.settings.zones` for subset + order, and stamps `zone_id` on every
+  asset. The viewer groups assets by zone, and every zone carrying a block
+  model becomes an entry in the deposit switcher — loaded on demand through
+  the same OREB path the fabricated second deposit uses.
+  This closed a silent correctness bug, not just a gap: datasets were selected
+  by project alone and returned flat, so a two-zone project handed the viewer
+  two block models with nothing to say which was which. It took the first —
+  rendering one zone's geometry under a deck spanning both, and reporting that
+  zone's tonnage as the deck's, with no symptom.
+  Verified on a two-zone fixture: both zones listed and named, first active,
+  switching loads the second. Deployed to the hosted project.
 - [ ] 🔴 **#4 — Exploration-first deck template.** Property, geology, magnetics,
   geochem, drill highlights, targets, the ask — seeded from available data.
   <https://github.com/shayne-wq/orebody/issues/4>
@@ -99,6 +110,13 @@ model), and two sources of truth is one too many.
 ---
 
 ## Log
+
+- **2026-08-08** — #3 shipped. `deck` fn is zone-aware and deployed; viewer
+  builds the deposit switcher from zones. Fixed the flat-asset-list bug that
+  would have mis-rendered any multi-zone deck. **The upload → zones → 3D chain
+  is now connected end to end**, with two caveats: the console still asks for a
+  block model (#1 console half) and no real multi-zone project has been put
+  through it — only fixtures.
 
 - **2026-08-08** — #1 viewer half shipped (exploration mode). Tracking branch
   merged to `main`. Elk-specific audit caveats scoped so hydrated decks stop
