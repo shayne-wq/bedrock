@@ -324,3 +324,24 @@ tbody tr:last-child td { border-bottom: 0; }
 .slot .k .opt{font-style:normal;font-family:'JetBrains Mono',monospace;
   font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#6b7580;
   border:1px solid rgba(255,255,255,.12);border-radius:3px;padding:1px 5px;margin-left:6px}
+
+/* ---- deck builder (TRACKING.md #10) ------------------------------------ */
+.builder{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media (max-width:900px){ .builder{grid-template-columns:1fr} }
+.bcol h3{font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+  color:#8C948C;margin:0 0 10px;font-family:'JetBrains Mono',monospace}
+.bcol h3 .hint{margin-left:6px;color:#6b7580}
+.droplist{min-height:180px;border:1px dashed rgba(255,255,255,.14);border-radius:6px;
+  padding:8px;display:flex;flex-direction:column;gap:8px;background:rgba(255,255,255,.015)}
+.droplist.running{border-style:solid;border-color:rgba(201,154,58,.35)}
+.droplist.over{border-color:#C99A3A;background:rgba(201,154,58,.07)}
+.scard{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:5px;
+  background:#12181a;border:1px solid rgba(255,255,255,.10);cursor:grab}
+.scard:active{cursor:grabbing}
+.scard.dragging{opacity:.4}
+.scard b{display:block;font-size:13.5px;color:#EDEEEC}
+.scard .ssec{display:block;font-family:'JetBrains Mono',monospace;font-size:9.5px;
+  letter-spacing:.1em;text-transform:uppercase;color:#C99A3A;margin-top:2px}
+.scard .sbody{display:block;font-size:11.5px;color:#8C948C;line-height:1.5;margin-top:4px}
+.empty.sm{padding:22px 12px;text-align:center}
+.empty.sm p{margin:0;font-size:12px;color:#6b7580}

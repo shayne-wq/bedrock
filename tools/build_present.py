@@ -4980,17 +4980,74 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
     d.onclick=()=>{stop();go(i);}; rail.appendChild(d);});
   const railItems=[].slice.call(rail.querySelectorAll('.c'));
 
+  // ---- transitions --------------------------------------------------
+  // TRACKING.md #11. Getting from one chapter to the next is geometry, not
+  // intelligence, and the failure modes are specific:
+  //
+  //   whip-pan     interpolating 350deg -> 10deg the long way round is 340
+  //                degrees of spin for a 20 degree change. Normalise the
+  //                target into +/-180 of where the camera already is.
+  //   scale jump   5 km out to a 200 m close-up in one move reads as a cut.
+  //                Beyond an order of magnitude, pull back through an
+  //                establishing frame and come down from there.
+  //   flat path    two viewpoints either side of the ridge joined by a
+  //                straight line go through it. Arc over, by an amount
+  //                proportional to how far apart they are.
+  //   fixed time   2.3s for both a 5 km move and a 20 m nudge. Scale it.
+  //
+  // Layers are already armed before this runs — go() calls apply() first — so
+  // the destination is drawn before the camera arrives rather than popping in
+  // on landing.
+  const DEG=x=>x*180/Math.PI;
+  function shortestHeading(fromDeg,toDeg){
+    let d=((toDeg-fromDeg)%360+540)%360-180;   // -> (-180,180]
+    return fromDeg+d;
+  }
+  function flightFor(targetRange){
+    const here=viewer.camera.positionWC;
+    const metres=center?Math.abs(Cesium.Cartesian3.distance(here,center)-targetRange):0;
+    // Roughly 1.1s of flight per kilometre of change, clamped either side.
+    // Short enough not to bore, long enough to read as a move.
+    const dur=Math.max(1.1,Math.min(4.2,1.1+metres/1000*1.1));
+    // Arc height grows with separation: nothing for a nudge, a real lift for a
+    // traverse. Cesium interprets this as the apex of the flight path.
+    const arc=metres>900?Math.min(4200,metres*0.55):undefined;
+    return {dur:dur, arc:arc, metres:metres};
+  }
   function frameFor(c,animate){
     // A property chapter frames the land package, not the orebody — `center`
     // and RADIUS belong to whichever deposit is loaded and would put the
     // camera inside one corner of the view.
     if(c.property){ frameProperty(); return; }
-    const hpr=new Cesium.HeadingPitchRange(rad(c.h),rad(c.p),c.r);
+    const curH=DEG(viewer.camera.heading);
+    const h=shortestHeading(curH,c.h);
+    const hpr=new Cesium.HeadingPitchRange(rad(h),rad(c.p),c.r);
     viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
-    if(animate&&!REDUCED) viewer.camera.flyToBoundingSphere(new Cesium.BoundingSphere(center,RADIUS),
-      {offset:hpr,duration:2.3,complete:()=>viewer.camera.lookAt(center,hpr)});
-    else viewer.camera.lookAt(center,hpr);
+    if(!(animate&&!REDUCED)){ viewer.camera.lookAt(center,hpr); return; }
+
+    const f=flightFor(c.r);
+    const sphere=new Cesium.BoundingSphere(center,RADIUS);
+    const land=()=>viewer.camera.lookAt(center,hpr);
+
+    // Scale-jump guard. Compare the range we are leaving with the one we are
+    // arriving at; past ~8x, go via a frame that contains both so the viewer
+    // keeps its bearings instead of being dollied blind through the gap.
+    const prevR=lastRange||c.r;
+    const ratio=Math.max(prevR,c.r)/Math.max(1,Math.min(prevR,c.r));
+    if(ratio>8){
+      const midR=Math.sqrt(prevR*c.r);
+      const midHpr=new Cesium.HeadingPitchRange(rad(h),rad(Math.max(-52,c.p-14)),midR);
+      viewer.camera.flyToBoundingSphere(sphere,{
+        offset:midHpr, duration:Math.max(0.9,f.dur*0.45), maximumHeight:f.arc,
+        complete:()=>viewer.camera.flyToBoundingSphere(sphere,{
+          offset:hpr, duration:Math.max(0.9,f.dur*0.65), complete:land})});
+    } else {
+      viewer.camera.flyToBoundingSphere(sphere,{
+        offset:hpr, duration:f.dur, maximumHeight:f.arc, complete:land});
+    }
+    lastRange=c.r;
   }
+  let lastRange=null;
   function paintUI(){
     const c=CHAPTERS[cur];
     paintSlide(c);

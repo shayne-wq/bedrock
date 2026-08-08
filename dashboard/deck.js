@@ -10,9 +10,12 @@ import {
   toast, fail, modal, closeModal, skeleton, wire,
 } from "./lib/ui.js";
 import { CONFIG } from "./config.js";
+// Shared with the viewer: one definition of what a slide is.
+import { projectCandidates, toChapter } from "./lib/slides.js";
 
 const VIEWER = "/index.html";
 let deck = null, chapters = [], project = null, links = [];
+let zones = [], datasets = [], candidates = [];
 
 // The layers a chapter can turn on. Kept in one place so the editor and the
 // viewer cannot drift apart on spelling.
@@ -40,9 +43,15 @@ export async function renderDeck(id, view) {
     db.from("projects").select("id, name, org_id, commodity").eq("id", d.project_id).single(),
     db.from("chapters").select("*").eq("deck_id", id).order("ord"),
     db.from("share_links").select("*").eq("deck_id", id).order("created_at", { ascending: false }),
-    db.from("datasets").select("kind, synthetic, synthetic_note, stats")
+    db.from("datasets").select("id, zone_id, kind, synthetic, synthetic_note, stats")
       .eq("project_id", d.project_id),
   ]);
+  const { data: zs } = await db.from("zones")
+    .select("id, name, slug, ord").eq("project_id", d.project_id).order("ord");
+  zones = zs || []; datasets = ds || [];
+  // Every slide the uploaded data can justify. Proposals only — none of this
+  // is written until it is dragged across.
+  candidates = projectCandidates(p, zones, datasets);
   project = p; chapters = ch || []; links = ln || [];
   const fabricated = (ds || []).filter((x) => x.synthetic);
   const blocks = (ds || []).find((x) => x.kind === "blocks");
@@ -78,10 +87,24 @@ export async function renderDeck(id, view) {
     </div></div>` : ""}
 
     <div class="panel">
-      <h2>Chapters <span class="hint">${chapters.length} in order</span></h2>
-      <div id="chlist"></div>
-      <div class="row-actions" style="margin-top:14px">
-        <button class="btn" id="addch">Add chapter</button>
+      <div class="row"><h2 class="grow">Build the deck</h2>
+        <span class="hint">${candidates.length} slides available from your data</span></div>
+      <p class="lead" style="margin:0 0 14px">Drag what you want into the running
+         order on the right. Reorder by dragging. Nothing here is saved until
+         you press Save order.</p>
+      <div class="builder">
+        <div class="bcol">
+          <h3>Available <span class="hint" id="poolcount"></span></h3>
+          <div id="pool" class="droplist"></div>
+        </div>
+        <div class="bcol">
+          <h3>Running order <span class="hint" id="ordercount"></span></h3>
+          <div id="order" class="droplist running"></div>
+          <div class="row-actions" style="margin-top:12px">
+            <button class="btn primary" id="saveorder">Save order</button>
+            <button class="btn" id="addch">Add blank chapter</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -136,10 +159,127 @@ export async function renderDeck(id, view) {
 
   $("addch").onclick = addChapter;
   $("newlink").onclick = newLink;
+
+  // Seed the running order from what the deck already holds, matching saved
+  // chapters back to candidates by title so re-opening the builder shows the
+  // deck as it stands rather than an empty column beside a full pool.
+  order = chapters.map((c) => candidates.find((x) => x.title === c.title))
+                  .filter(Boolean);
+  paintBuilder();
+  $("saveorder").onclick = (e) => saveOrder(e.currentTarget);
+}
+
+// --------------------------------------------------------------- builder ---
+// TRACKING.md #10. Two columns and HTML5 drag-and-drop: the pool of what the
+// data supports, and the running order. Deliberately not a modal wizard — the
+// point is to see everything available at once and pick, which is the part a
+// blank "Add chapter" button cannot do.
+//
+// The running order is the source of truth for `ord`; the pool hides whatever
+// is already in it, matched on the candidate's stable id so re-opening the
+// page does not offer duplicates of slides already chosen.
+let order = [];      // candidate objects, in presentation order
+
+function cardHtml(c, inOrder) {
+  return `<div class="scard" draggable="true" data-cid="${c.id}">
+    <div class="grow">
+      <b>${esc(c.title)}</b>
+      <span class="ssec">${esc(c.section || "")}</span>
+      <span class="sbody">${esc(c.body || "")}</span>
+    </div>
+    <button class="btn sm ${inOrder ? "danger" : ""}" data-toggle="${c.id}"
+      title="${inOrder ? "Remove from the deck" : "Add to the deck"}">${inOrder ? "Remove" : "Add"}</button>
+  </div>`;
+}
+
+function paintBuilder() {
+  const inOrder = new Set(order.map((c) => c.id));
+  const pool = candidates.filter((c) => !inOrder.has(c.id));
+  $("pool").innerHTML = pool.length
+    ? pool.map((c) => cardHtml(c, false)).join("")
+    : `<div class="empty sm"><p>Every available slide is in the deck.</p></div>`;
+  $("order").innerHTML = order.length
+    ? order.map((c) => cardHtml(c, true)).join("")
+    : `<div class="empty sm"><p>Drag slides here, or press Add on any of them.</p></div>`;
+  $("poolcount").textContent = `${pool.length}`;
+  $("ordercount").textContent = `${order.length}`;
+  wireDrag();
+}
+
+function wireDrag() {
+  let dragId = null;
+  document.querySelectorAll(".scard").forEach((el) => {
+    el.ondragstart = (e) => {
+      dragId = el.dataset.cid;
+      e.dataTransfer.effectAllowed = "move";
+      // Firefox refuses to start a drag without payload.
+      e.dataTransfer.setData("text/plain", dragId);
+      el.classList.add("dragging");
+    };
+    el.ondragend = () => { dragId = null; el.classList.remove("dragging"); };
+  });
+  document.querySelectorAll(".droplist").forEach((list) => {
+    list.ondragover = (e) => {
+      e.preventDefault();
+      list.classList.add("over");
+      // Insert relative to whichever card the pointer is over, so dropping is
+      // positional rather than always appending.
+      const after = [...list.querySelectorAll(".scard:not(.dragging)")]
+        .find((el) => e.clientY < el.getBoundingClientRect().top + el.offsetHeight / 2);
+      list.dataset.beforeId = after ? after.dataset.cid : "";
+    };
+    list.ondragleave = () => list.classList.remove("over");
+    list.ondrop = (e) => {
+      e.preventDefault(); list.classList.remove("over");
+      const id = dragId || e.dataTransfer.getData("text/plain");
+      if (!id) return;
+      const c = candidates.find((x) => x.id === id);
+      if (!c) return;
+      order = order.filter((x) => x.id !== id);
+      if (list.id === "order") {
+        const before = list.dataset.beforeId;
+        const at = before ? order.findIndex((x) => x.id === before) : -1;
+        if (at >= 0) order.splice(at, 0, c); else order.push(c);
+      }
+      paintBuilder();
+    };
+  });
+  document.querySelectorAll("[data-toggle]").forEach((b) => {
+    b.onclick = () => {
+      const id = b.dataset.toggle;
+      order = order.some((x) => x.id === id)
+        ? order.filter((x) => x.id !== id)
+        : [...order, candidates.find((x) => x.id === id)];
+      paintBuilder();
+    };
+  });
+}
+
+async function saveOrder(btn) {
+  btn.disabled = true; btn.textContent = "Saving…";
+  try {
+    // Replace rather than reconcile. Chapters have no identity a user assigned
+    // — the running order IS the deck — and diffing would only risk leaving
+    // an orphan behind at the position someone just removed.
+    await db.from("chapters").delete().eq("deck_id", deck.id);
+    if (order.length) {
+      const rows = order.map((c, i) => ({ deck_id: deck.id, ...toChapter(c, i) }));
+      const { error } = await db.from("chapters").insert(rows);
+      if (error) throw error;
+    }
+    chapters = order.map((c, i) => ({ ...toChapter(c, i), id: c.id }));
+    toast(`Saved ${order.length} chapter${order.length === 1 ? "" : "s"}`);
+  } catch (e) { fail("Save order", e); }
+  btn.disabled = false; btn.textContent = "Save order";
 }
 
 // -------------------------------------------------------------- chapters ---
 function renderChapters() {
+  // The builder replaced the flat chapter list, so #chlist is gone on this
+  // page. Without this guard the null deref threw partway through render and
+  // took every later line with it — including the builder's own wiring — and
+  // route()'s catch turned a broken page into a toast nobody reads.
+  if (!$("chlist")) return;
   const el = $("chlist");
   if (!chapters.length) {
     el.innerHTML = `<div class="empty"><h3>No chapters</h3>

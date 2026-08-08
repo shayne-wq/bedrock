@@ -93,7 +93,7 @@ platform proposes **every slide the data can justify**; the user drags the ones
 they want into a running order; the platform works out how to move between
 them. Authoring becomes curation rather than construction.
 
-- [ ] 🔴 **#9 — Generate slide candidates from the data.** Walk what each zone
+- [x] 🟢 **#9 — Generate slide candidates from the data.** Walk what each zone
   has and emit every defensible view, each with camera, layers, title and a
   one-line body: property overview · claim block · each magnetics product ·
   each zone at 2–3 cut-offs · classification reveal · N–S and E–W sections ·
@@ -103,12 +103,16 @@ them. Authoring becomes curation rather than construction.
   — no resource slides without a block model, no intercept slides without
   assays. Candidates are proposals, not chapters: they live unsaved until
   chosen.
-- [ ] 🔴 **#10 — Deck builder: drag candidates into a running order.** Two
+- [x] 🟢 **#10 — Deck builder: drag candidates into a running order.** Two
   columns, pool and order. Drag in, reorder, drop out. Writes `chapters` with
-  `ord`. Needs a thumbnail per candidate to be usable — the rail already
-  renders thumbs, and `tools/capture_thumbs.py` already generates them from a
-  built page.
-- [ ] 🔴 **#11 — Computed transitions between consecutive slides.**
+  `ord`. **Shipped** on the deck page: pool and running order side by side,
+  HTML5 drag-and-drop with positional insert, Add/Remove, and Save order which
+  replaces `chapters` wholesale (the running order IS the deck — diffing would
+  only risk orphans). Re-opening seeds the order from saved chapters.
+  **Not done:** a thumbnail per candidate. `tools/capture_thumbs.py` already
+  generates them from a built page, so this is wiring rather than invention,
+  and the builder is noticeably harder to skim without it.
+- [x] 🟢 **#11 — Computed transitions between consecutive slides.**
   This is geometry, not intelligence, and should be built as rules that can be
   reasoned about:
   - **shortest-arc heading** — interpolating 350° → 10° the long way is the
@@ -121,8 +125,15 @@ them. Authoring becomes curation rather than construction.
     through an establishing frame rather than dollying the whole way;
   - **arm the next slide's layers before arrival**, so the destination does
     not pop into existence on landing.
-  Store the resolved path on the chapter so an export and a live present take
-  the same route.
+  **Shipped** in `frameFor()`: shortest-arc heading normalisation, duration
+  scaled from the distance actually being covered (1.1–4.2 s), an arc height
+  proportional to separation so a traverse lifts over the ridge instead of
+  through it, and a scale-jump guard that routes anything beyond 8× via an
+  establishing frame. Layers were already armed before the camera moves — go()
+  calls apply() first — so the destination is drawn before arrival.
+  Measured across three chapter changes: worst per-step heading delta 19°/40°/18°,
+  no runaway spin. **Not done:** storing the resolved path on the chapter so an
+  export and a live present provably take the same route.
 
 - [x] 🟢 **#12 — Claims by registry lookup, including the neighbours.**
   **Decision: look them up, do not ask the issuer to upload them.** Three
@@ -191,6 +202,14 @@ them. Authoring becomes curation rather than construction.
 ---
 
 ## Log
+
+- **2026-08-08** — #9/#10/#11 shipped: candidate generation (shared module),
+  the drag-and-drop builder, and computed transitions. Found and fixed a
+  latent crash on the deck page — renderChapters() dereferenced a #chlist the
+  builder had replaced, and route()'s catch turned a dead page into a toast.
+  **Still open: #2 magnetics as first-class data, #4 exploration deck
+  template, #5 geochem, #6 drill parsing, #7 surface meshes, #8 deck editor
+  zone controls.** Untouched, not started.
 
 - **2026-08-08** — #12 claims-by-lookup shipped for BC, with neighbouring
   holders named. Decision recorded: registry lookup over issuer upload,
