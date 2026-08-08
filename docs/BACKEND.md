@@ -158,7 +158,13 @@ its parts are wrong is exactly the share-weighting bug this guards against.
 
 ## Local development
 
+OrbStack will not start its daemon from the app icon when an update is
+pending — the socket never appears and `supabase start` fails with "Cannot
+connect to the Docker daemon". `orbctl start` works regardless, and is the
+reliable way in.
+
 ```bash
+orbctl start          # not `open -a OrbStack`
 supabase start
 supabase functions serve --no-verify-jwt
 ```

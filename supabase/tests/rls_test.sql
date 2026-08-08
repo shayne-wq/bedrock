@@ -1,3 +1,10 @@
+-- Orebody — RLS policy tests.
+--
+-- Fixture ids live in the bbbb… space, NOT aaaa…, because supabase/seed.sql
+-- owns aaaa… and `db reset` loads it before this runs. When the seed was added
+-- these two suites started colliding on orgs_pkey and this file stopped being
+-- runnable at all — which is the worst outcome for the suite that proves
+-- tenants cannot read each other's data.
 -- Orebody — RLS proof.
 --
 -- Every claim this schema makes about tenant isolation is asserted here, by
@@ -45,13 +52,13 @@ end $$;
 select become('11111111-1111-1111-1111-111111111111');
 
 insert into orgs (id, name, slug)
-values ('aaaaaaaa-0000-0000-0000-000000000001', 'Alice Minerals', 'alice-minerals');
+values ('bbbbbbbb-0000-0000-0000-000000000001', 'Alice Minerals', 'alice-minerals');
 
 -- The bootstrap trigger must have made her the owner in the same transaction,
 -- or she has just locked herself out of the row she created.
 do $$ begin
   assert (select count(*) from org_members
-           where org_id = 'aaaaaaaa-0000-0000-0000-000000000001'
+           where org_id = 'bbbbbbbb-0000-0000-0000-000000000001'
              and user_id = '11111111-1111-1111-1111-111111111111'
              and role = 'owner') = 1,
     'creating an org must make the creator its owner';
@@ -62,30 +69,30 @@ do $$ begin
 end $$;
 
 insert into projects (id, org_id, name, slug)
-values ('aaaaaaaa-0000-0000-0000-000000000002',
-        'aaaaaaaa-0000-0000-0000-000000000001', 'Elk Gold', 'elk-gold');
+values ('bbbbbbbb-0000-0000-0000-000000000002',
+        'bbbbbbbb-0000-0000-0000-000000000001', 'Elk Gold', 'elk-gold');
 
 insert into datasets (project_id, kind, storage_path, synthetic, synthetic_note)
-values ('aaaaaaaa-0000-0000-0000-000000000002', 'blocks', 'a/b/c/blocks.bin',
+values ('bbbbbbbb-0000-0000-0000-000000000002', 'blocks', 'a/b/c/blocks.bin',
         false, null);
 
 insert into decks (id, project_id, title)
-values ('aaaaaaaa-0000-0000-0000-000000000003',
-        'aaaaaaaa-0000-0000-0000-000000000002', 'Siwash North');
+values ('bbbbbbbb-0000-0000-0000-000000000003',
+        'bbbbbbbb-0000-0000-0000-000000000002', 'Siwash North');
 
 insert into chapters (deck_id, ord, title)
-values ('aaaaaaaa-0000-0000-0000-000000000003', 0, 'Opening'),
-       ('aaaaaaaa-0000-0000-0000-000000000003', 1, 'The deposit');
+values ('bbbbbbbb-0000-0000-0000-000000000003', 0, 'Opening'),
+       ('bbbbbbbb-0000-0000-0000-000000000003', 1, 'The deposit');
 
 insert into share_links (id, deck_id, label)
-values ('aaaaaaaa-0000-0000-0000-000000000004',
-        'aaaaaaaa-0000-0000-0000-000000000003', 'IR website');
+values ('bbbbbbbb-0000-0000-0000-000000000004',
+        'bbbbbbbb-0000-0000-0000-000000000003', 'IR website');
 
 -- A fabricated dataset must be forced to say so.
 do $$ begin
   begin
     insert into datasets (project_id, kind, storage_path, synthetic)
-    values ('aaaaaaaa-0000-0000-0000-000000000002', 'drills', 'a/b/c/d.bin', true);
+    values ('bbbbbbbb-0000-0000-0000-000000000002', 'drills', 'a/b/c/d.bin', true);
     raise exception 'a synthetic dataset was accepted with no explanation';
   exception when check_violation then null;
   end;
@@ -94,7 +101,7 @@ end $$;
 -- The share token must be url-safe: it goes straight into an iframe src.
 do $$ declare tok text; begin
   select token into tok from share_links
-   where id = 'aaaaaaaa-0000-0000-0000-000000000004';
+   where id = 'bbbbbbbb-0000-0000-0000-000000000004';
   assert tok !~ '[+/=]', format('share token is not url-safe: %s', tok);
   assert length(tok) >= 30, format('share token is too short: %s', tok);
 end $$;
@@ -116,7 +123,7 @@ end $$;
 do $$ begin
   begin
     insert into decks (project_id, title)
-    values ('aaaaaaaa-0000-0000-0000-000000000002', 'injected');
+    values ('bbbbbbbb-0000-0000-0000-000000000002', 'injected');
     raise exception 'mallory inserted a deck into another org';
   exception when insufficient_privilege then null;
   end;
@@ -126,7 +133,7 @@ end $$;
 do $$ begin
   begin
     insert into org_members (org_id, user_id, role)
-    values ('aaaaaaaa-0000-0000-0000-000000000001',
+    values ('bbbbbbbb-0000-0000-0000-000000000001',
             '22222222-2222-2222-2222-222222222222', 'owner');
     raise exception 'mallory joined another org';
   exception when insufficient_privilege then null;
@@ -150,21 +157,21 @@ end $$;
 select unbecome();
 insert into view_sessions (id, deck_id, share_link_id, watch_ms, chapters_seen,
                            completed, is_embed, referrer_host, referrer_path)
-values ('aaaaaaaa-0000-0000-0000-000000000005',
-        'aaaaaaaa-0000-0000-0000-000000000003',
-        'aaaaaaaa-0000-0000-0000-000000000004',
+values ('bbbbbbbb-0000-0000-0000-000000000005',
+        'bbbbbbbb-0000-0000-0000-000000000003',
+        'bbbbbbbb-0000-0000-0000-000000000004',
         61000, 2, true, true, 'investors.example.com', '/projects/elk-gold');
 insert into view_events (session_id, deck_id, t_ms, kind, chapter_ord, dwell_ms)
-values ('aaaaaaaa-0000-0000-0000-000000000005',
-        'aaaaaaaa-0000-0000-0000-000000000003', 0,     'chapter', 0, 21000),
-       ('aaaaaaaa-0000-0000-0000-000000000005',
-        'aaaaaaaa-0000-0000-0000-000000000003', 21000, 'chapter', 1, 40000);
+values ('bbbbbbbb-0000-0000-0000-000000000005',
+        'bbbbbbbb-0000-0000-0000-000000000003', 0,     'chapter', 0, 21000),
+       ('bbbbbbbb-0000-0000-0000-000000000005',
+        'bbbbbbbb-0000-0000-0000-000000000003', 21000, 'chapter', 1, 40000);
 
 -- A viewer must not be able to forge engagement.
 select become_anon();
 do $$ begin
   begin
-    insert into view_sessions (deck_id) values ('aaaaaaaa-0000-0000-0000-000000000003');
+    insert into view_sessions (deck_id) values ('bbbbbbbb-0000-0000-0000-000000000003');
     raise exception 'anon forged a view session';
   exception when insufficient_privilege then null;
   end;
@@ -175,16 +182,16 @@ end $$;
 select become('11111111-1111-1111-1111-111111111111');
 do $$ declare s record; begin
   assert (select count(*) from view_sessions) = 1, 'alice cannot see her analytics';
-  select * into s from deck_summary('aaaaaaaa-0000-0000-0000-000000000003');
+  select * into s from deck_summary('bbbbbbbb-0000-0000-0000-000000000003');
   assert s.sessions = 1,        format('sessions = %s', s.sessions);
   assert s.embed_sessions = 1,  format('embed_sessions = %s', s.embed_sessions);
   assert s.median_watch_ms = 61000, format('median_watch_ms = %s', s.median_watch_ms);
 end $$;
 
 do $$ declare n int; begin
-  select count(*) into n from deck_chapter_funnel('aaaaaaaa-0000-0000-0000-000000000003');
+  select count(*) into n from deck_chapter_funnel('bbbbbbbb-0000-0000-0000-000000000003');
   assert n = 2, format('funnel rows = %s', n);
-  select sessions into n from deck_referrers('aaaaaaaa-0000-0000-0000-000000000003')
+  select sessions into n from deck_referrers('bbbbbbbb-0000-0000-0000-000000000003')
    where referrer_host = 'investors.example.com';
   assert n = 1, format('referrer sessions = %s', n);
 end $$;
@@ -194,12 +201,12 @@ end $$;
 -- silent cross-tenant leak had the functions been declared definer.
 select become('22222222-2222-2222-2222-222222222222');
 do $$ declare s record; n int; begin
-  select * into s from deck_summary('aaaaaaaa-0000-0000-0000-000000000003');
+  select * into s from deck_summary('bbbbbbbb-0000-0000-0000-000000000003');
   assert coalesce(s.sessions, 0) = 0,
     format('rollup leaked another org''s analytics: %s sessions', s.sessions);
-  select count(*) into n from deck_chapter_funnel('aaaaaaaa-0000-0000-0000-000000000003');
+  select count(*) into n from deck_chapter_funnel('bbbbbbbb-0000-0000-0000-000000000003');
   assert n = 0, format('funnel leaked %s rows', n);
-  select count(*) into n from deck_referrers('aaaaaaaa-0000-0000-0000-000000000003');
+  select count(*) into n from deck_referrers('bbbbbbbb-0000-0000-0000-000000000003');
   assert n = 0, format('referrers leaked %s rows', n);
 end $$;
 

@@ -278,6 +278,16 @@ them. Authoring becomes curation rather than construction.
 
 ## Log
 
+- **2026-08-08** — **The backend suites finally ran.** 47/47 edge-function
+  assertions and 25/25 RLS assertions, both green — including the four written
+  days ago for the org-id-leak fix that had been deployed on the strength of
+  reading the diff. OrbStack refuses to start its daemon from the app icon
+  while an update is pending; `orbctl start` works. Adding `seed.sql` had also
+  quietly broken `rls_test.sql` — both claimed the `aaaa…` id space and
+  collided on `orgs_pkey`, so the suite that proves tenants cannot read each
+  other's data had stopped being runnable at all. RLS fixtures now live in
+  `bbbb…`.
+
 - **2026-08-08** — #5 geochemistry shipped end to end, and the deck builder got
   thumbnails. Two latent bugs in the shared readers surfaced while testing it,
   both affecting every reader written so far: `Number("")` is 0, so a blank
