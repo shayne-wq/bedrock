@@ -278,6 +278,69 @@ them. Authoring becomes curation rather than construction.
 
 ## Log
 
+- **2026-08-09** — **The studio.** Four pieces of the authoring loop, and five
+  bugs found underneath them — three of which were losing people's work.
+
+  **The deck is authored in the thing that renders it.** The viewer runs framed
+  by the console in `?author=1`, reports what it is looking at, and the console
+  does the writing. That split is the point: the viewer is a public, anonymous
+  document anybody with a share link loads, so giving it a session to save a
+  chapter with would put tenant write access into that document. The console's
+  origin is learnt from its own handshake, never read off a query parameter.
+  *Set view* and *Set view + layers* write the camera and every switched layer
+  exactly as they are on screen.
+
+  **The camera contract was broken and had never worked.** The console's form
+  collected lon/lat/h/heading/pitch and wrote `h` as a HEIGHT IN METRES into
+  the key the viewer reads as a HEADING IN DEGREES. Every camera ever authored
+  in the console produced a heading of some hundreds of degrees, a default
+  pitch and a default range — silently, because those are all legal numbers.
+  Camera shapes are tagged now (`orbit` by default, `free` for shots whose
+  subject is not the deposit), and the orbit triple is derived by inverting
+  HeadingPitchRange in the deposit centre's frame, so the value written is the
+  value that replays. Round-tripped against four chapters.
+
+  **Save order was deleting every chapter and re-inserting from the candidate
+  template.** Defensible while a chapter was nothing but a copy of its
+  candidate; data loss the moment the studio existed. It also matched chapters
+  to candidates BY TITLE, so renaming a slide dropped it out of the running
+  order and the next save deleted it. Chapters carry a `source` now and the
+  save reconciles — the renumber goes through one upsert against the deferred
+  unique constraint, proven against real Postgres including a full reversal.
+
+  **A deposit change threw away the slide's camera.** `switchDeposit` ended
+  with its own `flyToBoundingSphere`, which landed a second or two after the
+  chapter's camera and overwrote it. Every deposit-change slide in the deck was
+  ignoring its own shot. Chapter-driven switches now replay the chapter's
+  framing against the new centre — which is also required, because an orbit
+  camera is an angle on a centre that just moved.
+
+  **The caption bar was eating clicks across the lower half of the screen.**
+  `#bar` is full width, several hundred pixels tall on a long caption, and its
+  top 70px are a fully transparent gradient. Drawing an area below the midline
+  did nothing. Clicking a block did nothing. Clicking a drill hole did nothing.
+  `pointer-events:none`, with the controls taking theirs back.
+
+  **A deposit without geophysics crashed the deck.** Switching deposits
+  replaces `GEOPHYS` wholesale; the replacement is empty, its corners reach
+  proj4 as `undefined`, and the throw comes out of `go()` — so the deck stopped
+  changing slides with nothing on screen to say why.
+
+  Also: **a default running order** (#4), an argument rather than a triage
+  queue — the ground, what is under it, what was drilled, what it hit, what it
+  adds up to, how well it is known. Every candidate is still offered; the
+  overflow count is reported rather than silently truncated. **Per-slide
+  labels** — presenter areas moved out of localStorage into `chapters.areas`,
+  so they travel with the share link and belong to the slide they were drawn
+  on. Locally drawn ones still work for anyone who cannot write to the deck,
+  and *Save labels* promotes them. **Replay in** flies the transition from the
+  previous slide and MEASURES it: when the camera came to rest, when the
+  geometry finished, and which the audience was left waiting on.
+
+  Green: 37 UI · 32 hole view · 28 capture · 13 bridge · 11 labels · 11
+  transition · 54 formats · 28 deposit · 23 slides · 36 extract · 13 reconcile
+  · 47 edge function · RLS clean · text fallback with WebGL refused.
+
 - **2026-08-08** — **Drill hole inspection rebuilt.** Clicking a hole used to
   fly closer at a downward pitch, which frames a several-hundred-metre vertical
   object as a foreshortened stick behind a hillside, among the other thirty-nine.

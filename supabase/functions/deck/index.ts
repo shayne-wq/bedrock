@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
 
   const { data: chapters } = await db
     .from("chapters")
-    .select("ord, kind, section, title, body, camera, layers, slide, dwell_ms")
+    .select("ord, kind, section, title, body, camera, layers, slide, dwell_ms, areas")
     .eq("deck_id", deck.id)
     .order("ord");
 

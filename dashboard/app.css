@@ -359,3 +359,57 @@ tbody tr:last-child td { border-bottom: 0; }
    from a plan from a drill slide without rendering anything. */
 .scard .sglyph{flex:0 0 auto;line-height:0;border-radius:3px;overflow:hidden;
   border:1px solid rgba(255,255,255,.08)}
+
+/* ---- studio ------------------------------------------------------------
+   The chapter list and the thing it edits, side by side, because the whole
+   point is that you adjust a shot while looking at it. Tall on purpose: a
+   viewer in a letterbox is a viewer you cannot judge a camera in. */
+.studio{display:grid;grid-template-columns:340px 1fr;gap:16px;align-items:stretch;
+        height:calc(100vh - 210px);min-height:520px}
+.stchaps{overflow-y:auto;overscroll-behavior:contain;border:1px solid rgba(255,255,255,.10);
+         border-radius:6px;background:rgba(255,255,255,.02);padding:8px}
+.stview{position:relative;border:1px solid rgba(255,255,255,.10);border-radius:6px;
+        overflow:hidden;background:#07090A}
+.stview iframe{display:block;width:100%;height:100%;border:0}
+.stlive{position:absolute;left:12px;top:12px;z-index:2;display:flex;gap:10px;align-items:baseline;
+        padding:7px 11px;border-radius:5px;background:rgba(9,12,13,.92);
+        border:1px solid rgba(255,255,255,.12);font-size:12px;color:#C6CAC5;
+        pointer-events:none}
+.stlive .k{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.14em;
+           text-transform:uppercase;color:#C99A3A}
+.stlive .v{font-family:'JetBrains Mono',monospace;font-size:11px;color:#8C948C}
+.stchap{display:flex;gap:10px;width:100%;text-align:left;padding:9px 10px;margin-bottom:4px;
+        border:1px solid transparent;border-radius:5px;background:none;cursor:pointer;
+        color:inherit;font:inherit}
+.stchap:hover{background:rgba(255,255,255,.05)}
+.stchap.on{background:rgba(201,154,58,.14);border-color:rgba(201,154,58,.45)}
+.stchap .n{flex:0 0 auto;font-family:'JetBrains Mono',monospace;font-size:10px;color:#6b7580;
+           padding-top:2px}
+.stchap b{display:block;font-size:13px;color:#EDEEEC;font-weight:500}
+.stchap .cam{display:block;font-family:'JetBrains Mono',monospace;font-size:10px;
+             color:#8C948C;margin-top:2px}
+.stchap .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.stchap .chips i{font-style:normal;font-family:'JetBrains Mono',monospace;font-size:9px;
+                 letter-spacing:.06em;padding:1px 5px;border-radius:3px;
+                 background:rgba(255,255,255,.07);color:#8C948C}
+@media (max-width:1000px){
+  .studio{grid-template-columns:1fr;height:auto}
+  .stchaps{max-height:280px}
+  .stview{height:70vh}
+}
+/* A slide someone has flown to and set, versus one that is still whatever the
+   generator proposed. Removing the first costs work; removing the second does
+   not, and the card should say which it is. */
+.scard .tagline{font-style:normal;font-family:'JetBrains Mono',monospace;font-size:8.5px;
+                letter-spacing:.12em;text-transform:uppercase;vertical-align:2px;
+                padding:1px 4px;border-radius:3px;margin-left:6px;
+                background:rgba(201,154,58,.18);color:#C99A3A}
+/* A chapter row is two things now: jump to it, and replay the flight into it. */
+.stchap{display:block;padding:0}
+.stchap .stgo{display:flex;gap:10px;width:100%;text-align:left;padding:9px 10px 4px;
+              border:0;background:none;cursor:pointer;color:inherit;font:inherit}
+.strow{display:flex;align-items:center;gap:8px;padding:0 10px 9px 34px;flex-wrap:wrap}
+.stwarn{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.06em;
+        padding:1px 5px;border-radius:3px;background:rgba(217,88,74,.16);color:#E08C82}
+.sttime{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#7FB77E}
+.sttime.bad{color:#E08C82}

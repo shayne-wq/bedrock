@@ -11,7 +11,7 @@ import {
 } from "./lib/ui.js";
 import { CONFIG } from "./config.js";
 // Shared with the viewer: one definition of what a slide is.
-import { projectCandidates, toChapter, candidateGlyph } from "./lib/slides.js";
+import { projectCandidates, toChapter, candidateGlyph, defaultOrder } from "./lib/slides.js";
 
 const VIEWER = "/index.html";
 let deck = null, chapters = [], project = null, links = [];
@@ -52,6 +52,9 @@ export async function renderDeck(id, view) {
   // Every slide the uploaded data can justify. Proposals only — none of this
   // is written until it is dragged across.
   candidates = projectCandidates(p, zones, datasets);
+  // The deck we would build if nobody touched it. Every candidate is still
+  // offered; this is just the running order that reads as an argument.
+  suggestion = defaultOrder(candidates, zones);
   project = p; chapters = ch || []; links = ln || [];
   const fabricated = (ds || []).filter((x) => x.synthetic);
   const blocks = (ds || []).find((x) => x.kind === "blocks");
@@ -69,7 +72,9 @@ export async function renderDeck(id, view) {
         <span class="chip ${deck.status === "published" ? "live" : "draft"}"
               id="statuschip">${esc(deck.status)}</span>
         <button class="btn" id="pub">${deck.status === "published" ? "Unpublish" : "Publish"}</button>
-        <button class="btn primary" id="preview">Preview</button>
+        <button class="btn" id="preview">Preview</button>
+        <a class="btn primary" href="#/s/${deck.id}"
+           title="Fly the deck and save the shots you land on">Studio</a>
       </div>
     </div></header>
 
@@ -89,12 +94,19 @@ export async function renderDeck(id, view) {
     <div class="panel">
       <div class="row"><h2 class="grow">Build the deck</h2>
         <span class="hint">${candidates.length} slides available from your data</span></div>
-      <p class="lead" style="margin:0 0 14px">Drag what you want into the running
-         order on the right. Reorder by dragging. Nothing here is saved until
-         you press Save order.</p>
+      <p class="lead" style="margin:0 0 12px">The suggested order is an argument:
+         the ground, what is under it, what was drilled, what it hit, what it
+         adds up to, and how well it is known. Everything else your data
+         supports is in the tray. Nothing is saved until you press Save order.</p>
+      <div class="row-actions" style="margin:0 0 14px">
+        <button class="btn primary" id="suggest">Use the suggested order
+          (${suggestion.order.length} slide${suggestion.order.length === 1 ? "" : "s"})</button>
+        ${suggestion.dropped ? `<span class="hint">${suggestion.dropped} more
+           would have made it too long for one sitting — they are in the tray.</span>` : ""}
+      </div>
       <div class="builder">
         <div class="bcol">
-          <h3>Available <span class="hint" id="poolcount"></span></h3>
+          <h3>More slides <span class="hint" id="poolcount"></span></h3>
           <div id="pool" class="droplist"></div>
         </div>
         <div class="bcol">
@@ -163,10 +175,15 @@ export async function renderDeck(id, view) {
   // Seed the running order from what the deck already holds, matching saved
   // chapters back to candidates by title so re-opening the builder shows the
   // deck as it stands rather than an empty column beside a full pool.
-  order = chapters.map((c) => candidates.find((x) => x.title === c.title))
-                  .filter(Boolean);
+  // An entry is either a chapter that already exists — carrying whatever the
+  // studio authored into it — or a candidate that does not exist yet. Matching
+  // by TITLE, which is what this did, broke the instant anybody renamed a
+  // slide: the chapter fell out of the running order and the next save deleted
+  // it as though it had been removed.
+  seedOrder();
   paintBuilder();
   $("saveorder").onclick = (e) => saveOrder(e.currentTarget);
+  $("suggest").onclick = useSuggested;
 }
 
 // --------------------------------------------------------------- builder ---
@@ -178,37 +195,88 @@ export async function renderDeck(id, view) {
 // The running order is the source of truth for `ord`; the pool hides whatever
 // is already in it, matched on the candidate's stable id so re-opening the
 // page does not offer duplicates of slides already chosen.
-let order = [];      // candidate objects, in presentation order
+let order = [];      // entries, in presentation order
+let suggestion = { order: [], dropped: 0, extra: 0 };
 
-function cardHtml(c, inOrder) {
-  return `<div class="scard" draggable="true" data-cid="${c.id}">
+// Rebuild the running order from what is actually in the database. Called
+// after every write as well as on load: leaving the pre-save entries in place
+// would keep the newly inserted ones marked as not-yet-existing, and pressing
+// Save order a second time would insert them all again.
+function seedOrder() {
+  order = chapters.map((c) => ({
+    key: "ch:" + c.id, chapterId: c.id, row: c,
+    cand: c.source ? candidates.find((x) => x.id === c.source) || null : null,
+  }));
+}
+
+// What an entry displays as, whichever of the two it is.
+const face = (o) => o.row || o.cand || {};
+
+function cardHtml(o, inOrder) {
+  const c = face(o);
+  // "Authored" is worth surfacing: it is the difference between a slide that
+  // still is whatever the generator proposed and one somebody flew to and set,
+  // and removing the second kind costs work the first does not.
+  const authored = o.row && o.row.camera && Object.keys(o.row.camera).length &&
+                   o.cand && JSON.stringify(o.row.camera) !== JSON.stringify(o.cand.camera);
+  return `<div class="scard" draggable="true" data-cid="${esc(o.key)}">
     <span class="sglyph">${candidateGlyph(c)}</span>
     <div class="grow">
-      <b>${esc(c.title)}</b>
+      <b>${esc(c.title || "Untitled")}${authored ? ` <i class="tagline">set</i>` : ""}</b>
       <span class="ssec">${esc(c.section || "")}</span>
       <span class="sbody">${esc(c.body || "")}</span>
     </div>
-    <button class="btn sm ${inOrder ? "danger" : ""}" data-toggle="${c.id}"
+    <button class="btn sm ${inOrder ? "danger" : ""}" data-toggle="${esc(o.key)}"
       title="${inOrder ? "Remove from the deck" : "Add to the deck"}">${inOrder ? "Remove" : "Add"}</button>
   </div>`;
 }
 
+// Candidates not already represented in the running order, as entries.
+function poolEntries() {
+  const used = new Set(order.map((o) => o.cand?.id).filter(Boolean));
+  return candidates.filter((c) => !used.has(c.id))
+    .map((c) => ({ key: "cd:" + c.id, chapterId: null, row: null, cand: c }));
+}
+
 function paintBuilder() {
-  const inOrder = new Set(order.map((c) => c.id));
-  const pool = candidates.filter((c) => !inOrder.has(c.id));
+  const pool = poolEntries();
   $("pool").innerHTML = pool.length
-    ? pool.map((c) => cardHtml(c, false)).join("")
+    ? pool.map((o) => cardHtml(o, false)).join("")
     : `<div class="empty sm"><p>Every available slide is in the deck.</p></div>`;
   $("order").innerHTML = order.length
-    ? order.map((c) => cardHtml(c, true)).join("")
-    : `<div class="empty sm"><p>Drag slides here, or press Add on any of them.</p></div>`;
+    ? order.map((o) => cardHtml(o, true)).join("")
+    : `<div class="empty sm"><p>Nothing in the running order yet.</p></div>`;
   $("poolcount").textContent = `${pool.length}`;
   $("ordercount").textContent = `${order.length}`;
+  const s = $("suggest");
+  if (s) s.disabled = !suggestion.order.length;
   wireDrag();
+}
+
+// Fill the running order with the suggested deck. Additive: anything already
+// in the order stays where it is, so pressing this on a deck someone has
+// worked on tops it up rather than throwing their work away.
+function useSuggested() {
+  const have = new Set(order.map((o) => o.cand?.id).filter(Boolean));
+  const add = suggestion.order.filter((c) => !have.has(c.id))
+    .map((c) => ({ key: "cd:" + c.id, chapterId: null, row: null, cand: c }));
+  if (!add.length) { toast("The suggested slides are already in the deck"); return; }
+  // Insert each where the suggestion puts it relative to what is already here,
+  // rather than appending a block to the end.
+  const rank = new Map(suggestion.order.map((c, i) => [c.id, i]));
+  order = [...order, ...add].sort((a, b) => {
+    const A = rank.has(a.cand?.id) ? rank.get(a.cand.id) : Infinity;
+    const B = rank.has(b.cand?.id) ? rank.get(b.cand.id) : Infinity;
+    return A - B;
+  });
+  paintBuilder();
+  toast(`Added ${add.length} slide${add.length === 1 ? "" : "s"} — press Save order to keep them`);
 }
 
 function wireDrag() {
   let dragId = null;
+  const entry = (key) => order.find((o) => o.key === key) ||
+                         poolEntries().find((o) => o.key === key);
   document.querySelectorAll(".scard").forEach((el) => {
     el.ondragstart = (e) => {
       dragId = el.dataset.cid;
@@ -234,13 +302,13 @@ function wireDrag() {
       e.preventDefault(); list.classList.remove("over");
       const id = dragId || e.dataTransfer.getData("text/plain");
       if (!id) return;
-      const c = candidates.find((x) => x.id === id);
-      if (!c) return;
-      order = order.filter((x) => x.id !== id);
+      const o = entry(id);
+      if (!o) return;
+      order = order.filter((x) => x.key !== id);
       if (list.id === "order") {
         const before = list.dataset.beforeId;
-        const at = before ? order.findIndex((x) => x.id === before) : -1;
-        if (at >= 0) order.splice(at, 0, c); else order.push(c);
+        const at = before ? order.findIndex((x) => x.key === before) : -1;
+        if (at >= 0) order.splice(at, 0, o); else order.push(o);
       }
       paintBuilder();
     };
@@ -248,9 +316,8 @@ function wireDrag() {
   document.querySelectorAll("[data-toggle]").forEach((b) => {
     b.onclick = () => {
       const id = b.dataset.toggle;
-      order = order.some((x) => x.id === id)
-        ? order.filter((x) => x.id !== id)
-        : [...order, candidates.find((x) => x.id === id)];
+      if (order.some((x) => x.key === id)) order = order.filter((x) => x.key !== id);
+      else { const o = poolEntries().find((x) => x.key === id); if (o) order.push(o); }
       paintBuilder();
     };
   });
@@ -259,17 +326,48 @@ function wireDrag() {
 async function saveOrder(btn) {
   btn.disabled = true; btn.textContent = "Saving…";
   try {
-    // Replace rather than reconcile. Chapters have no identity a user assigned
-    // — the running order IS the deck — and diffing would only risk leaving
-    // an orphan behind at the position someone just removed.
-    await db.from("chapters").delete().eq("deck_id", deck.id);
-    if (order.length) {
-      const rows = order.map((c, i) => ({ deck_id: deck.id, ...toChapter(c, i) }));
-      const { error } = await db.from("chapters").insert(rows);
+    // Reconcile. This used to delete every chapter and re-insert from the
+    // candidate template, which was defensible when a chapter was nothing but
+    // a copy of its candidate — and became data loss the moment the studio
+    // existed. A camera someone flew to, a title they rewrote, the body they
+    // corrected: all of it lived only in the chapter row, and Save order threw
+    // it away and put the generator's defaults back.
+    const keep = new Set(order.filter((o) => o.chapterId).map((o) => o.chapterId));
+    const gone = chapters.filter((c) => !keep.has(c.id)).map((c) => c.id);
+
+    // Deletes first, so their ords are free before anything moves into them.
+    if (gone.length) {
+      const { error } = await db.from("chapters").delete().in("id", gone);
       if (error) throw error;
     }
-    chapters = order.map((c, i) => ({ ...toChapter(c, i), id: c.id }));
-    toast(`Saved ${order.length} chapter${order.length === 1 ? "" : "s"}`);
+
+    // Kept chapters, renumbered in ONE upsert. `unique (deck_id, ord)` is
+    // deferrable initially deferred, so a single statement can shuffle them
+    // past each other; renumbering one row at a time would collide the moment
+    // a slide moved earlier in the deck.
+    const moves = [];
+    order.forEach((o, i) => {
+      if (!o.chapterId) return;
+      if (o.row.ord !== i) moves.push({ ...o.row, ord: i });
+    });
+    if (moves.length) {
+      const { error } = await db.from("chapters").upsert(moves);
+      if (error) throw error;
+    }
+
+    const fresh = [];
+    order.forEach((o, i) => {
+      if (o.chapterId) return;
+      fresh.push({ deck_id: deck.id, ...toChapter(o.cand, i) });
+    });
+    if (fresh.length) {
+      const { error } = await db.from("chapters").insert(fresh);
+      if (error) throw error;
+    }
+
+    await reloadChapters();
+    toast(`Saved ${order.length} chapter${order.length === 1 ? "" : "s"}` +
+          (gone.length ? ` · ${gone.length} removed` : ""));
   } catch (e) { fail("Save order", e); }
   btn.disabled = false; btn.textContent = "Save order";
 }
@@ -353,7 +451,9 @@ async function renumber() {
 async function reloadChapters() {
   const { data } = await db.from("chapters").select("*").eq("deck_id", deck.id).order("ord");
   chapters = data || [];
+  seedOrder();
   renderChapters();
+  paintBuilder();
 }
 
 async function addChapter() {
@@ -401,23 +501,32 @@ function editChapter(c) {
       </div>`).join("")}</div>
 
     <h2 style="margin-top:18px">Camera</h2>
-    <div class="grid three">
-      <div class="field"><label for="clon">Longitude</label>
-        <input type="number" id="clon" step="any" value="${cam.lon ?? ""}"></div>
-      <div class="field"><label for="clat">Latitude</label>
-        <input type="number" id="clat" step="any" value="${cam.lat ?? ""}"></div>
-      <div class="field"><label for="ch">Height (m)</label>
-        <input type="number" id="ch" step="any" value="${cam.h ?? ""}"></div>
-      <div class="field"><label for="chead">Heading (°)</label>
-        <input type="number" id="chead" step="any" value="${cam.heading ?? ""}"></div>
-      <div class="field"><label for="cpitch">Pitch (°)</label>
-        <input type="number" id="cpitch" step="any" value="${cam.pitch ?? ""}"></div>
-    </div>
-    <p class="hintline">Rather than typing these, open the preview, fly to the
-       view you want and press <b>C</b> — it copies the camera to your clipboard
-       in this shape. Paste it below.</p>
-    <div class="field"><label for="cpaste">Paste a captured camera</label>
-      <input type="text" id="cpaste" placeholder='{"lon":-120.5,"lat":49.6,"h":1500,…}'></div>
+    ${cam.mode === "free" ? `
+      <p class="hintline">This slide uses an <b>absolute</b> camera — a fixed
+         position rather than an angle on the deposit. Those are set in the
+         <a href="#/s/${deck.id}">studio</a>, by flying there. Editing it here
+         would mean typing a latitude.</p>
+      <div class="grid three">
+        <div class="stat"><span class="l">Position</span>
+          <b class="mono">${esc(String(cam.lat))}, ${esc(String(cam.lon))}</b></div>
+        <div class="stat"><span class="l">Height</span><b>${esc(String(cam.height))} m</b></div>
+        <div class="stat"><span class="l">Look</span>
+          <b>${esc(String(cam.heading))}° / ${esc(String(cam.pitch))}°</b></div>
+      </div>` : `
+      <p class="hintline">Heading, pitch and range — an angle on the deposit
+         centre, which is the shape the viewer replays. Rather than typing them,
+         fly to the shot in the <a href="#/s/${deck.id}">studio</a> and press
+         <b>Set view</b>.</p>
+      <div class="grid three">
+        <div class="field"><label for="chd">Heading (°)</label>
+          <input type="number" id="chd" step="any" value="${cam.h ?? 30}"></div>
+        <div class="field"><label for="cpt">Pitch (°)</label>
+          <input type="number" id="cpt" step="any" value="${cam.p ?? -26}"></div>
+        <div class="field"><label for="crg">Range (m)</label>
+          <input type="number" id="crg" step="any" value="${cam.r ?? 3000}"></div>
+      </div>
+      <div class="field"><label for="cpaste">Paste a captured camera</label>
+        <input type="text" id="cpaste" placeholder='{"h":38,"p":-24,"r":1900}'></div>`}
 
     <div class="row-actions" style="margin-top:18px">
       <button class="btn primary" id="csave">Save chapter</button>
@@ -425,11 +534,10 @@ function editChapter(c) {
     </div>`);
 
   $("ccancel").onclick = closeModal;
-  $("cpaste").oninput = () => {
+  if ($("cpaste")) $("cpaste").oninput = () => {
     try {
       const v = JSON.parse($("cpaste").value);
-      for (const [k, id] of [["lon", "clon"], ["lat", "clat"], ["h", "ch"],
-                             ["heading", "chead"], ["pitch", "cpitch"]]) {
+      for (const [k, id] of [["h", "chd"], ["p", "cpt"], ["r", "crg"]]) {
         if (v[k] !== undefined) $(id).value = v[k];
       }
       toast("Camera pasted");
@@ -442,11 +550,16 @@ function editChapter(c) {
       const v = $(id).value.trim();
       return v === "" ? undefined : Number(v);
     };
-    const camera = {};
-    for (const [k, id] of [["lon", "clon"], ["lat", "clat"], ["h", "ch"],
-                           ["heading", "chead"], ["pitch", "cpitch"]]) {
-      const v = numOrNull(id);
-      if (v !== undefined && Number.isFinite(v)) camera[k] = v;
+    // A free camera has no editable fields here, so keep the one that is
+    // stored rather than replacing it with an empty object. Opening a slide's
+    // settings to change its dwell must not silently throw away its camera.
+    let camera = c.camera || {};
+    if (camera.mode !== "free") {
+      camera = {};
+      for (const [k, id] of [["h", "chd"], ["p", "cpt"], ["r", "crg"]]) {
+        const v = numOrNull(id);
+        if (v !== undefined && Number.isFinite(v)) camera[k] = v;
+      }
     }
     const patch = {
       section: $("csec").value.trim() || null,

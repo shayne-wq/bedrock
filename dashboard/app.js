@@ -11,6 +11,7 @@ import {
 import { ingestWizard, uploadAux, putAux, routeFiles } from "./ingest.js";
 import { sniff } from "./lib/formats.js";
 import { renderDeck } from "./deck.js";
+import { renderStudio, teardownStudio } from "./studio.js";
 
 const view = $("view");
 
@@ -122,6 +123,7 @@ async function route() {
   // a hash that starts with "#/" is one; anything else is home. Without this the
   // console renders a blank page the first time a user ever signs in, which is
   // the worst possible moment for it.
+  teardownStudio();
   const raw = location.hash.startsWith("#/") ? location.hash.slice(2) : "";
   const h = raw.split("/");                        // "#/p/<id>" -> ["p", id]
   await loadOrgs();
@@ -129,6 +131,7 @@ async function route() {
     `<a href="#/" class="${!h[0] ? "on" : ""}">Projects</a>`;
   try {
     if (h[0] === "p" && h[1]) return await renderProject(h[1]);
+    if (h[0] === "s" && h[1]) return await renderStudio(h[1], view);
     if (h[0] === "d" && h[1]) return await renderDeck(h[1], view);
     return await renderHome();
   } catch (e) { fail("Load", e); }

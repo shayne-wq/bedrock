@@ -56,6 +56,7 @@ export function zoneCandidates(zone, datasets, project) {
   if (!K.size) return out;
 
   push("overview", {
+      spine: 10,
     section: zone.name, title: zone.name,
     body: `${project?.location || "The property"} — the ground this zone sits on.`,
     camera: { h: 24, p: -28, r: 4200 }, layers: { ground: 1.0, site: K.has("site") },
@@ -65,6 +66,7 @@ export function zoneCandidates(zone, datasets, project) {
   // ---- property ----------------------------------------------------------
   if (K.has("site")) {
     push("claims", {
+      spine: 20,
       section: zone.name, title: "The claim block",
       body: "Tenure boundaries as registered, with the surrounding ground and " +
             "who holds it.",
@@ -81,8 +83,9 @@ export function zoneCandidates(zone, datasets, project) {
     const products = Array.isArray(g?.products) && g.products.length
       ? g.products
       : [{ key: "tmi", label: "Total Magnetic Intensity" }];
-    products.forEach((prod) => {
+    products.forEach((prod, i) => {
       push(`geo-${prod.key}`, {
+        spine: i === 0 ? 30 : null,
         section: zone.name, title: prod.label || prod.key.toUpperCase(),
         body: prod.note || `${prod.label || prod.key} draped over the property.`,
         camera: { h: 0, p: -78, r: 3400 },
@@ -99,6 +102,7 @@ export function zoneCandidates(zone, datasets, project) {
     const g = statsOf(datasets, zone.id, "geochem");
     const el = g?.element ? String(g.element).replace(/_(ppm|ppb)$/i, "") : "Geochemistry";
     push("geochem", {
+      spine: 40,
       section: zone.name, title: `${el} in soils`,
       body: g?.samples
         ? `${g.samples.toLocaleString()} samples, coloured on a percentile scale — ` +
@@ -113,12 +117,14 @@ export function zoneCandidates(zone, datasets, project) {
   // ---- drilling ----------------------------------------------------------
   if (K.has("drills")) {
     push("drills", {
+      spine: 50,
       section: zone.name, title: "Drilled from surface",
       body: "Drill traces hung from their collars, coloured by assay grade.",
       camera: { h: 34, p: -24, r: 2600 }, layers: { ground: 0.0, drills: true },
       needs: ["drills"],
     });
     push("intercepts", {
+      spine: 60,
       section: zone.name, title: "The headline intercepts",
       body: "Each significant intersection called out where it sits in three " +
             "dimensions — the drill table, put back in the ground it came from.",
@@ -133,6 +139,7 @@ export function zoneCandidates(zone, datasets, project) {
   // not have. That is the whole reason for `needs`.
   if (blocks?.total) {
     push("orebody", {
+      spine: 70,
       section: zone.name, title: "The orebody",
       body: `${Math.round(blocks.total.tonnes).toLocaleString()} t at ` +
             `${blocks.total.grade_gt} g/t, on the real terrain it sits inside.`,
@@ -141,6 +148,7 @@ export function zoneCandidates(zone, datasets, project) {
       needs: ["blocks"],
     });
     push("core", {
+      spine: 80,
       section: zone.name, title: "The high-grade core",
       body: "Raising the cut-off strips the halo and leaves the material that " +
             "carries the metal.",
@@ -149,6 +157,7 @@ export function zoneCandidates(zone, datasets, project) {
       needs: ["blocks"],
     });
     push("plan", {
+      spine: 110,
       section: zone.name, title: "Grade × thickness",
       body: "Accumulated grade down each column, as a plan-view map.",
       camera: { h: 0, p: -80, r: 2600 },
@@ -165,6 +174,7 @@ export function zoneCandidates(zone, datasets, project) {
       classes.forEach((_, i) => {
         const upto = classes.slice(0, i + 1);
         push(`class-${i}`, {
+          spine: i === classes.length - 1 ? 90 : null,
           section: zone.name,
           title: upto.map((c) => NAMES[c] || `Class ${c}`).join(" + "),
           body: "Confidence is not evenly distributed through a deposit, and " +
@@ -179,6 +189,7 @@ export function zoneCandidates(zone, datasets, project) {
     // Sections along both axes.
     [["ns", "N–S"], ["ew", "E–W"]].forEach(([ax, label]) => {
       push(`sect-${ax}`, {
+        spine: ax === "ns" ? 100 : null,
         section: zone.name, title: `A ${label} section`,
         body: "A real slab through the model, with the readout re-totalled for " +
               "the slice rather than the whole deposit.",
@@ -190,6 +201,7 @@ export function zoneCandidates(zone, datasets, project) {
 
     if (K.has("surfaces")) {
       push("surfaces", {
+      spine: 120,
         section: zone.name, title: "The domains as bodies",
         body: "Solid geological surfaces rather than blocks — the hull of each " +
               "domain, extracted face by face so nothing is invented between " +
@@ -217,7 +229,7 @@ export function projectCandidates(project, zones, datasets) {
   const anyData = (zones || []).some((z) => kindsOf(datasets, z.id).size);
   if (anyData && (zones.length > 1 || kindsOf(datasets, zones[0]?.id).has("site"))) {
     out.push({
-      id: "project:property", zone_id: null,
+      id: "project:property", zone_id: null, spine: 0,
       section: "The property", title: project?.name || "The property",
       body: `${project?.location || ""}${project?.location ? " — " : ""}` +
             `${zones.length} zone${zones.length === 1 ? "" : "s"} across the land package.`,
@@ -232,7 +244,7 @@ export function projectCandidates(project, zones, datasets) {
   const modelled = (zones || []).filter((z) => statsOf(datasets, z.id, "blocks")?.total);
   if (modelled.length > 1) {
     out.push({
-      id: "project:columns", zone_id: null,
+      id: "project:columns", zone_id: null, spine: 999,
       section: "The property", title: "Where the metal is",
       body: "One column per cell across the whole property, height and colour " +
             "carrying accumulated grade × thickness. Every zone in one frame.",
@@ -246,10 +258,78 @@ export function projectCandidates(project, zones, datasets) {
   return out;
 }
 
+/**
+ * The deck we would build if nobody touched it.
+ *
+ * Generating every slide the data can justify is the right thing to generate
+ * and the wrong thing to hand over: thirty-four candidates is a triage queue,
+ * and the count grows with how much data was uploaded rather than with how
+ * much there is to say. So each candidate carries a `spine` — its slot in an
+ * argument that runs: here is the ground, here is what is under it, here is
+ * what we drilled, here is what it hit, here is what it adds up to, and here
+ * is how well we know it. Candidates with no spine are real slides, they are
+ * just not the ones you lead with.
+ *
+ * Nothing is dropped silently. When a multi-zone property overflows the cap
+ * the count that did not make it is returned, because a builder that quietly
+ * shows you eight of twenty slides reads as "this is all there is".
+ *
+ * @returns {{order: Array, dropped: number, extra: number}}
+ */
+export function defaultOrder(candidates, zones, cap = 14) {
+  const zoneIx = new Map((zones || []).map((z, i) => [z.id, i]));
+  const spine = (candidates || []).filter((c) => typeof c.spine === "number");
+
+  // Property opener first, whole-property columns last, zones in their own
+  // order in between — and within a zone, the argument's order.
+  const rank = (c) => [
+    c.zone_id === null ? (c.spine >= 999 ? 2 : 0) : 1,
+    c.zone_id === null ? 0 : (zoneIx.get(c.zone_id) ?? 99),
+    c.spine,
+  ];
+  spine.sort((a, b) => {
+    const A = rank(a), B = rank(b);
+    return A[0] - B[0] || A[1] - B[1] || A[2] - B[2];
+  });
+
+  let order = spine, dropped = 0;
+  if (spine.length > cap) {
+    // Trim by taking the weakest beat from the fullest zone, repeatedly, so a
+    // three-zone property loses its third section before it loses a zone's
+    // overview. Never trims the property-level slides.
+    const byZone = new Map();
+    spine.forEach((c) => {
+      if (c.zone_id === null) return;
+      if (!byZone.has(c.zone_id)) byZone.set(c.zone_id, []);
+      byZone.get(c.zone_id).push(c);
+    });
+    const cut = new Set();
+    let n = spine.length;
+    while (n > cap) {
+      let worst = null;
+      for (const list of byZone.values()) {
+        const live = list.filter((c) => !cut.has(c.id));
+        if (live.length <= 2) continue;              // never strip a zone bare
+        const last = live[live.length - 1];
+        if (!worst || live.length > worst.n ||
+            (live.length === worst.n && last.spine > worst.c.spine)) {
+          worst = { c: last, n: live.length };
+        }
+      }
+      if (!worst) break;                             // cannot trim further
+      cut.add(worst.c.id); n--;
+    }
+    dropped = cut.size;
+    order = spine.filter((c) => !cut.has(c.id));
+  }
+  return { order, dropped, extra: (candidates || []).length - order.length };
+}
+
 /** Chapter row shape, for writing a chosen candidate to the database. */
 export function toChapter(candidate, ord) {
   return {
     ord,
+    source: candidate.id || null,
     kind: "scene",
     section: candidate.section || null,
     title: candidate.title || "",

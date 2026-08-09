@@ -663,9 +663,19 @@ HTML = r"""<!DOCTYPE html>
   #rail .t{font-size:12px;font-weight:500;letter-spacing:.01em;max-width:150px;line-height:1.25}
   #rail .c.on .t{color:#fff}
 
+  /* pointer-events:none matters more than it looks. This bar is full width,
+     several hundred pixels tall on a chapter with a long caption, and its top
+     70px are a fully TRANSPARENT gradient — so it covered the lower half of
+     the scene while appearing to cover nothing, and silently ate every click
+     that landed there. Drawing an area below the midline did nothing. Clicking
+     a block did nothing. Clicking a drill hole did nothing. The controls take
+     their events back explicitly; the caption is prose and does not need them,
+     and text selection is not worth half the scene. */
   #bar{position:fixed;left:0;right:0;bottom:0;z-index:6;padding:70px 34px 26px;
        background:linear-gradient(180deg,rgba(7,9,10,0) 0%,rgba(7,9,10,.72) 44%,rgba(7,9,10,.92) 100%);
-       display:flex;align-items:flex-end;justify-content:space-between;gap:36px;transition:opacity .4s}
+       display:flex;align-items:flex-end;justify-content:space-between;gap:36px;transition:opacity .4s;
+       pointer-events:none}
+  #bar #nav,#bar #nav *{pointer-events:auto}
   /* Visible by default — the caption IS the story. The .in class animates a
      transform-only enter on top; it must never be what makes text appear. */
   #cap{max-width:560px;transform:translateY(14px);opacity:.999;transition:opacity .6s ease,transform .6s ease}
@@ -905,6 +915,17 @@ HTML = r"""<!DOCTYPE html>
   #stnote{flex-basis:100%;text-align:center;font-size:11.5px;color:#8C948C;line-height:1.5}
   #st360.on{background:#C99A3A;color:#0d0f10;border-color:#C99A3A}
   @media (max-width:900px){ #stbar{top:auto;bottom:196px} }
+
+  #authbar{position:fixed;left:50%;transform:translateX(-50%);top:118px;z-index:24;
+           display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;
+           background:rgba(9,12,13,.95);border:1px solid rgba(201,154,58,.45);
+           backdrop-filter:blur(8px)}
+  #authbar[hidden]{display:none}
+  #authbar .pl{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.16em;
+               text-transform:uppercase;color:#C99A3A}
+  #authch,#authnote{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#8C948C}
+  #authnote{color:#7FB77E}
+  @media (max-width:900px){ #authbar{display:none} }
 
   #ledger{position:fixed;left:34px;top:104px;z-index:10;width:308px;max-height:46vh;
           display:flex;flex-direction:column;border-radius:6px;
@@ -1329,6 +1350,19 @@ HTML = r"""<!DOCTYPE html>
 <!-- Drill ledger. Left, where the rail lives, because during a drilling
      chapter the holes ARE the navigation — the rail hides while it is open
      rather than the two fighting for the same column. -->
+<!-- Authoring bar. Only ever shown after the console has introduced itself,
+     so a share link with ?author=1 pasted by hand shows nothing: there is
+     nowhere for it to report to and nothing it could write. -->
+<div id="authbar" hidden>
+  <span class="pl">Authoring</span>
+  <span id="authch">—</span>
+  <button id="authset" class="btn sm" title="Write this camera to the current chapter">Set view</button>
+  <button id="authall" class="btn sm" title="Write this camera AND every layer switch to the current chapter">Set view + layers</button>
+  <button id="authlab" class="btn sm" hidden title="Publish the areas drawn on this slide so the audience sees them">Save labels</button>
+  <button id="authplay" class="btn sm" title="Replay the flight into this slide from the one before it">Replay in</button>
+  <span id="authnote"></span>
+</div>
+
 <div id="ledger" hidden>
   <div class="lhead">
     <span id="ledgt">Drill holes</span>
@@ -1528,6 +1562,9 @@ function withTimeout(promise, ms, what){
 const bootPhase=p=>{ BOOT_PHASE=p; };
 const QS=new URLSearchParams(location.search);
 const EMBED=QS.has('embed');
+// Authoring mode. The viewer is framed by the console, reports what it is
+// looking at, and never writes anything itself — see the bridge at the bottom.
+const AUTHOR=QS.has('author');
 
 // ---- audience telemetry -------------------------------------------------
 // Reports engagement for decks opened through a share link, including — in
@@ -1544,7 +1581,7 @@ const EMBED=QS.has('embed');
 // visits together.
 const API=(QS.get('api')||window.OREBODY_API||'').replace(/\/$/,'');
 const TOKEN=QS.get('t')||'';
-const TRACKING=Boolean(API&&TOKEN);
+const TRACKING=Boolean(API&&TOKEN)&&!AUTHOR;
 const TRK={s:null,watch:0,seen:new Set(),done:false,q:[],since:0,chapAt:0,chap:null};
 try{ TRK.s=sessionStorage.getItem('orebody.s.'+TOKEN)||null; }catch(e){}
 
@@ -1782,6 +1819,31 @@ function claimsFromArtifact(a){
 function mapChapter(c){
   const cam=c.camera||{};
   const out=Object.assign({}, c.layers||{});
+  // Two camera shapes, and they are now TAGGED, because they were not and it
+  // cost the console its camera editor.
+  //
+  // Orbit — {h,p,r}: heading, pitch and range about the deposit centre. Almost
+  // every shot wants this. It survives a deposit switch, and the transition
+  // guard reasons about `r` to decide whether a jump needs an intermediate
+  // frame. Every chapter written to date, by the candidate generator and by
+  // the baked demo, is this shape.
+  //
+  // Free — {mode:'free',lon,lat,height,heading,pitch}: an absolute position,
+  // for the shots whose subject is not the deposit. The property, a claim
+  // block, one drill hole.
+  //
+  // The bug: the console's camera form collected lon/lat/h/heading/pitch and
+  // wrote `h` as a HEIGHT IN METRES, into the key this reads as a HEADING IN
+  // DEGREES. A camera authored in the console produced a heading of 1500°, a
+  // default pitch and a default range — silently, because 1500° is a legal
+  // number. It has never once done what it said. Untagged rows are read as
+  // orbit, which is what all of them are.
+  if(cam.mode==='free' && isFinite(+cam.lon) && isFinite(+cam.lat)){
+    out.free={lon:+cam.lon, lat:+cam.lat,
+              height:+(cam.height!==undefined?cam.height:1500),
+              heading:+(cam.heading||0),
+              pitch:+(cam.pitch===undefined?-30:cam.pitch)};
+  }
   out.h=cam.h!==undefined?cam.h:30;
   out.p=cam.p!==undefined?cam.p:-26;
   out.r=cam.r!==undefined?cam.r:3000;
@@ -1789,6 +1851,13 @@ function mapChapter(c){
   out.title=c.title||'';
   out.body=c.body||'';
   out.dwell=Math.max(3,(c.dwell_ms||9000)/1000);
+  // Authored annotations for this slide. Filtered on the way in rather than
+  // trusted: a malformed ring is a crash inside Cesium's polygon tessellator,
+  // several frames after the bad data arrived, with nothing in the message
+  // that names the deck it came from.
+  out.areas=Array.isArray(c.areas)
+    ? c.areas.filter(a=>a&&Array.isArray(a.ll)&&a.ll.length>=6&&a.ll.every(n=>isFinite(n)))
+    : [];
   if(c.slide) out.slide=c.slide;
   return out;
 }
@@ -2217,6 +2286,14 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // Hole inspection. Hoisted for the same reason everything else here is:
   // showDrills() consults it and runs long before the ledger's own code does.
   let holeView=null, focusEnts=null;
+  // The in-flight deposit switch, so a transition preview can time it against
+  // the camera instead of guessing whether the geometry arrived first.
+  let depPromise=null;
+  // The authoring bridge's state, up here for the same reason: paintUI() reads
+  // authOrigin and paintUI runs on the first go(), which is ~90 lines before
+  // the bridge's own code. Declared where it is used it would be in the
+  // temporal dead zone for that call and every viewer would fail to boot.
+  let authOrigin=null, authNoteTimer=null;
   const cutVal=()=>LADDER[cutIdx];
   // Section state, for the same reason: readout() consults it on every call.
   let sectAxis=null, sectPos=0, sectStat=null, ledgerHole=null;
@@ -3910,6 +3987,18 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       // the other's corners moves the anomaly.
       const ex=p.extent||{west:GEOPHYS.emin,south:GEOPHYS.nmin,
                           east:GEOPHYS.emax,north:GEOPHYS.nmax};
+      // Switching deposits replaces GEOPHYS wholesale, and a deposit without a
+      // survey gets an empty one. Its corners then arrive here as undefined,
+      // proj4 throws "coordinates must be finite numbers", and the throw comes
+      // out of go() — so a deck that switched to a second deposit and then hit
+      // a magnetics chapter stopped changing slides entirely, with nothing on
+      // screen to say why. There is no survey to drape; say that and carry on.
+      const fin=v=>typeof v==='number'&&isFinite(v);
+      if(!(fin(ex.west)&&fin(ex.south)&&fin(ex.east)&&fin(ex.north))){
+        geoKey='';
+        toast('This deposit has no geophysics to show',3000);
+        return;
+      }
       const sw=proj4(PROJ,'WGS84',[ex.west,ex.south]);
       const ne=proj4(PROJ,'WGS84',[ex.east,ex.north]);
       geoLayer=viewer.imageryLayers.addImageryProvider(
@@ -5074,11 +5163,37 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   // fill in a palette that shares nothing with the grade ramp, and a dashed
   // outline, so nobody mistakes one for the solid gold tenure lines, which are
   // surveyed. The export footer counts them for the same reason.
+  // Per SLIDE, and in two tiers.
+  //
+  // Authored areas come down with the chapter and are what the audience sees:
+  // they travel with the share link, they are the same on every machine, and
+  // they belong to the slide they were drawn on rather than to every slide at
+  // once. Pointing at the vein on the section and at the access road on the
+  // site plan are not the same annotation.
+  //
+  // Locally drawn areas are the presenter's own, kept in this browser. They
+  // have to keep working for someone marking up a deck they cannot write to —
+  // an audience member, or an author on a machine they are not signed in on —
+  // so they still persist locally. In the studio, Save labels promotes them.
   const AREA_KEY='orebody.areas.'+(document.title.split(' · ')[0]||'deck');
-  let areas=[], areaMode=false, areaPts=[], areaColor='#38BDF8', areaEnts=[], liveEnt=null;
+  let areasLocal={};                      // chapter ord -> drawn areas
+  let areas=[], areasAuth=[];             // this chapter's drawn / authored
+  let areaMode=false, areaPts=[], areaColor='#38BDF8', areaEnts=[], liveEnt=null;
 
   function areaSave(){
-    try{ localStorage.setItem(AREA_KEY,JSON.stringify(areas)); }catch(e){}
+    areasLocal[cur]=areas;
+    // Drop empty chapters rather than accumulating a key per slide visited.
+    Object.keys(areasLocal).forEach(k=>{
+      if(!areasLocal[k]||!areasLocal[k].length) delete areasLocal[k]; });
+    try{ localStorage.setItem(AREA_KEY,JSON.stringify(areasLocal)); }catch(e){}
+  }
+  // Point the drawing tools at a chapter's own annotations. Called on every
+  // chapter change, so what is on screen is always this slide's rather than
+  // the previous slide's left behind.
+  function areaSelect(){
+    areas=areasLocal[cur]||(areasLocal[cur]=[]);
+    areasAuth=((CHAPTERS[cur]||{}).areas)||[];
+    areaPts=[]; areaLive(); areaDraw();
   }
   function areaCentroid(ll){
     let x=0,y=0; for(let i=0;i<ll.length;i+=2){x+=ll[i];y+=ll[i+1];}
@@ -5086,7 +5201,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   }
   function areaDraw(){
     areaEnts.forEach(e=>viewer.entities.remove(e)); areaEnts=[];
-    areas.forEach(a=>{
+    areasAuth.concat(areas).forEach(a=>{
       const pos=Cesium.Cartesian3.fromDegreesArray(a.ll);
       areaEnts.push(viewer.entities.add({polygon:{
         hierarchy:pos,
@@ -5144,6 +5259,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     const label=(prompt('Label this area:','')||'').trim();
     areas.push({ll:areaPts.slice(), color:areaColor, label:label});
     areaPts=[]; areaLive(); areaDraw(); areaSave();
+    if(AUTHOR) authPaint();
     toast(label?('Added "'+label+'"'):'Area added');
   }
   function setAreaMode(on){
@@ -5158,9 +5274,15 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   $('areaDone').onclick=areaFinish;
   $('areaUndo').onclick=()=>{ areaPts.splice(-2,2); areaLive(); };
   $('areaClear').onclick=()=>{
-    if(!areas.length&&!areaPts.length) return;
-    if(!confirm('Remove all '+areas.length+' drawn area'+(areas.length===1?'':'s')+'?')) return;
-    areas=[]; areaPts=[]; areaLive(); areaDraw(); areaSave(); };
+    // Authored areas are only clearable while authoring, and even then only
+    // locally until Save labels writes the empty set. An audience member
+    // cannot delete the author's annotations.
+    const n=areas.length+(AUTHOR?areasAuth.length:0);
+    if(!n&&!areaPts.length) return;
+    if(n&&!confirm('Remove all '+n+' area'+(n===1?'':'s')+' on this slide?')) return;
+    areas.length=0; if(AUTHOR) areasAuth=[];
+    areaPts=[]; areaLive(); areaDraw(); areaSave();
+    if(AUTHOR) authPaint(); };
   document.querySelectorAll('.asw').forEach(sw=>{
     if(sw.dataset.c===areaColor) sw.classList.add('on');
     sw.onclick=()=>{ areaColor=sw.dataset.c;
@@ -5170,11 +5292,12 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   // WGS84 because that is what the polygons are stored in; converting to the
   // project's UTM here would be inventing a precision the click never had.
   $('areaGeo').onclick=()=>{
-    if(!areas.length){ toast('No areas to export',2400); return; }
+    const all=areasAuth.concat(areas);
+    if(!all.length){ toast('No areas to export',2400); return; }
     const fc={type:'FeatureCollection',
       note:'Presenter annotations drawn in Orebody. Not surveyed boundaries.',
       crs_note:'WGS84 (EPSG:4326)',
-      features:areas.map(a=>{
+      features:all.map(a=>{
         const ring=[]; for(let i=0;i<a.ll.length;i+=2) ring.push([a.ll[i],a.ll[i+1]]);
         ring.push(ring[0]);
         return {type:'Feature',
@@ -5185,9 +5308,20 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   };
   // Areas survive a reload, unlike ink. A presenter who marked up a deck the
   // night before should find the marks still there.
-  try{ const saved=JSON.parse(localStorage.getItem(AREA_KEY)||'[]');
-       if(Array.isArray(saved)) areas=saved.filter(a=>a&&Array.isArray(a.ll)&&a.ll.length>=6); }catch(e){}
-  areaDraw();
+  //
+  // The stored shape used to be a flat array — one set of annotations for the
+  // whole deck. Anything in that form is adopted onto the first slide rather
+  // than discarded: it is somebody's work, and silently dropping it on upgrade
+  // is worse than putting it somewhere they can find it.
+  try{
+    const saved=JSON.parse(localStorage.getItem(AREA_KEY)||'{}');
+    const clean=v=>Array.isArray(v)
+      ? v.filter(a=>a&&Array.isArray(a.ll)&&a.ll.length>=6) : [];
+    if(Array.isArray(saved)){ const c=clean(saved); if(c.length) areasLocal={0:c}; }
+    else if(saved&&typeof saved==='object')
+      Object.keys(saved).forEach(k=>{ const c=clean(saved[k]); if(c.length) areasLocal[k]=c; });
+  }catch(e){}
+  areaSelect();
 
 
   // ---- deep links ----
@@ -5449,9 +5583,10 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     cellIndex.clear(); cellIndexBuilt=false;
   }
 
-  async function switchDeposit(key){
+  async function switchDeposit(key,opts){
     const d=DEPOSITS.find(x=>x.key===key);
     if(!d||depBusy||key===depKey) return;
+    const forChapter=!!(opts&&opts.forChapter);
     depBusy=true;
     setStat('loading '+d.name+'…');
     try{
@@ -5481,8 +5616,25 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
         el.style.opacity=d.baked?'':'0.35';
         el.style.pointerEvents=d.baked?'':'none'; });
       apply();
-      viewer.camera.flyToBoundingSphere(
-        new Cesium.BoundingSphere(center,RADIUS*1.9),{duration:REDUCED?0:2.0});
+      // Framing, and the one case that was getting this wrong.
+      //
+      // A chapter that names a deposit AND a camera fires this switch without
+      // awaiting it — deliberately, so the walkthrough does not stall on a
+      // fetch. go() then flies to the chapter's camera. A second or two later
+      // the switch landed here and flew to its own default framing, throwing
+      // away the shot the author had set. Every deposit-change slide in the
+      // deck quietly ignored its own camera.
+      //
+      // And it cannot simply be skipped, because the chapter's camera is an
+      // angle on the deposit CENTRE and the centre has just moved. So replay
+      // the chapter's framing against the new one.
+      if(forChapter){
+        const c=CHAPTERS[cur];
+        if(c) frameFor(c,true);
+      } else {
+        viewer.camera.flyToBoundingSphere(
+          new Cesium.BoundingSphere(center,RADIUS*1.9),{duration:REDUCED?0:2.0});
+      }
       toast(d.name+(d.synthetic?' — FABRICATED, not a real deposit':''),
             d.synthetic?6000:3000);
     }catch(e){
@@ -5917,6 +6069,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     // and RADIUS belong to whichever deposit is loaded and would put the
     // camera inside one corner of the view.
     if(c.property){ frameProperty(); return; }
+    if(c.free){ frameFree(c.free,animate); return; }
     const curH=DEG(viewer.camera.heading);
     const h=shortestHeading(curH,c.h);
     const hpr=new Cesium.HeadingPitchRange(rad(h),rad(c.p),c.r);
@@ -5945,9 +6098,26 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     }
     lastRange=c.r;
   }
+  // An absolute camera. No scale-jump guard and no lookAt frame: a free shot
+  // is chosen for where it is, and orbiting it about a deposit centre it was
+  // never aimed at is exactly what the author was avoiding by choosing it.
+  function frameFree(f,animate){
+    viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+    const dest=Cesium.Cartesian3.fromDegrees(f.lon,f.lat,f.height);
+    const orient={heading:rad(f.heading),pitch:rad(f.pitch),roll:0};
+    // lastRange is the guard's memory of how far out we were. A free shot has
+    // no comparable range, and leaving a stale one behind would have the next
+    // orbit chapter compute a jump ratio against a number that means something
+    // else. Forget it instead.
+    lastRange=null;
+    if(!(animate&&!REDUCED)){ viewer.camera.setView({destination:dest,orientation:orient}); return; }
+    viewer.camera.flyTo({destination:dest,orientation:orient,
+      duration:Math.max(1.2,Math.min(4.0,flightFor(f.height).dur))});
+  }
   let lastRange=null;
   function paintUI(){
     const c=CHAPTERS[cur];
+    if(AUTHOR) authPaint();
     paintSlide(c);
     $('cap').classList.remove('in');
     setTimeout(function(){
@@ -5972,7 +6142,8 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     // the geometry lands when it lands, rather than stalling the walkthrough on
     // a fetch. A chapter that says nothing leaves the deposit where it is, so a
     // presenter who switched by hand is not overridden on the next slide.
-    if(c.deposit && c.deposit!==depKey) switchDeposit(c.deposit);
+    depPromise=(c.deposit && c.deposit!==depKey)
+      ? switchDeposit(c.deposit,{forChapter:true}) : null;
     // A cut-off above the ladder must clamp to the most restrictive bin, not
     // fall through to index 0 and reveal the entire model. A chapter that
     // declares no cut-off at all (slide chapters) is a different case — it
@@ -6038,6 +6209,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     Object.keys(clsOn).forEach(k=>{clsOn[k]=!c.classes || c.classes.indexOf(+k)>=0;});
     chips.querySelectorAll('.chip').forEach(el=>el.classList.toggle('on',clsOn[el.dataset.c]));
     inkClearAll();
+    areaSelect();
     setPin(assetOnly?null:c.pin);
     // A drilling chapter opens the ledger for you — it is the reason the
     // chapter exists, and reaching for a toolbar button mid-sentence is
@@ -6123,13 +6295,11 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     // Capture the current camera for the deck editor. Typing five numbers out
     // of a 3D scene by hand is not something anyone should be asked to do.
     if(e.key==='c'||e.key==='C'){
-      const p=viewer.camera.positionCartographic;
-      const cam={lon:+Cesium.Math.toDegrees(p.longitude).toFixed(6),
-                 lat:+Cesium.Math.toDegrees(p.latitude).toFixed(6),
-                 h:Math.round(p.height),
-                 heading:+Cesium.Math.toDegrees(viewer.camera.heading).toFixed(1),
-                 pitch:+Cesium.Math.toDegrees(viewer.camera.pitch).toFixed(1)};
-      const s=JSON.stringify(cam);
+      // The orbit triple, which is what a chapter stores. This used to copy
+      // lon/lat/h/heading/pitch — a shape the viewer has never read, whose `h`
+      // meant the opposite of the `h` it was pasted into.
+      const cap=captureCamera();
+      const s=JSON.stringify(cap.orbit||cap.free);
       navigator.clipboard.writeText(s).then(
         ()=>toast('Camera copied \u2014 paste it into the chapter'),
         ()=>toast('Camera: '+s,8000));
@@ -6412,6 +6582,228 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   $('begin').onclick=()=>{$('intro').style.opacity='0';setTimeout(()=>$('intro').style.display='none',800);
     frameFor(CHAPTERS[0],true); if(EMBED&&EMBED_AUTOPLAY&&!REDUCED) play();};
 
+  // ---- capture: turn the live scene into a chapter row --------------------
+  // Authoring a camera by typing five numbers out of a 3D scene is not a thing
+  // anyone should be asked to do, and copying JSON through the clipboard into
+  // another tab is barely better. This is the other half of the studio: what
+  // the presenter is looking at, in exactly the shape a chapter stores.
+  //
+  // The orbit form is DERIVED rather than read off the camera. Cesium's
+  // heading and pitch are relative to the camera's own local frame, which for
+  // a camera that was free-flown is not the deposit centre's — so reading them
+  // straight would write a shot that does not reproduce. Putting the camera
+  // position into the centre's frame and inverting HeadingPitchRange gives the
+  // triple that actually replays.
+  function captureCamera(){
+    const p=viewer.camera.positionCartographic;
+    const free={mode:'free',
+      lon:+Cesium.Math.toDegrees(p.longitude).toFixed(6),
+      lat:+Cesium.Math.toDegrees(p.latitude).toFixed(6),
+      height:Math.round(p.height),
+      heading:+DEG(viewer.camera.heading).toFixed(1),
+      pitch:+DEG(viewer.camera.pitch).toFixed(1)};
+    let orbit=null;
+    if(center){
+      const inv=Cesium.Matrix4.inverseTransformation(
+        Cesium.Transforms.eastNorthUpToFixedFrame(center), new Cesium.Matrix4());
+      const l=Cesium.Matrix4.multiplyByPoint(inv, viewer.camera.positionWC,
+                                             new Cesium.Cartesian3());
+      const r=Math.sqrt(l.x*l.x+l.y*l.y+l.z*l.z);
+      if(r>1){
+        let hd=DEG(Math.atan2(-l.x,-l.y)); if(hd<0) hd+=360;
+        orbit={h:+hd.toFixed(1), p:+DEG(Math.asin(-l.z/r)).toFixed(1), r:Math.round(r)};
+      }
+    }
+    return {orbit:orbit, free:free};
+  }
+
+  // Every switched thing in the scene, in chapter-key form. Written sparsely:
+  // a chapter that says nothing about a layer means "off", so emitting every
+  // key at its default would bloat every row and, worse, would freeze today's
+  // defaults into rows that should follow them.
+  function captureLayers(){
+    const L={mode:mode, cut:cutVal(), ground:groundAlpha};
+    if(!blocksOn) L.blocks=false;
+    if(drills) L.drills=true;
+    if(hiOn) L.highlights=true;
+    if(siteOn) L.site=true;
+    if(planOn) L.plan=true;
+    if(!depthOn) L.depth=false;
+    if(surfOn) L.surfaces=surfOn;
+    if(geoKey) L.geo=geoKey;
+    if(gcOn) L.geochem=true;
+    if(propOn) L.property=true;
+    if(blackout) L.black=true;
+    if(calloutsOn) L.callouts=true;
+    if(assetOnly) L.assetOnly=true;
+    if(!targetsOn) L.targets=false;
+    if(sectAxis){ L.section3d=sectAxis; L.sectionAt=+$('sect').value; }
+    if(vein!==-1) L.vein=vein;
+    if(typeof depKey!=='undefined' && depKey) L.deposit=depKey;
+    const cls=Object.keys(clsOn).filter(k=>clsOn[k]).map(Number);
+    if(cls.length<4) L.classes=cls;
+    return L;
+  }
+
+  // ---- authoring bridge ---------------------------------------------------
+  // The viewer never gets write credentials, and this is the reason the studio
+  // is built this way round. It is a public, anonymous renderer that anyone
+  // with a share link loads; giving it a session so it could save a chapter
+  // would put tenant write access into that document. So the console frames
+  // it, this end reports what it is looking at, and the console — already
+  // authenticated, already subject to RLS — decides what to store.
+  //
+  // The console's origin is learnt from its own handshake, never read off a
+  // query parameter. A parameter is supplied by whoever wrote the URL, so
+  // trusting one would let any page that can frame this one nominate itself
+  // as the recipient of everything the bridge reports.
+  const authPeer=()=>(parent&&parent!==window)?parent:(window.opener||null);
+  function authSend(m){
+    const peer=authPeer();
+    if(authOrigin&&peer) peer.postMessage(Object.assign({source:'orebody-viewer'},m),authOrigin);
+  }
+  // Replay the flight INTO a chapter, from the one before it, and time what
+  // actually happened. An authored deck's weak point is not any single shot,
+  // it is the move between two of them — and the move a static reading of the
+  // rows cannot predict is the deposit change, because the model download is
+  // asynchronous and lands whenever it lands. So this measures rather than
+  // estimates: when the camera came to rest, when the geometry finished, and
+  // which of the two the audience would have been left waiting on.
+  async function previewTransition(ord){
+    const c=CHAPTERS[ord];
+    if(!c) return null;
+    stop();
+    if(ord>0){
+      go(ord-1,true);
+      await new Promise(r=>setTimeout(r,850));
+    }
+    const t0=performance.now();
+    depPromise=null;
+    go(ord);
+    const camMs=await new Promise(res=>{
+      let off=null;
+      const done=()=>{ if(off) off(); off=null; res(performance.now()-t0); };
+      off=viewer.camera.moveEnd.addEventListener(done);
+      // A chapter whose camera does not move fires no moveEnd at all, so this
+      // is the answer for that case rather than a failsafe for a hang.
+      setTimeout(done,12000);
+    });
+    let depMs=null;
+    if(depPromise){ await depPromise; depMs=performance.now()-t0; }
+    return {ord:ord, from:ord>0?(ord-1):null,
+            camMs:Math.round(camMs),
+            depMs:depMs===null?null:Math.round(depMs),
+            deposit:c.deposit||null,
+            // A quarter of a second is about where a late arrival stops being
+            // a flourish and starts being the audience watching an empty frame.
+            late:depMs!==null && depMs>camMs+250};
+  }
+
+  function authSnapshot(){
+    return {ord:cur, total:CHAPTERS.length, title:(CHAPTERS[cur]||{}).title||'',
+            camera:captureCamera(), layers:captureLayers(),
+            areas:areasAuth.concat(areas)};
+  }
+  function authPaint(){
+    if(!authOrigin) return;
+    const lab=$('authlab');
+    if(lab){
+      // Offered when there is something unpublished to publish, and also when
+      // the author has just cleared a slide's authored labels — otherwise
+      // there would be no way to commit the deletion.
+      const pending=areas.length || (areasAuth.length!==(((CHAPTERS[cur]||{}).areas)||[]).length);
+      lab.hidden=!pending;
+      lab.textContent=areas.length?('Save labels ('+areas.length+')'):'Save labels';
+    }
+    const c=captureCamera();
+    const o=c.orbit;
+    $('authch').textContent='Chapter '+(cur+1)+' / '+CHAPTERS.length+
+      (o?('  ·  '+o.h+'\u00b0 / '+o.p+'\u00b0 / '+o.r+' m'):'');
+  }
+  function authNote(t,bad){
+    const el=$('authnote'); if(!el) return;
+    el.textContent=t||''; el.style.color=bad?'#D9584A':'#7FB77E';
+    clearTimeout(authNoteTimer);
+    authNoteTimer=setTimeout(()=>{el.textContent='';},4000);
+  }
+  if(AUTHOR){
+    // No splash. The console framed this to work in, not to present, and a
+    // full-screen "Begin the walkthrough" overlay swallowing every click is a
+    // strange thing for an editor to open with. go(0) has already framed
+    // chapter one by the time this runs, so there is nothing to resume.
+    const sp=$('intro'); if(sp) sp.style.display='none';
+    addEventListener('message',e=>{
+      const d=e.data;
+      if(!d||d.source!=='orebody-console') return;
+      if(d.type==='hello'){
+        authOrigin=e.origin;
+        $('authbar').hidden=false;
+        authPaint();
+        authSend({type:'ready', total:CHAPTERS.length,
+                  titles:CHAPTERS.map(c=>c.title||'')});
+        return;
+      }
+      if(e.origin!==authOrigin) return;
+      if(d.type==='goto' && typeof d.ord==='number'){
+        stop(); go(d.ord); authSend({type:'state', state:authSnapshot()});
+      } else if(d.type==='transition' && typeof d.ord==='number'){
+        authNote('Replaying\u2026');
+        previewTransition(d.ord).then(r=>{
+          authSend({type:'transition', result:r});
+          authSend({type:'state', state:authSnapshot()});
+          authNote(!r ? '' : r.late
+            ? ('Geometry landed '+(r.depMs-r.camMs)+' ms after the camera')
+            : ('Settled in '+(r.camMs/1000).toFixed(1)+' s'), !!(r&&r.late));
+        });
+      } else if(d.type==='poll'){
+        authSend({type:'state', state:authSnapshot()});
+      } else if(d.type==='saved'){
+        authNote(d.ok?('Saved to chapter '+(d.ord+1)):'Save failed \u2014 see the console',!d.ok);
+        // Patch the in-memory chapter to what was actually stored. Without
+        // this, setting a view and then navigating away and back replays the
+        // OLD shot — the author would watch their own save appear not to have
+        // taken, and the obvious response is to save it again.
+        if(d.ok && d.chapter && CHAPTERS[d.ord]){
+          CHAPTERS[d.ord]=mapChapter(d.chapter);
+          // Published labels stop being the presenter's local scribble and
+          // become the slide's. Leaving them in both places draws each twice.
+          if(d.ord===cur && d.what==='areas'){ areas.length=0; areaSave(); areaSelect(); }
+          authPaint();
+        }
+      }
+    });
+    $('authset').onclick=()=>{ authSend({type:'set', what:'camera', state:authSnapshot()});
+                               authNote('Saving\u2026'); };
+    $('authall').onclick=()=>{ authSend({type:'set', what:'all', state:authSnapshot()});
+                               authNote('Saving\u2026'); };
+    // Labels are saved on their own rather than folded into "Set view +
+    // layers". A camera and a set of switches are the shot; an annotation is a
+    // claim about the ground, and publishing one to an audience should be a
+    // thing somebody pressed rather than a side effect of framing a slide.
+    $('authlab').onclick=()=>{
+      authSend({type:'set', what:'areas', state:authSnapshot()});
+      authNote('Saving\u2026'); };
+    $('authplay').onclick=()=>{
+      authNote('Replaying\u2026');
+      previewTransition(cur).then(r=>{
+        authSend({type:'transition', result:r});
+        authNote(!r ? '' : r.late
+          ? ('Geometry landed '+(r.depMs-r.camMs)+' ms after the camera')
+          : ('Settled in '+(r.camMs/1000).toFixed(1)+' s'), !!(r&&r.late));
+      }); };
+    // On every rest, not only on a chapter change. A chapter change reports
+    // immediately so the console can highlight the row, but the camera is
+    // still in flight at that moment — reporting only then would have the
+    // console's readout, and anything that trusts it, describing where the
+    // camera was a second and a half ago.
+    viewer.camera.moveEnd.addEventListener(()=>{
+      authPaint(); authSend({type:'state', state:authSnapshot()}); });
+    // Announce. No payload, so a page that frames this one without being the
+    // console learns only that a viewer exists — which it already knew.
+    const peer=authPeer();
+    if(peer) peer.postMessage({source:'orebody-viewer',type:'hello'},'*');
+  }
+
   window.__viewer=viewer;
   // A small, stable surface for automated checks and for anyone debugging a
   // customer's deck: what loaded, and how much of it.
@@ -6441,6 +6833,12 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       sun:!!(viewer.scene.sun&&viewer.scene.sun.show),
       ledgt:$('ledgt').textContent, cam:camProbe()}),
     titles:()=>CHAPTERS.map(c=>c.title),
+    chapter:(n)=>CHAPTERS[n],
+    capture:()=>({camera:captureCamera(), layers:captureLayers()}),
+    transition:previewTransition,
+    areas:()=>({auth:areasAuth.length, local:areas.length,
+                stored:Object.keys(areasLocal).length, pts:areaPts.length, mode:areaMode,
+                labels:areasAuth.concat(areas).map(a=>a.label)}),
     state:()=>({holes:HOLES.length, highlights:HIGHLIGHTS.length,
       claims:REAL_CLAIMS.length, uploadedSurfaces:UPLOADED_SURFACES.length,
       targets:TARGETS.length, geochem:GEOCHEM?GEOCHEM.points.length:0,
