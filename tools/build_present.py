@@ -2097,7 +2097,44 @@ async function hydrate(token){
   const model=buildModel(cols,stats);
   F=model.F; M=model.M; RUNS=model.RUNS; N=model.N;
 
-  const b=stats.bounds||{x:[0,1],y:[0,1],z:[0,1]};
+  // Extents come from the COLUMNS, not from the stats file.
+  //
+  // This used to be `stats.bounds || {x:[0,1],y:[0,1],z:[0,1]}`, and a stats
+  // file without bounds therefore put the deposit's centre at easting 0.5,
+  // northing 0.5 — which in UTM zone 10N is the Gulf of Guinea. The deck did
+  // not fail. It rendered a working rail, correct chapter text and a correct
+  // tonnage over a completely black screen, with the model twelve thousand
+  // kilometres from the property and the camera pointed at open ocean. There
+  // is no worse way to be wrong than silently and plausibly.
+  //
+  // The blocks are right here, so the extent is not something to be told: it
+  // is something to measure. Derived bounds cannot disagree with the geometry
+  // that gets drawn, which removes the failure rather than defaulting it.
+  const b=(function(){
+    if(!cols.n) throw new Error('this block model has no blocks in it');
+    let xn=Infinity,xx=-Infinity,yn=Infinity,yx=-Infinity,zn=Infinity,zx=-Infinity;
+    for(let i=0;i<cols.n;i++){
+      const x=cols.x[i], y=cols.y[i], z=cols.z[i];
+      if(x<xn)xn=x; if(x>xx)xx=x;
+      if(y<yn)yn=y; if(y>yx)yx=y;
+      if(z<zn)zn=z; if(z>zx)zx=z;
+    }
+    const o=cols.origin;
+    const got={x:[o[0]+xn,o[0]+xx], y:[o[1]+yn,o[1]+yx], z:[o[2]+zn,o[2]+zx]};
+    // If the extractor recorded bounds too, they should agree. They are not
+    // used — the geometry wins — but a disagreement means one of the two is
+    // describing a different model, and that is worth saying out loud.
+    const dec=stats.bounds;
+    if(dec&&dec.x&&dec.y){
+      const dx=Math.abs((dec.x[0]+dec.x[1])/2-(got.x[0]+got.x[1])/2);
+      const dy=Math.abs((dec.y[0]+dec.y[1])/2-(got.y[0]+got.y[1])/2);
+      const span=Math.max(1,(got.x[1]-got.x[0])+(got.y[1]-got.y[0]));
+      if(dx+dy>span*0.5)
+        console.warn('Orebody: the recorded bounds disagree with the blocks — '+
+                     'using the blocks.', dec, got);
+    }
+    return got;
+  })();
   EMIN=cols.origin[0]; NMIN=cols.origin[1];
   EX=b.x[1]-b.x[0]; EY=b.y[1]-b.y[0];
   CE=(b.x[0]+b.x[1])/2; CN=(b.y[0]+b.y[1])/2; CZ=(b.z[0]+b.z[1])/2;
@@ -2645,6 +2682,18 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   // Property extent for the colour-pop cutout — the claim ring if the site
   // layer supplies one, otherwise a margin around the deposit itself.
   const POP_RECT=(function(){
+    // Real tenure first. This only ever consulted SITE.claims — the FABRICATED
+    // ring the baked demo carries — so a hydrated deck, which has real
+    // boundaries and no fabricated ones, fell through to a 700 m box around
+    // the orebody. The result was a pinhole of colour in an otherwise black
+    // world, on a slide captioned "the land package".
+    if(REAL_CLAIMS.length){
+      let w=180,e=-180,s2=90,n=-90;
+      REAL_CLAIMS.forEach(c=>{ for(let i=0;i<c.ll.length;i+=2){
+        w=Math.min(w,c.ll[i]); e=Math.max(e,c.ll[i]);
+        s2=Math.min(s2,c.ll[i+1]); n=Math.max(n,c.ll[i+1]); } });
+      if(w<e&&s2<n) return Cesium.Rectangle.fromDegrees(w,s2,e,n);
+    }
     const ring=(SITE.claims&&SITE.claims[0]&&SITE.claims[0].ring)||null;
     if(ring){
       let w=180,e=-180,s=90,n=-90;
@@ -4135,7 +4184,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     function placeCard(lon, lat, title, sub, hue, img, lift, note){
       CARD_LOG.push({title:title, sub:sub, note:note||''});
       const base=Cesium.Cartesian3.fromDegrees(lon,lat,ZTOP+GEOID+40);
-      const top=Cesium.Cartesian3.fromDegrees(lon,lat,ZTOP+GEOID+330+(lift||0));
+      const top=Cesium.Cartesian3.fromDegrees(lon,lat,ZTOP+GEOID+140+(lift||0));
       siteEnts.push(viewer.entities.add({polyline:{positions:[base,top],
         width:1.1, arcType:Cesium.ArcType.NONE,
         material:Cesium.Color.fromCssColorString(hue).withAlpha(0.55)}}));
@@ -6511,6 +6560,19 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     // the three leaks forward into a slide whose copy never mentions it.
     propOn=assetOnly?false:!!c.property;
     $('propbtn').classList.toggle('on',propOn);
+    // The colour-pop mask exists to make the orebody the only saturated thing
+    // in the world. On a slide about the district that defeats the slide: the
+    // neighbours, the roads and the ground they are all on go black, and the
+    // one bright patch is the thing this chapter is deliberately not about.
+    // Explicit rather than inferred from the camera range, so an author can
+    // disagree.
+    if(!assetOnly) setPop(c.pop!==false);
+    // The depth grid was the one layer no chapter could turn off — it
+    // persisted from wherever it was last left, so a surface slide inherited a
+    // set of floating depth rectangles from three chapters earlier.
+    if(!assetOnly && c.depth!==undefined){ depthOn=!!c.depth; showDepth(depthOn);
+      $('depthseg').querySelectorAll('button').forEach(x=>
+        x.classList.toggle('on',(x.dataset.g==='1')===depthOn)); }
     if(!assetOnly) setBlackout(!!c.black); else if(blackout) setBlackout(false);
     setCallouts(assetOnly?false:!!c.callouts);
     $('planseg').querySelectorAll('button').forEach(x=>

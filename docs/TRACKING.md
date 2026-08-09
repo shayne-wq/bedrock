@@ -278,6 +278,40 @@ them. Authoring becomes curation rather than construction.
 
 ## Log
 
+- **2026-08-09** — **First real end-to-end run: console contract → viewer.**
+  `tools/seed_demo_deck.mjs` builds a project, zone, artifacts in storage,
+  datasets, a deck whose chapters come from the same generator the console
+  uses, and a share link — then opens it. Every hydration check before this
+  used a hand-written fixture, which proves the reader and not the contract.
+  The first run found three things a fixture never would.
+
+  **The deposit was being placed in the Gulf of Guinea.** `stats.bounds ||
+  {x:[0,1],y:[0,1],z:[0,1]}` — a stats file without bounds put the centre at
+  easting 0.5, northing 0.5. The deck did not fail: correct rail, correct
+  chapter text, correct tonnage, a completely black screen, and the camera
+  twelve thousand kilometres from the property. Extents are derived from the
+  columns now, which are right there and cannot disagree with the geometry that
+  gets drawn; a recorded bounds that contradicts them is logged, not obeyed.
+
+  **The colour-pop cutout only ever consulted the FABRICATED site ring**, so a
+  hydrated deck — real boundaries, no fabricated ones — fell through to a 700 m
+  box around the orebody and rendered a pinhole of colour in a black world, on
+  a slide captioned "the land package". It uses the real tenure now, and
+  chapters can turn the mask off: on a slide about the district, blacking out
+  everything outside the claim block defeats the slide.
+
+  **The depth grid was the one layer no chapter could turn off.** It persisted
+  from wherever it was last left, so a surface slide inherited floating depth
+  rectangles from three chapters earlier.
+
+  Also: with a single zone the opening's third slide and that zone's own
+  overview were the same slide with the same title, back to back — the third
+  beat is now only generated when there is more than one zone. And the
+  classification reveal's last step was titled "Class 0 + Measured + Indicated
+  + Inferred"; it reads "Everything, by confidence".
+
+  40 slide assertions · 22 holder · full regression green.
+
 - **2026-08-09** — **Every deck opens the same way**, and the pieces that
   opening needs.
 

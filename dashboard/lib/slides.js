@@ -170,13 +170,18 @@ export function zoneCandidates(zone, datasets, project) {
     const classes = Object.keys(blocks.by_class || {})
       .map(Number).filter((c) => blocks.by_class[String(c)]?.tonnes).sort();
     if (classes.length > 1) {
-      const NAMES = { 1: "Measured", 2: "Indicated", 3: "Inferred" };
+      const NAMES = { 0: "Unclassified", 1: "Measured", 2: "Indicated", 3: "Inferred" };
       classes.forEach((_, i) => {
         const upto = classes.slice(0, i + 1);
         push(`class-${i}`, {
           spine: i === classes.length - 1 ? 90 : null,
           section: zone.name,
-          title: upto.map((c) => NAMES[c] || `Class ${c}`).join(" + "),
+          // "Measured + Indicated + Inferred", not a four-term title that
+          // reads like a database dump. The reveal is about confidence, and
+          // the last step is "everything we have".
+          title: upto.length >= 3
+            ? "Everything, by confidence"
+            : upto.map((c) => NAMES[c] || `Class ${c}`).join(" + "),
           body: "Confidence is not evenly distributed through a deposit, and " +
                 "it is the first question a technical reader asks.",
           camera: { h: 40, p: -26, r: 2400 },
@@ -263,7 +268,11 @@ export function openingChapters(project, zones, datasets) {
           } border this property; the companies among them are named on their own claims.`
         : "The land package, as registered.",
       camera: { h: 18, p: -46, r: 12000 },
-      layers: { ground: 1.0, site: true, blocks: false, targets: false },
+      // pop off: the colour-pop mask blacks out everything outside the claim
+      // block, which on the slide about the neighbourhood is everything the
+      // slide is for.
+      layers: { ground: 1.0, site: true, blocks: false, targets: false,
+                pop: false, depth: false },
       needs: ["site"],
     });
   }
@@ -279,23 +288,26 @@ export function openingChapters(project, zones, datasets) {
       `${project?.commodity ? project.commodity + ". " : ""}${
         place ? place + ". " : ""}Add a description in the project settings — this is the slide that introduces the company.`,
     camera: { h: 24, p: -38, r: 5200 },
-    layers: { ground: 1.0, site: !!site, blocks: false, targets: false },
+    layers: { ground: 1.0, site: !!site, blocks: false, targets: false,
+              pop: false, depth: false },
     needs: [],
   });
 
+  // "Then the zones" — but only when there is more than one. With a single
+  // zone this slide and that zone's own overview are the same slide with the
+  // same title, back to back, which is how a generated deck starts looking
+  // generated. One zone: its overview is the third beat, and it already
+  // follows immediately.
   const named = (zones || []).filter((z) =>
     (datasets || []).some((d) => d.zone_id === z.id));
-  if (named.length) {
+  if (named.length > 1) {
     out.push({
       id: "open:zones", zone_id: null, spine: -10, opening: true,
-      section: "The property",
-      title: named.length === 1 ? named[0].name : "Targets on the property",
-      body: named.length === 1
-        ? `One zone on the package: ${named[0].name}.`
-        : `${named.length} zones across the package — ${
-            named.map((z) => z.name).join(", ")}.`,
+      section: "The property", title: "Targets on the property",
+      body: `${named.length} zones across the package — ${
+        named.map((z) => z.name).join(", ")}.`,
       camera: { h: 20, p: -40, r: 7000 },
-      layers: { ground: 1.0, site: !!site, targets: true, blocks: false },
+      layers: { ground: 1.0, site: !!site, targets: true, blocks: false, depth: false },
       needs: [],
     });
   }

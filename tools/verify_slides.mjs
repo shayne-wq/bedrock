@@ -82,10 +82,19 @@ const dO = [ds("z1", "site", { stats: SITE_STATS }), ds("z1", "drills")];
 const PO = { name: "Elk Gold", location: "Nicola, BC", commodity: "Gold",
              brand: { summary: "A past-producing high-grade gold property." } };
 const open = openingChapters(PO, zO, dO);
-ok("three opening slides", open.length === 3, String(open.length));
-ok("in order: district, property, zones",
-   open.map((c) => c.id).join(",") === "open:district,open:property,open:zones",
+// One zone: two opening slides, because a "the zones" slide and that zone's
+// own overview would be the same slide with the same title, back to back.
+ok("one zone opens on two slides", open.length === 2, String(open.length));
+ok("in order: district, then the property",
+   open.map((c) => c.id).join(",") === "open:district,open:property",
    open.map((c) => c.id).join(","));
+const z2o = [{ id: "z1", name: "North" }, { id: "z2", name: "South" }];
+const d2o = [ds("z1", "site", { stats: SITE_STATS }), ds("z1", "drills"), ds("z2", "drills")];
+const open2 = openingChapters(PO, z2o, d2o);
+ok("two zones earn the third slide",
+   open2.map((c) => c.id).join(",") === "open:district,open:property,open:zones",
+   open2.map((c) => c.id).join(","));
+ok("and it names them", /North, South/.test(open2[2].body), open2[2].body);
 ok("the district slide is the widest view",
    open[0].camera.r > open[1].camera.r && open[1].camera.r > 0,
    `${open[0].camera.r} then ${open[1].camera.r}`);
@@ -96,11 +105,14 @@ ok("and prompts for one when there is none",
    /Add a description/.test(openingChapters({ name: "X" }, zO, dO)[1].body));
 ok("no opening slide draws the block model",
    open.every((c) => c.layers.blocks === false));
-ok("they lead the default order", (() => {
-  const c = projectCandidates(PO, zO, dO);
-  return defaultOrder(c, zO).order.slice(0, 3).map((x) => x.id).join(",") ===
-    "open:district,open:property,open:zones";
-})(), defaultOrder(projectCandidates(PO, zO, dO), zO).order.slice(0, 3).map((x) => x.id).join(","));
+ok("they lead the default order, with the zone's own overview third",
+   defaultOrder(projectCandidates(PO, zO, dO), zO).order.slice(0, 3)
+     .map((x) => x.id).join(",") === "open:district,open:property,z1:overview",
+   defaultOrder(projectCandidates(PO, zO, dO), zO).order.slice(0, 3).map((x) => x.id).join(","));
+ok("no two slides in a row share a title", (() => {
+  const t = defaultOrder(projectCandidates(PO, zO, dO), zO).order.map((c) => c.title);
+  return t.every((x, i) => i === 0 || x !== t[i - 1]);
+})(), defaultOrder(projectCandidates(PO, zO, dO), zO).order.map((c) => c.title).join(" | "));
 
 // A project with no tenure file has nothing to show at district scale.
 const noSite = openingChapters(PO, zO, [ds("z1", "drills")]);
@@ -118,6 +130,10 @@ ok("and the opening survives it",
    sMany.order.slice(0, 3).map((c) => c.id).join(",") ===
    "open:district,open:property,open:zones",
    sMany.order.slice(0, 3).map((c) => c.id).join(","));
+ok("no opening slide leaves the depth grid on",
+   openingChapters(PO, zMany, dMany).every((c) => c.layers.depth === false));
+ok("and none of them lets the colour-pop mask black out the district",
+   openingChapters(PO, zMany, dMany).slice(0, 2).every((c) => c.layers.pop === false));
 
 console.log("\n== the row that gets written");
 const row = toChapter(cR[0], 3);
