@@ -1642,6 +1642,54 @@ function diagnostics(extra){
     extra||''].join('\n');
 }
 
+// ---- offline, and the reason this runs FIRST ----------------------------
+// This used to sit at the end of the boot sequence, after the model download,
+// after the viewer was constructed, after the first chapter had been applied.
+// Every one of those can fail — and on a device where one did, registration
+// never ran. So the old cache-first worker kept serving the old index.html,
+// the new worker was never fetched, and the next reload failed identically.
+// A phone that broke once was pinned to that build permanently, and three
+// rounds of fixes never reached it.
+//
+// Registration is the one thing that must happen whatever else does, because
+// it is how a broken build gets replaced. Nothing above it may throw.
+if('serviceWorker' in navigator && location.protocol!=='file:'){
+  navigator.serviceWorker.register('sw.js').then(reg=>{
+    reg.addEventListener('updatefound',()=>{
+      const w=reg.installing;
+      if(w) w.addEventListener('statechange',()=>{
+        if(w.state==='installed'&&navigator.serviceWorker.controller){
+          try{ toast('Updated build available — reload to apply',7000); }catch(e){}
+        }});
+    });
+  }).catch(()=>{});
+  const paint=()=>{ const el=document.getElementById('offline'); if(!el) return;
+    const on=navigator.onLine;
+    el.textContent=on?'':'Offline — running from cache';
+    el.classList.toggle('on',!on); };
+  addEventListener('online',paint); addEventListener('offline',paint);
+  addEventListener('DOMContentLoaded',paint); paint();
+}
+
+// A way back for a device already pinned to a broken build: ?fresh=1 tears
+// down every worker and cache, then reloads clean. Without it the only cure on
+// iOS is clearing all website data, which is a lot to ask of someone who just
+// wanted to look at a deck.
+if(new URLSearchParams(location.search).get('fresh')==='1'){
+  (async()=>{
+    try{
+      const rs=await navigator.serviceWorker.getRegistrations();
+      await Promise.all(rs.map(r=>r.unregister()));
+      const ks=await caches.keys();
+      await Promise.all(ks.map(k=>caches.delete(k)));
+    }catch(e){}
+    const u=new URL(location.href);
+    u.searchParams.delete('fresh');
+    u.searchParams.set('r',String(Date.now()%100000));
+    location.replace(u.toString());
+  })();
+}
+
 (async()=>{
   // A boot that hangs is the one failure this file could not report: no error,
   // no fallback, and "PREPARING PRESENTATION…" forever. Every await is now
@@ -5442,23 +5490,6 @@ function diagnostics(extra){
   $('load').style.display='none';
   $('begin').onclick=()=>{$('intro').style.opacity='0';setTimeout(()=>$('intro').style.display='none',800);
     frameFor(CHAPTERS[0],true); if(EMBED&&EMBED_AUTOPLAY&&!REDUCED) play();};
-  // ---- offline ----
-  if('serviceWorker' in navigator && location.protocol!=='file:'){
-    navigator.serviceWorker.register('sw.js').then(reg=>{
-      // Cache-first means a returning viewer would otherwise run the previous
-      // build for the whole session — bad on a tool that quotes tonnage.
-      reg.addEventListener('updatefound',()=>{
-        const w=reg.installing;
-        if(w) w.addEventListener('statechange',()=>{
-          if(w.state==='installed'&&navigator.serviceWorker.controller)
-            toast('Updated build available — reload to apply',7000);});
-      });
-      const paint=()=>{ const on=navigator.onLine;
-        $('offline').textContent=on?'':'Offline — running from cache';
-        $('offline').classList.toggle('on',!on); };
-      addEventListener('online',paint); addEventListener('offline',paint); paint();
-    }).catch(()=>{});
-  }
 
   window.__viewer=viewer;
   // A small, stable surface for automated checks and for anyone debugging a
