@@ -278,6 +278,41 @@ them. Authoring becomes curation rather than construction.
 
 ## Log
 
+- **2026-08-08** — **Drill hole inspection rebuilt.** Clicking a hole used to
+  fly closer at a downward pitch, which frames a several-hundred-metre vertical
+  object as a foreshortened stick behind a hillside, among the other thirty-nine.
+  It is now a mode: the camera drops to the hole's own mid-depth and stands
+  broadside — genuinely underground, verified against `globe.getHeight` at the
+  camera rather than against an intent flag — and the hole gets a rendering
+  built for that range. The overview's 9 m beads and 16 m collar cubes are
+  furniture proportioned for a 2 km camera; close in they are boulders. In
+  their place: assay intervals thickened and coloured **on** the trace as a
+  downhole log, a depth ladder, and the headline intercept named. Neighbours
+  drop to ghost traces. Everything is sized against the hole's own length, so a
+  150 m hole and a 400 m hole read identically on screen.
+
+  Three defects found while building it. Translucency is **windowed to the
+  deposit footprint**, so "ground cut away" only ever cut the ground over the
+  orebody — from underneath you looked out of that window at a fully lit
+  hillside across the top of the frame. Saving that rectangle to restore it
+  later saved a *live reference* to the object Cesium then overwrites, so the
+  restore put `MAX_VALUE` back and the window was gone for the rest of the
+  deck; the first assertion written for it (`!!rectangle`) passed anyway,
+  because Cesium turns `undefined` into `MAX_VALUE` rather than null. And the
+  depth ladder was offset at right angles to the *hole*, which with a broadside
+  camera is straight into the screen — every label landed on the trace it was
+  meant to sit beside. Offsets are now relative to the camera.
+
+  Also: any chapter that turns drills on now starts from an empty scene — no
+  block model, no vein surfaces, no geophysics — because a grade-coloured body
+  directly behind a grade-coloured bead makes the assay unreadable, which is
+  the one thing such a chapter exists to show. `blocks:true` still opts back
+  in. And the rod itself is pickable now; it was not, so the largest thing on
+  screen and the only part anyone aims at did nothing when clicked.
+
+  32 hole-view assertions, including no entity leak across repeated focus and
+  full restoration of translucency, sun and layer state on exit.
+
 - **2026-08-08** — **The backend suites finally ran.** 47/47 edge-function
   assertions and 25/25 RLS assertions, both green — including the four written
   days ago for the org-id-leak fix that had been deployed on the strength of

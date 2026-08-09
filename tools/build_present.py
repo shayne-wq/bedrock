@@ -534,9 +534,10 @@ CHAPTERS = [
    "body": "Adding Indicated. This is the material a study would normally be built on."},
   {"h": 52, "p": -30, "r": 1700, "cut": 1.0, "xray": True, "mode": "class", "dwell": 11,
    "ground": 0.0, "classes": [0, 1, 2, 3], "section": "The deposit", "title": "How well is it known?", "body": "Recoloured by resource classification. Confidence is not evenly distributed through a deposit — and this is the first question any technical reader asks."},
-  # Cut-off lifted to 1.0 here so the low-grade halo stops burying the traces.
+  # Drills-only, so the model comes off automatically here. A grade-coloured
+  # body directly behind a grade-coloured bead is the reason.
   {"h": 38, "p": -24, "r": 1900, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11, "drills": True,
-   "ground": 0.0, "section": "Drilling & geometry", "title": "Drilled from surface", "body": "Drill traces coloured by assay grade, hung from their collars on the ridge above. These holes are synthetic — traced through the modelled grades to show how drilling reads against the block model."},
+   "ground": 0.0, "section": "Drilling & geometry", "title": "Drilled from surface", "body": "Drill traces coloured by assay grade, hung from their collars on the ridge above, with nothing else in the scene. Click any hole in the ledger to drop underground and read it end to end. These holes are synthetic — traced through the modelled grades."},
   # Straight down, ground intact, body replaced by the grade map. Overhead is
   # the one angle where the 3D model tells you least and the map tells you most.
   {"h": 0, "p": -90, "r": 2350, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 11,
@@ -2213,9 +2214,12 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   let groundHold=false;
   let mode='grade', cutIdx=CUT_DEFAULT_IDX, vein=-1, clsOn={0:true,1:true,2:true,3:true},
       cur=0, drills=false, playing=false, narrating=false, dwellTimer=null, restoring=false;
+  // Hole inspection. Hoisted for the same reason everything else here is:
+  // showDrills() consults it and runs long before the ledger's own code does.
+  let holeView=null, focusEnts=null;
   const cutVal=()=>LADDER[cutIdx];
   // Section state, for the same reason: readout() consults it on every call.
-  let sectAxis=null, sectPos=0, sectStat=null;
+  let sectAxis=null, sectPos=0, sectStat=null, ledgerHole=null;
 
 // Everything anyone needs to tell us why a deck did not open, in one tap.
 // Reading a stack off a phone screen and retyping it is why three reports in a
@@ -2638,15 +2642,16 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
         positions:[P(h.collar),P(h.end)], shape:ROD,
         material:new Cesium.Color(0.87,0.89,0.87,0.55),
         outline:false}});
-      trace.__hole=h; drillEnts.push(trace);
+      trace.__hole=h; trace.__trace=true; drillEnts.push(trace);
       h.segs.forEach(s=>{ if(s.g<Math.max(GRADE_FLOOR,assayMin)) return;
         const col=depthShade(ramp(s.g,false),s.d||0);
         // Assayed intervals as beads strung on the trace rather than fat rods:
         // a bead reads as a discrete sample and does not occlude the blocks
         // behind it, which is how every drill section is drawn.
         const r=Math.min(9,2.4+Math.sqrt(s.g)*1.6);
-        drillEnts.push(viewer.entities.add({position:P(s.mid),
-          ellipsoid:{radii:new Cesium.Cartesian3(r,r,r),material:col}}));
+        const bead=viewer.entities.add({position:P(s.mid),
+          ellipsoid:{radii:new Cesium.Cartesian3(r,r,r),material:col}});
+        bead.__hole=h; drillEnts.push(bead);
         // and the grade bar out the side, length scaled by assay
         const bar=viewer.entities.add({polyline:{
           positions:[P(s.mid),P(s.bar)], width:3, material:col,
@@ -2655,7 +2660,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       });
       // A collar is a physical thing on the ground; a solid marker reads as one
       // where a screen-space dot reads as a UI annotation.
-      drillEnts.push(viewer.entities.add({position:P(h.collar),
+      const collar=viewer.entities.add({position:P(h.collar),
         box:{dimensions:new Cesium.Cartesian3(16,16,16),
              material:Cesium.Color.fromCssColorString('#F2C14E'),
              outline:true,outlineColor:Cesium.Color.fromCssColorString('#07090A')},
@@ -2666,12 +2671,32 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
                // and stand down entirely when the intercept callouts are up —
                // those carry the hole id already.
                distanceDisplayCondition:new Cesium.DistanceDisplayCondition(0,1300),
-               disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+               disableDepthTestDistance:Number.POSITIVE_INFINITY}});
+      collar.__hole=h; drillEnts.push(collar);
     });
     return drillEnts;
   }
   const showDrills=on=>{ if(drillEnts) drillEnts.forEach(e=>{
-    e.show = on && !(hiOn && e.label);   // collar tags off while callouts are up
+    if(!on){ e.show=false; return; }
+    // Inspecting one hole, everything here is the wrong size. These beads,
+    // collar cubes and id tags are metres-in-the-world furniture proportioned
+    // for a 2 km camera; from 400 m they are boulders, and forty holes' worth
+    // of them buries the one hole that was clicked. So the neighbours keep
+    // their traces, for context and for the fact that a drill programme is a
+    // pattern, and everything else stands down in favour of the close-range
+    // rendering built for the focused hole.
+    if(holeView){
+      const mine=e.__hole===ledgerHole;
+      // The focused hole draws its own, heavier trace. Its overview one would
+      // sit inside that and z-fight it.
+      e.show=!!e.__trace && !mine;
+      if(e.__trace) e.polylineVolume.material=new Cesium.ColorMaterialProperty(
+        new Cesium.Color(0.80,0.83,0.80,0.13));
+      return;
+    }
+    if(e.__trace) e.polylineVolume.material=new Cesium.ColorMaterialProperty(
+      new Cesium.Color(0.87,0.89,0.87,0.55));
+    e.show = !(hiOn && e.label);   // collar tags off while callouts are up
   }); };
 
   // Headline intercepts: hole id over the assay, on a leader line back to a
@@ -3116,7 +3141,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   function pickAt(win){
     const scene=viewer.scene;
     const picked=scene.pick(win);
-    if(picked && picked.id && picked.id.polyline && picked.id.__hole){
+    if(picked && picked.id && picked.id.__hole){
       return {kind:'hole', hole:picked.id.__hole, seg:picked.id.__seg};
     }
     const pos=scene.pickPosition(win);
@@ -3187,7 +3212,14 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       areaPts.push(ll[0],ll[1]); areaLive();
       return;
     }
-    showPick(pickAt(m.position));
+    const hit=pickAt(m.position);
+    // Clicking the hole in the scene does what clicking its row does. They are
+    // the same object, and reaching for the list to act on something already
+    // under the cursor is the friction the ledger was built to remove.
+    // Already inside that hole, the click falls through to the inspector so an
+    // individual assay interval can still be interrogated.
+    if(hit && hit.kind==='hole' && hit.hole!==ledgerHole){ focusHole(hit.hole); return; }
+    showPick(hit);
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
   // Double-click closes the polygon, the way every map tool does it.
   viewer.screenSpaceEventHandler.setInputAction(()=>{
@@ -4471,7 +4503,8 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   addEventListener('keydown',e=>{ if(e.key==='Escape'){$('prov').classList.remove('on');
     $('emb').classList.remove('on');
     $('inspect').classList.remove('on');
-    if(!$('holegraph').hidden){ $('holegraph').hidden=true; ledgerHole=null; ledgerPaint(); }
+    if(!$('holegraph').hidden){ $('holegraph').hidden=true; ledgerHole=null;
+      exitHoleView(true); ledgerPaint(); }
     // Abandon a half-drawn area rather than leaving a dangling outline the
     // presenter has no obvious way to get rid of.
     if(areaMode&&areaPts.length){ areaPts=[]; areaLive(); }} });
@@ -4640,7 +4673,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   //
   // Everything here is DERIVED from the same segs that draw the traces, so the
   // ledger cannot quote an intercept the geometry does not show.
-  let ledgerOn=false, ledgerSort='best', ledgerHole=null, ledgerRows=[], ledgerTimer=null;
+  let ledgerOn=false, ledgerSort='best', ledgerRows=[], ledgerTimer=null;
 
   // Length-weighted, which is what a drill release reports. Taking the peak
   // assay instead would headline a 0.5 m sample and overstate every hole.
@@ -4679,12 +4712,18 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
 
   function ledgerPaint(){
     if(!ledgerOn) return;
-    const vis=HOLES.filter(holeOnScreen);
+    // Standing broadside to one hole, "what is on screen" is that hole — which
+    // would collapse the ledger to a single row and strand the presenter with
+    // no way to click through to the next one. So the row set freezes on the
+    // way into a hole view and thaws on the way out.
+    const vis=holeView?holeView.rows:HOLES.filter(holeOnScreen);
     ledgerRows=vis.slice();
     if(ledgerSort==='best')
       ledgerRows.sort((a,b)=>((holeStats(b).best||{}).score||0)-((holeStats(a).best||{}).score||0));
     else ledgerRows.sort((a,b)=>a.id.localeCompare(b.id,undefined,{numeric:true}));
-    $('ledgt').textContent='Drill holes — '+vis.length+' of '+HOLES.length;
+    $('ledgt').textContent=holeView
+      ? 'Drill holes — underground'
+      : 'Drill holes — '+vis.length+' of '+HOLES.length;
     const list=$('ledglist'); list.innerHTML='';
     if(!ledgerRows.length){
       const d=document.createElement('div'); d.className='lrow';
@@ -4767,24 +4806,240 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
             gmax.toFixed(1)+' g/t across';
     if(DRILL_SYNTHETIC) cap='FABRICATED — '+cap;
     $('hgbody').innerHTML=parts.join('')+
-      '<div class="hgcap"'+(DRILL_SYNTHETIC?' style="color:#D9584A"':'')+'>'+cap+'</div>';
+      '<div class="hgcap"'+(DRILL_SYNTHETIC?' style="color:#D9584A"':'')+'>'+cap+'</div>'+
+      '<div class="hgcap">Underground, broadside to the hole · Esc returns to the chapter</div>';
     $('hgt').textContent=h.id+(DRILL_SYNTHETIC?' (synthetic)':'');
     $('holegraph').hidden=false;
+  }
+
+  // ---- hole view ----------------------------------------------------------
+  // A drill hole seen from above is a dot. It is a vertical object a few
+  // hundred metres long, and the only view that shows one whole is broadside
+  // and underground: camera at the hole's own mid-depth, looking level into
+  // the rock with the ground cut away. Flying nearer at a downward pitch —
+  // which is what this used to do — gets you a foreshortened stick behind a
+  // hillside.
+  //
+  // So a click is a mode, not a nudge. The model, the surfaces, the survey,
+  // the grade map and the site furniture all come off; the depth grid comes on,
+  // because once the surface is gone it is the only thing left that says how
+  // deep you are.
+  function enterHoleView(){
+    if(holeView) return;
+    holeView={blocks:blocksOn, surf:surfOn, geo:geoKey, plan:planOn, site:siteOn,
+              gc:gcOn, targets:targetsOn, depth:depthOn,
+              ground:groundAlpha, hold:groundHold, rows:ledgerRows.slice()};
+    if(!holeView.rows.length) holeView.rows=HOLES.slice();
+    blocksOn=false; surfOn=''; planOn=false; siteOn=false; gcOn=false;
+    targetsOn=false; depthOn=true;
+    if(geoKey) geoShow('');
+    // Translucency is normally windowed to the deposit's own footprint, so
+    // "ground cut away" only ever cut away the ground over the orebody. From
+    // underground you are looking OUT of that window at the rest of the range,
+    // which stays fully opaque and lit — a bright hillside across the top of
+    // the frame, louder than any of the data beneath it. Drop the window for
+    // the duration and ghost the back faces, so the surface reads as a ceiling
+    // you are under rather than a landscape you are in.
+    holeView.backFace=viewer.scene.globe.translucency.backFaceAlpha;
+    holeView.rect=Cesium.Rectangle.clone(
+      viewer.scene.globe.translucency.rectangle, new Cesium.Rectangle());
+    holeView.sun=viewer.scene.sun && viewer.scene.sun.show;
+    if(viewer.scene.sun) viewer.scene.sun.show=false;
+    viewer.scene.globe.translucency.rectangle=undefined;
+    viewer.scene.globe.translucency.backFaceAlpha=0.16;
+    setGround(0);
+    document.body.classList.add('holeview');
+  }
+
+  // refly is false when go() is unwinding this on the way into a new chapter:
+  // the chapter is about to set its own layers and fly its own camera, and a
+  // second flight racing it would land wherever it lost.
+  function exitHoleView(refly){
+    if(!holeView) return;
+    const s=holeView; holeView=null;
+    blocksOn=s.blocks; surfOn=s.surf; planOn=s.plan; siteOn=s.site;
+    gcOn=s.gc; targetsOn=s.targets; depthOn=s.depth;
+    if(s.geo!==geoKey) geoShow(s.geo);
+    groundHold=s.hold; setGround(s.ground);
+    viewer.scene.globe.translucency.backFaceAlpha=s.backFace;
+    viewer.scene.globe.translucency.rectangle=s.rect;
+    if(viewer.scene.sun) viewer.scene.sun.show=s.sun;
+    clearFocus();
+    document.body.classList.remove('holeview');
+    syncOverlayControls(); apply();
+    if(refly){
+      viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+      if(CHAPTERS[cur]) frameFor(CHAPTERS[cur],true);
+    }
+  }
+
+
+  // The focused hole, drawn for the range you actually inspect one from.
+  //
+  // The overview rendering cannot be reused here. Its beads are 9 m spheres
+  // and its collars 16 m cubes, which is right at 2 km and absurd at 400 m,
+  // and beads sit BESIDE the assay rather than on it. Close in, the thing a
+  // geologist reads is a downhole log: the interval itself thickened and
+  // coloured by grade, a depth ladder beside it, and the headline intercept
+  // named. That is what this builds, and it is thrown away on exit rather
+  // than parked hidden, because it is rebuilt per hole anyway.
+  function clearFocus(){
+    if(!focusEnts) return;
+    focusEnts.forEach(e=>viewer.entities.remove(e));
+    focusEnts=null;
+  }
+  function buildFocus(h,head){
+    clearFocus();
+    focusEnts=[];
+    const st=holeStats(h);
+    const zf=z=>EXAG===1?z:(CZ+(z-CZ)*EXAG);
+    const P=q=>toCart(q[0],q[1],zf(q[2]));
+    const add=(o,seg)=>{const e=viewer.entities.add(o); e.__hole=h;
+      if(seg) e.__seg=seg; focusEnts.push(e); return e;};
+    // Depth along the hole, interpolated exactly the way the trace is drawn —
+    // collar to toe. Anything that reads a depth off the geometry has to use
+    // the same rule or the log and the trace disagree about where 130 m is.
+    const at=d=>{const k=Math.max(0,Math.min(1,d/Math.max(1,h.td)));
+      return [h.collar[0]+(h.end[0]-h.collar[0])*k,
+              h.collar[1]+(h.end[1]-h.collar[1])*k,
+              h.collar[2]+(h.end[2]-h.collar[2])*k];};
+    // Everything is sized against the hole's own length, because the camera
+    // range is too. A 150 m hole and a 400 m hole then read identically on
+    // screen rather than one appearing three times the other's thickness.
+    const L=Math.max(40,Math.hypot(h.end[0]-h.collar[0], h.end[1]-h.collar[1],
+                                   (h.end[2]-h.collar[2])*EXAG));
+    const u=Math.max(0.4,Math.min(2.5,L/300));
+    const tube=(r,n)=>{const a=[];for(let i=0;i<n;i++){const t=2*Math.PI*i/n;
+      a.push(new Cesium.Cartesian2(r*Math.cos(t),r*Math.sin(t)));}return a;};
+
+    add({polylineVolume:{positions:[P(h.collar),P(h.end)],shape:tube(2.9*u,12),
+      material:new Cesium.Color(0.84,0.87,0.84,0.95)}});
+
+    // Assayed intervals thickened ON the hole. Thickness is the interval,
+    // girth and colour are the grade, and there is no gap between a sample and
+    // the metre of core it came out of.
+    const gmax=Math.max(1,st.peak);
+    h.segs.forEach(s=>{
+      if(s.g<Math.max(GRADE_FLOOR,assayMin)) return;
+      const r=(3.4+Math.min(1,Math.sqrt(s.g/gmax))*5.2)*u;
+      add({polylineVolume:{positions:[P(at(s.f)),P(at(s.t))],shape:tube(r,12),
+        material:ramp(s.g,false)}}, s);
+    });
+
+    // A depth ladder. Underground with the surface behind you there is no other
+    // cue for how deep any of this is, and "how deep" is the first thing anyone
+    // asks of a drill hole.
+    const bear=rad(head+90), back=rad(head-90);
+    const step=L>620?100:(L>260?50:25);
+    for(let d=step; d<h.td-step*0.2; d+=step){
+      const a0=at(d), a1=[a0[0]+Math.sin(bear)*15*u, a0[1]+Math.cos(bear)*15*u, a0[2]];
+      add({polyline:{positions:[P(a0),P(a1)],width:1.3,arcType:Cesium.ArcType.NONE,
+        material:Cesium.Color.WHITE.withAlpha(0.42)}});
+      add({position:P(a1),label:{text:d+' m',
+        font:'500 10px "JetBrains Mono", monospace',
+        fillColor:Cesium.Color.WHITE.withAlpha(0.74),
+        showBackground:true,backgroundColor:new Cesium.Color(0.03,0.04,0.05,0.60),
+        horizontalOrigin:Cesium.HorizontalOrigin.LEFT,
+        pixelOffset:new Cesium.Cartesian2(6,0),
+        disableDepthTestDistance:Number.POSITIVE_INFINITY}});
+    }
+
+    add({position:P(h.collar),
+      box:{dimensions:new Cesium.Cartesian3(6*u,6*u,6*u),
+           material:Cesium.Color.fromCssColorString('#F2C14E')},
+      label:{text:h.id+(DRILL_SYNTHETIC?'  ·  synthetic':'')+'\n'+
+                  'TD '+Math.round(h.td)+' m  ·  '+st.az+'° / '+st.dip+'°',
+        font:'500 12px "JetBrains Mono", monospace',
+        fillColor:DRILL_SYNTHETIC?Cesium.Color.fromCssColorString('#F0A9A2')
+                                 :Cesium.Color.WHITE,
+        showBackground:true,backgroundColor:new Cesium.Color(0.03,0.04,0.05,0.84),
+        horizontalOrigin:Cesium.HorizontalOrigin.RIGHT,
+        pixelOffset:new Cesium.Cartesian2(-14,0),
+        disableDepthTestDistance:Number.POSITIVE_INFINITY}});
+
+    add({position:P(h.end),label:{text:'end of hole',
+      font:'500 10px "JetBrains Mono", monospace',
+      fillColor:Cesium.Color.WHITE.withAlpha(0.6),
+      showBackground:true,backgroundColor:new Cesium.Color(0.03,0.04,0.05,0.60),
+      verticalOrigin:Cesium.VerticalOrigin.TOP,
+      pixelOffset:new Cesium.Cartesian2(0,10),
+      disableDepthTestDistance:Number.POSITIVE_INFINITY}});
+
+    // The headline intercept, on the far side from the depth ladder so the two
+    // sets of labels are not fighting for the same strip of screen.
+    if(st.best){
+      const m=at((st.best.f+st.best.t)/2);
+      const off=[m[0]+Math.sin(back)*44*u, m[1]+Math.cos(back)*44*u, m[2]];
+      add({polyline:{positions:[P(m),P(off)],width:1.2,arcType:Cesium.ArcType.NONE,
+        material:Cesium.Color.fromCssColorString('#F2C14E').withAlpha(0.8)}});
+      add({position:P(off),label:{
+        text:st.best.len.toFixed(1)+' m @ '+st.best.g.toFixed(2)+' g/t\nfrom '+
+             st.best.f.toFixed(0)+' m',
+        font:'600 13px "JetBrains Mono", monospace',
+        fillColor:Cesium.Color.fromCssColorString('#F2C14E'),
+        showBackground:true,backgroundColor:new Cesium.Color(0.03,0.04,0.05,0.86),
+        horizontalOrigin:Cesium.HorizontalOrigin.RIGHT,
+        pixelOffset:new Cesium.Cartesian2(-8,0),
+        disableDepthTestDistance:Number.POSITIVE_INFINITY}});
+    }
+    return focusEnts;
+  }
+
+  function holeCamera(h){
+    const zf=z=>EXAG===1?z:(CZ+(z-CZ)*EXAG);
+    const a=toCart(h.collar[0],h.collar[1],zf(h.collar[2]));
+    const b=toCart(h.end[0],h.end[1],zf(h.end[2]));
+    const L=Math.max(40,Cesium.Cartesian3.distance(a,b));
+    const st=holeStats(h);
+    // Broadside. Looked at down its own azimuth a hole foreshortens to a point,
+    // so stand off the trace at a right angle. Two headings do that; take the
+    // shorter turn from where the camera already is, so the move reads as
+    // going in rather than spinning round.
+    const here=DEG(viewer.camera.heading);
+    const vert=Math.abs(st.dip)>85;
+    const head=vert?here:[st.az+90,st.az-90].reduce((p,q)=>
+      Math.abs(shortestHeading(here,q)-here)<Math.abs(shortestHeading(here,p)-here)?q:p);
+    // Range to fit the whole hole in the vertical of the frame. Sizing off the
+    // 3D length rather than the vertical drop over-estimates for a dipping
+    // hole, which errs towards one that fits rather than one that is cropped.
+    const fovy=(viewer.camera.frustum&&viewer.camera.frustum.fovy)||rad(45);
+    const range=Math.max(150,(L*1.22/2)/Math.tan(fovy/2));
+    // The ledger and the downhole graph own the left third of the window, so a
+    // hole centred in the viewport is a hole behind a panel. Centre the camera
+    // to the LEFT of the trace, which puts the trace to the right of centre.
+    const wide=viewer.canvas.clientWidth>1100;
+    const aspect=viewer.canvas.clientWidth/Math.max(1,viewer.canvas.clientHeight);
+    const dx=wide?range*Math.tan(fovy/2)*aspect*0.15:0;
+    const right=rad(head+90);
+    const cx=(h.collar[0]+h.end[0])/2-Math.sin(right)*dx;
+    const cy=(h.collar[1]+h.end[1])/2-Math.cos(right)*dx;
+    const cz=zf((h.collar[2]+h.end[2])/2);
+    const target=toCart(cx,cy,cz);
+    // Pitch is a few degrees off level, not the 24 it was: at level the camera
+    // sits at the hole's own mid-depth, which is the whole point of the view.
+    return {head:head, target:target,
+            hpr:new Cesium.HeadingPitchRange(rad(head),rad(-6),range),
+            sphere:new Cesium.BoundingSphere(target,L*0.5)};
   }
 
   function focusHole(h){
     ledgerHole=h;
     // Drills have to be on to fly to one, and a chapter that had them off is
     // not a reason to refuse — turn them on rather than doing nothing.
-    if(!drills){ setDrills(true); apply(); }
-    const zf=z=>EXAG===1?z:(CZ+(z-CZ)*EXAG);
-    const a=toCart(h.collar[0],h.collar[1],zf(h.collar[2]));
-    const b=toCart(h.end[0],h.end[1],zf(h.end[2]));
-    const mid=Cesium.Cartesian3.midpoint(a,b,new Cesium.Cartesian3());
-    const r=Math.max(160,Cesium.Cartesian3.distance(a,b)*0.85);
-    viewer.camera.flyToBoundingSphere(new Cesium.BoundingSphere(mid,r),
-      {duration:REDUCED?0:1.6,
-       offset:new Cesium.HeadingPitchRange(viewer.camera.heading,rad(-24),r*3.0)});
+    if(!drills) setDrills(true);
+    enterHoleView();
+    const cam=holeCamera(h);
+    buildFocus(h,cam.head);
+    apply();
+    // A chapter flight ends in lookAt(center,…), which locks the camera's
+    // reference frame to the deposit centre. Left in place, the flight below
+    // is computed in that frame and every subsequent orbit spins about the
+    // orebody rather than the hole in front of you.
+    viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+    const land=()=>viewer.camera.lookAt(cam.target,cam.hpr);
+    if(REDUCED) land();
+    else viewer.camera.flyToBoundingSphere(cam.sphere,
+      {duration:1.5, offset:cam.hpr, complete:land});
     holeGraph(h);
     ledgerPaint();
   }
@@ -4794,12 +5049,13 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     $('ledger').hidden=!on;
     document.body.classList.toggle('ledgeron',on);
     $('ledgbtn').classList.toggle('on',on);
-    if(!on){ $('holegraph').hidden=true; ledgerHole=null; }
+    if(!on){ $('holegraph').hidden=true; ledgerHole=null; exitHoleView(true); }
     else ledgerPaint();
   }
   $('ledgbtn').onclick=()=>setLedger(!ledgerOn);
   $('ledgx').onclick=()=>setLedger(false);
-  $('hgx').onclick=()=>{ $('holegraph').hidden=true; ledgerHole=null; ledgerPaint(); };
+  $('hgx').onclick=()=>{ $('holegraph').hidden=true; ledgerHole=null;
+    exitHoleView(true); ledgerPaint(); };
   $('ledgsort').onclick=()=>{
     ledgerSort=ledgerSort==='best'?'id':'best';
     $('ledgsort').textContent=ledgerSort==='best'?'Best':'Name';
@@ -5707,6 +5963,10 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     if(i<0||i>=CHAPTERS.length) return;
     cur=i; const c=CHAPTERS[i];
     trkChapter(i);
+    // Unwind any hole view FIRST. It restores the layer state it borrowed, and
+    // everything below this line is the new chapter writing that same state —
+    // run in the other order the restore lands on top and the chapter loses.
+    exitHoleView(false);
     // A chapter may declare which deposit it is about. The switch is async and
     // deliberately not awaited: the rest of the chapter applies immediately and
     // the geometry lands when it lands, rather than stalling the walkthrough on
@@ -5749,15 +6009,24 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     // Unconditional, unlike site: every chapter that does not ask for the
     // survey turns it off. A fabricated layer must not leak forward into
     // chapters whose copy says nothing about it.
-    if(!assetOnly && (c.geo||'')!==geoKey){
-      geoShow(c.geo||'');
+    // A drilling chapter is about the holes, so it starts from an empty
+    // scene. The block model, the vein surfaces and the geophysics are not
+    // context at that range — a grade-coloured body sitting directly behind a
+    // grade-coloured bead makes the assay unreadable, which is the one thing
+    // the chapter exists to show. Any of it can still be asked for by name;
+    // `blocks:true` on a drilling chapter is the deliberate against-the-model
+    // beat. It just has to be asked for.
+    const drillClean=!assetOnly && !!c.drills;
+    const wantGeo=(drillClean && c.geo===undefined)?'':(c.geo||'');
+    if(!assetOnly && wantGeo!==geoKey){
+      geoShow(wantGeo);
       $('geoseg').querySelectorAll('button').forEach(x=>
         x.classList.toggle('on',(x.dataset.gp||'')===geoKey)); }
-    blocksOn=c.blocks!==false;
+    blocksOn=c.blocks!==undefined?!!c.blocks:!drillClean;
 
     $('blockseg').querySelectorAll('button').forEach(x=>
       x.classList.toggle('on',(x.dataset.b==='1')===blocksOn));
-    surfOn=c.surfaces||'';
+    surfOn=(drillClean && c.surfaces===undefined)?'':(c.surfaces||'');
     $('surfseg').querySelectorAll('button').forEach(x=>
       x.classList.toggle('on',(x.dataset.f||'')===surfOn));
     hiOn=assetOnly?false:!!c.highlights;
@@ -6146,7 +6415,32 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   window.__viewer=viewer;
   // A small, stable surface for automated checks and for anyone debugging a
   // customer's deck: what loaded, and how much of it.
+  // Where the camera actually is, which for the hole view is the whole claim:
+  // "underground" is not a mode flag, it is the camera sitting below the
+  // terrain surface at its own position, and only the globe can answer that.
+  const camProbe=()=>{
+    const c=Cesium.Cartographic.fromCartesian(viewer.camera.positionWC);
+    const t=viewer.scene.globe.getHeight(c);
+    return {h:Math.round(c.height),
+            terrain:(t===undefined||t===null)?null:Math.round(t),
+            under:(t===undefined||t===null)?null:(c.height<t),
+            pitch:Math.round(DEG(viewer.camera.pitch)),
+            heading:Math.round(DEG(viewer.camera.heading))};
+  };
   window.__api={go:go,play:play,stop:stop,readout:readout,shoot:shoot,grab:grab,
+    cam:camProbe,
+    layers:()=>({cur:cur, title:CHAPTERS[cur]&&CHAPTERS[cur].title,
+      blocks:blocksOn, geo:geoKey, surf:surfOn, plan:planOn, site:siteOn,
+      depth:depthOn, ground:groundAlpha, drills:drills,
+      holeView:!!holeView, hole:ledgerHole?ledgerHole.id:null,
+      graph:!$('holegraph').hidden, rows:$('ledglist').children.length,
+      ents:viewer.entities.values.length, focus:focusEnts?focusEnts.length:0,
+      tRectDeg:Math.round(Cesium.Math.toDegrees(
+        viewer.scene.globe.translucency.rectangle.east -
+        viewer.scene.globe.translucency.rectangle.west)*1000)/1000,
+      sun:!!(viewer.scene.sun&&viewer.scene.sun.show),
+      ledgt:$('ledgt').textContent, cam:camProbe()}),
+    titles:()=>CHAPTERS.map(c=>c.title),
     state:()=>({holes:HOLES.length, highlights:HIGHLIGHTS.length,
       claims:REAL_CLAIMS.length, uploadedSurfaces:UPLOADED_SURFACES.length,
       targets:TARGETS.length, geochem:GEOCHEM?GEOCHEM.points.length:0,
