@@ -8,6 +8,7 @@ import {
   db, state, CONFIGURED, $, esc, fmtT, fmtOz, fmtInt, fmtDate, slugify,
   toast, fail, modal, closeModal, skeleton, wire,
 } from "./lib/ui.js";
+import { CONFIG } from "./config.js";
 import { ingestWizard, uploadAux, putAux, routeFiles } from "./ingest.js";
 import { sniff } from "./lib/formats.js";
 import { renderDeck } from "./deck.js";
@@ -268,7 +269,7 @@ function newProject() {
 async function renderProject(id) {
   view.innerHTML = skeleton(5);
   const { data: p, error } = await db.from("projects")
-    .select("id, name, commodity, location, epsg, org_id, holders").eq("id", id).maybeSingle();
+    .select("id, name, commodity, location, epsg, org_id, holders, brand").eq("id", id).maybeSingle();
   if (error) return fail("Project", error);
   if (!p) {
     view.innerHTML = `<div class="empty"><h3>Project not found</h3>
@@ -387,8 +388,30 @@ async function renderProject(id) {
         </div>`}
     </div>
 
+    <div class="panel">
+      <div class="row"><h2 class="grow">How this project introduces itself</h2></div>
+      <p class="lead" style="margin:0 0 14px">Every deck opens the same way: the
+         district and who else holds ground there, then this property, then its
+         zones. These two are the only parts of that a database cannot derive.</p>
+      <div class="brandrow">
+        <div class="nblogo lg" id="brandlogo">${p.brand?.logo
+          ? `<img src="${esc(p.brand.logo)}" alt="">`
+          : `<span>${esc(initials(p.name))}</span>`}</div>
+        <div class="grow">
+          <label for="bsum">Property description</label>
+          <textarea id="bsum" rows="3" placeholder="One paragraph. This is read aloud on the second slide, and it is the only sentence most people will remember.">${esc(p.brand?.summary || "")}</textarea>
+          <div class="row-actions" style="margin-top:8px">
+            <label class="btn sm">Upload logo<input type="file" accept="image/*" hidden id="blogo"></label>
+            ${p.brand?.logo ? `<button class="btn sm danger" id="brmlogo">Remove logo</button>` : ""}
+            <button class="btn sm primary" id="bsave">Save description</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="panel" id="nbpanel" hidden>
       <div class="row"><h2 class="grow">Neighbouring ground</h2>
+        <button class="btn sm" id="nbfetch">Fetch from the BC register</button>
         <span class="hint" id="nbcount"></span></div>
       <p class="lead" style="margin:0 0 12px">Companies whose tenure surrounds
          this project, read from the register in your uploaded boundary file.
@@ -423,6 +446,14 @@ async function renderProject(id) {
 
   wire(view);
   renderHolders(p, datasets || []);
+  $("bsave").onclick = () => saveBrand(p, { summary: $("bsum").value.trim() });
+  $("blogo").onchange = async () => {
+    const f = $("blogo").files?.[0];
+    if (!f) return;
+    try { await saveBrand(p, { logo: await shrinkLogo(f, 256) }); }
+    catch (e) { fail("Logo", e); }
+  };
+  if ($("brmlogo")) $("brmlogo").onclick = () => saveBrand(p, { logo: null });
   view.querySelectorAll("[data-del]").forEach((b) => {
     b.onclick = async () => {
       if (!confirm("Remove this dataset? Decks that use it will stop rendering it.")) return;
@@ -617,35 +648,63 @@ async function renderHolders(project, datasets) {
   const site = datasets.find((d) => d.kind === "site");
   const owners = site?.stats?.owners;
   const panel = $("nbpanel");
-  if (!panel || !Array.isArray(owners) || !owners.length) return;
+  if (!panel || !site) return;
+  panel.hidden = false;
+  $("nbfetch").onclick = () => fetchNeighbours(project, site, site.zone_id);
+  $("nbfetch").disabled = !site.stats?.bbox;
+  if (!Array.isArray(owners) || !owners.length) {
+    $("nblist").innerHTML = `<div class="empty sm"><p>No holders read from the
+      boundary file yet. If it carries owner names they appear here; otherwise
+      fetch the surrounding ground from the register.</p></div>`;
+    return;
+  }
 
   const subject = normOwner(site.stats.subject_owner || "");
+  // Everyone, not just the companies. Which neighbours are worth featuring is
+  // the author's call — a numbered company can be the interesting one and a
+  // named individual can be a vendor with a royalty. The default follows the
+  // company/person split; the toggle is how you disagree with it.
   const corps = owners
-    .filter((o) => normOwner(o.owner) !== subject && isCorporate(o.owner))
+    .filter((o) => normOwner(o.owner) !== subject)
     .sort((a, b) => (b.ha || 0) - (a.ha || 0));
   if (!corps.length) return;
 
-  panel.hidden = false;
   const stored = project.holders || {};
   const logoOf = (name) => {
     const v = stored[name] ?? stored[normOwner(name)];
     return (v && typeof v === "object" ? v.logo : v) || "";
   };
 
-  $("nbcount").textContent =
-    `${corps.length} compan${corps.length === 1 ? "y" : "ies"}`;
+  const metaOf = (name) => {
+    const v = stored[name] ?? stored[normOwner(name)];
+    return (v && typeof v === "object") ? v : {};
+  };
+  const featured = (o) => {
+    const m = metaOf(o.owner);
+    return typeof m.feature === "boolean" ? m.feature : isCorporate(o.owner);
+  };
+
+  const on = corps.filter(featured).length;
+  $("nbcount").textContent = `${on} of ${corps.length} featured`;
   $("nblist").innerHTML = corps.map((o) => {
-    const logo = logoOf(o.owner);
-    return `<div class="nbrow" data-owner="${esc(o.owner)}">
+    const logo = logoOf(o.owner), m = metaOf(o.owner), f = featured(o);
+    return `<div class="nbrow ${f ? "" : "off"}" data-owner="${esc(o.owner)}">
       <div class="nblogo">${logo
         ? `<img src="${esc(logo)}" alt="">`
         : `<span>${esc(initials(o.owner))}</span>`}</div>
       <div class="grow">
         <b>${esc(o.owner)}</b>
         <span class="mono hint">${o.claims || 0} claim${o.claims === 1 ? "" : "s"}
-          · ${Math.round(o.ha || 0).toLocaleString()} ha</span>
+          · ${Math.round(o.ha || 0).toLocaleString()} ha${
+            isCorporate(o.owner) ? "" : " · individual"}</span>
+        <input type="text" class="nbnote" data-note="${esc(o.owner)}"
+          value="${esc(m.note || "")}" ${f ? "" : "disabled"}
+          placeholder="Extra line on the card — e.g. 1.2 Moz Au · TSXV:XYZ">
       </div>
       <div class="row-actions">
+        <button class="btn sm ${f ? "primary" : ""}" data-feat="${esc(o.owner)}"
+          title="${f ? "Shown as its own asset with a card" : "Folded into the anonymous group"}"
+        >${f ? "Featured" : "Hidden"}</button>
         <label class="btn sm">Logo<input type="file" accept="image/*" hidden
           data-logo="${esc(o.owner)}"></label>
         ${logo ? `<button class="btn sm danger" data-rmlogo="${esc(o.owner)}">Remove</button>` : ""}
@@ -659,13 +718,27 @@ async function renderHolders(project, datasets) {
       const f = inp.files?.[0];
       if (!f) return;
       try {
-        const data = await shrinkLogo(f);
-        await saveHolder(project, inp.dataset.logo, data);
+        await saveHolder(project, inp.dataset.logo, { logo: await shrinkLogo(f) });
       } catch (e) { fail("Logo", e); }
     };
   });
   $("nblist").querySelectorAll("[data-rmlogo]").forEach((b) => {
-    b.onclick = () => saveHolder(project, b.dataset.rmlogo, null);
+    b.onclick = () => saveHolder(project, b.dataset.rmlogo, { logo: null });
+  });
+  $("nblist").querySelectorAll("[data-feat]").forEach((b) => {
+    b.onclick = () => {
+      const o = corps.find((x) => x.owner === b.dataset.feat);
+      saveHolder(project, b.dataset.feat, { feature: !featured(o) });
+    };
+  });
+  // Saved on blur rather than per keystroke: this writes a row and re-renders,
+  // and doing that on every character would fight the cursor.
+  $("nblist").querySelectorAll("[data-note]").forEach((inp) => {
+    inp.onblur = () => {
+      const was = metaOf(inp.dataset.note).note || "";
+      if (inp.value.trim() === was) return;
+      saveHolder(project, inp.dataset.note, { note: inp.value.trim() });
+    };
   });
   void initialsOf;
 }
@@ -704,16 +777,170 @@ function shrinkLogo(file, max = 160) {
   });
 }
 
-async function saveHolder(project, owner, logo) {
+// Patch, not replace. Uploading a logo must not clear the note somebody wrote,
+// and hiding a holder must not throw away the logo they will want back when
+// they unhide it.
+async function saveHolder(project, owner, patch) {
   const holders = { ...(project.holders || {}) };
   const key = normOwner(owner);
-  // Drop any legacy key for the same holder under different spacing, so the
-  // register's inconsistency cannot leave two entries fighting.
-  Object.keys(holders).forEach((k) => { if (normOwner(k) === key) delete holders[k]; });
-  if (logo) holders[key] = { logo };
+  // Fold any duplicate spelling of the same holder into one entry — a public
+  // register's spacing is not consistent, and two entries would fight.
+  let cur = {};
+  Object.keys(holders).forEach((k) => {
+    if (normOwner(k) !== key) return;
+    const v = holders[k];
+    cur = { ...cur, ...(v && typeof v === "object" ? v : { logo: v }) };
+    delete holders[k];
+  });
+  const next = { ...cur };
+  if (patch.logo === null) delete next.logo;
+  else if (patch.logo !== undefined) next.logo = patch.logo;
+  if (patch.note !== undefined) { if (patch.note) next.note = patch.note; else delete next.note; }
+  if (patch.feature !== undefined) next.feature = patch.feature;
+  if (Object.keys(next).length) holders[key] = next;
+
   const { error } = await db.from("projects").update({ holders }).eq("id", project.id);
-  if (error) return fail("Save logo", error);
+  if (error) return fail("Save", error);
   project.holders = holders;
-  toast(logo ? "Logo saved" : "Logo removed");
+  toast(patch.feature === false ? "Hidden from the map"
+      : patch.feature === true ? "Featured on the map"
+      : patch.logo === null ? "Logo removed" : "Saved");
+  route();
+}
+
+async function saveBrand(project, patch) {
+  const brand = { ...(project.brand || {}) };
+  if (patch.logo === null) delete brand.logo;
+  else if (patch.logo !== undefined) brand.logo = patch.logo;
+  if (patch.summary !== undefined) {
+    if (patch.summary) brand.summary = patch.summary; else delete brand.summary;
+  }
+  const { error } = await db.from("projects").update({ brand }).eq("id", project.id);
+  if (error) return fail("Save", error);
+  project.brand = brand;
+  toast("Saved");
+  route();
+}
+
+// ---------------------------------------------------- registry lookup ------
+// "Who holds the ground next to us" is the most persuasive thing on an
+// early-stage deck and the one claim an issuer cannot make about itself. Until
+// now it meant the customer exporting their NEIGHBOURS' boundaries from a
+// registry and uploading them, which nobody was ever going to do.
+//
+// British Columbia only, and the console says so rather than offering a button
+// that silently returns nothing elsewhere. Every jurisdiction publishes tenure
+// differently and there is no endpoint to generalise to.
+async function fetchNeighbours(project, site, zoneId) {
+  const box = site?.stats?.bbox;
+  if (!box) {
+    return fail("Fetch", new Error(
+      "This boundary file was loaded before extents were recorded. Re-upload it and try again."));
+  }
+  const btn = $("nbfetch");
+  btn.disabled = true; btn.textContent = "Fetching…";
+  try {
+    // Widen to a neighbourhood. A property's own bbox returns its own claims
+    // and nothing else, which is not what anybody pressed this for.
+    const pad = 0.045;                       // ~5 km
+    const [w, s, e, n] = box;
+    const q = [w - pad, s - pad, e + pad, n + pad].join(",");
+    const { data: sess } = await db.auth.getSession();
+    const r = await fetch(
+      `${CONFIG.url.replace(/\/$/, "")}/functions/v1/tenure?bbox=${encodeURIComponent(q)}`,
+      { headers: { apikey: CONFIG.anonKey,
+                   Authorization: `Bearer ${sess.session.access_token}` } });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || `The lookup failed (${r.status}).`);
+
+    const subject = normOwner(site.stats.subject_owner || "");
+    const mine = new Set();
+    // Whatever we already hold stays exactly as uploaded. The register is used
+    // to find the NEIGHBOURS, never to overwrite the customer's own boundary —
+    // their file is the one they will be asked to stand behind.
+    const cur = await (await fetch(await signedUrl(site.storage_path))).json();
+    (cur.rings || []).forEach((g) => {
+      const t = g.props?.TENURE_NUMBER_ID;
+      if (t != null) mine.add(String(t));
+    });
+
+    let added = 0;
+    const extra = [];
+    (body.features || []).forEach((f) => {
+      const pr = f.properties || {};
+      if (mine.has(String(pr.TENURE_NUMBER_ID))) return;
+      if (normOwner(pr.OWNER_NAME) === subject) return;   // ours, just not in the file
+      const g = f.geometry || {};
+      const polys = g.type === "Polygon" ? [g.coordinates]
+                  : g.type === "MultiPolygon" ? g.coordinates : [];
+      polys.forEach((poly) => (poly || []).forEach((ring) => {
+        if (!Array.isArray(ring) || ring.length < 3) return;
+        extra.push({ ring: ring.map((c) => [c[0], c[1]]),
+                     props: { ...pr, _subject: false, _neighbour: true } });
+        added++;
+      }));
+    });
+    if (!added) {
+      toast("The register shows no other holders around this property");
+      return;
+    }
+    await mergeClaims(project, zoneId, site, cur, extra, body, added);
+  } catch (e) {
+    fail("Fetch neighbours", e);
+  } finally {
+    btn.disabled = false; btn.textContent = "Fetch from the BC register";
+  }
+}
+
+async function signedUrl(path) {
+  const { data, error } = await db.storage.from("artifacts").createSignedUrl(path, 300);
+  if (error || !data?.signedUrl) throw new Error("Could not read the boundary file.");
+  return data.signedUrl;
+}
+
+async function mergeClaims(project, zoneId, site, cur, extra, body, added) {
+  const rings = [...(cur.rings || []), ...extra];
+  const payload = { ...cur, rings,
+    // Provenance travels with the data. Half this file came from the customer
+    // and half from a government register, and the audit trail has to be able
+    // to say which.
+    neighbours_source: body.data_source, neighbours_licence: body.licence,
+    attribution: body.attribution, subject_owner: cur.subject_owner ||
+      site.stats.subject_owner };
+  const path = site.storage_path;
+  const { error: upErr } = await db.storage.from("artifacts")
+    .upload(path, new Blob([JSON.stringify(payload)], { type: "application/json" }),
+            { contentType: "application/json", upsert: true });
+  if (upErr) return fail("Save boundaries", upErr);
+
+  // Recompute the rollup from the merged set rather than patching the old one.
+  const by = new Map(), seen = new Set();
+  rings.forEach((g, i) => {
+    const owner = String(g.props?.OWNER_NAME || g.props?.owner || "").trim();
+    if (!owner) return;
+    const k = normOwner(owner);
+    const h = by.get(k) || { owner, claims: 0, ha: 0 };
+    const t = g.props?.TENURE_NUMBER_ID ?? `r${i}`;
+    if (!seen.has(`${k}|${t}`)) {
+      seen.add(`${k}|${t}`);
+      h.claims++;
+      h.ha += Number(g.props?.AREA_IN_HECTARES || 0) || 0;
+    }
+    by.set(k, h);
+  });
+  const owners = [...by.values()].map((h) => ({ ...h, ha: Math.round(h.ha * 10) / 10 }))
+    .sort((a, b) => b.ha - a.ha);
+
+  const { error } = await db.from("datasets").update({
+    stats: { ...site.stats, rings: rings.length, owners },
+    provenance: { ...(site.provenance || {}), neighbours_added: added,
+                  neighbours_source: body.data_source,
+                  neighbours_truncated: !!body.truncated },
+  }).eq("id", site.id);
+  if (error) return fail("Save", error);
+
+  toast(body.truncated
+    ? `Added ${added} boundaries — the register capped the result, so there may be more`
+    : `Added ${added} neighbouring boundaries`);
   route();
 }

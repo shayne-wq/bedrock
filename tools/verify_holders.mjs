@@ -92,6 +92,37 @@ ok("the issuer's ground is drawn gold", drawn.gold >= 29, String(drawn.gold));
 ok("gold is drawn for the issuer's rings and nothing else", drawn.gold === 31,
    String(drawn.gold));
 
+console.log("\n== author overrides");
+// Feature toggles, callout notes and the issuer's own mark are the only parts
+// of this layer a register cannot supply, so they are the parts most likely to
+// be wired up wrong and never noticed.
+const before = drawn.cards;
+await pg.evaluate(() => window.__api.applyProject({ holders: {
+  "BARRANCO GOLD MINING CORP.": { note: "1.2 Moz Au \u00b7 TSXV:BAR" },
+  "FLOW METALS CORP.": { feature: false },
+  "RIPPON, DONALD JOHN": { feature: true },
+}}));
+await pg.waitForTimeout(2500);
+const after = await pg.evaluate(() => {
+  const v = window.__viewer;
+  return { cards: v.entities.values.filter((e) => e.billboard).length };
+});
+ok("hiding a company removes its card", after.cards === before,
+   `${before} then ${after.cards}`);   // one lost, one gained
+const meta = await pg.evaluate(() => window.__api.holderCards());
+ok("a hidden company is folded into the aggregate",
+   !meta.titles.some((t) => /Flow Metals/.test(t)), meta.titles.join(" | "));
+ok("a featured individual gets their own card",
+   meta.titles.some((t) => /Rippon/i.test(t)), meta.titles.join(" | "));
+ok("the aggregate says 'Other holders' once a company is in it",
+   meta.titles.some((t) => t === "Other holders"), meta.titles.join(" | "));
+ok("a note is carried onto the card", meta.notes.includes("1.2 Moz Au · TSXV:BAR"),
+   JSON.stringify(meta.notes));
+const audit = await pg.evaluate(() => window.__api.provText());
+ok("author-supplied notes are named in the audit trail",
+   /author-supplied, not from the tenure register/.test(audit) &&
+   /1\.2 Moz Au/.test(audit), audit.split("\n").filter((l) => /author-supplied|Moz/.test(l)).join(" / "));
+
 console.log("\nerrors:", errs.length ? errs : "none");
 console.log(`${pass} passed, ${fail} failed`);
 await b.close();

@@ -440,3 +440,10 @@ tbody tr:last-child td { border-bottom: 0; }
         background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10)}
 .nblogo img{max-width:100%;max-height:100%;object-fit:contain;background:#fff}
 .nblogo span{font-family:var(--mono);font-size:13px;color:#C99A3A;letter-spacing:.04em}
+.brandrow{display:flex;gap:16px;align-items:flex-start}
+.nblogo.lg{width:88px;height:88px;border-radius:7px}
+.nbrow.off{opacity:.5}
+.nbnote{display:block;width:100%;max-width:520px;margin-top:6px;padding:5px 8px;
+        font-family:var(--mono);font-size:11px;background:var(--bg);color:#C6CAC5;
+        border:1px solid var(--line);border-radius:4px}
+.nbnote:disabled{opacity:.45}

@@ -220,14 +220,100 @@ export function zoneCandidates(zone, datasets, project) {
  * Candidates for a whole project: every zone, plus the slides that only make
  * sense across zones.
  */
+/**
+ * The three slides every deck opens with.
+ *
+ * Not proposals — an opening. A deck that begins inside the orebody asks an
+ * audience to care about a body of rock before it has been told where the
+ * rock is or who owns it, and the answer to both is what makes the rest worth
+ * watching. So: the neighbourhood, then us, then what we have.
+ *
+ *   1. Wide. The property in its district, with the neighbouring companies
+ *      named on their own ground. This is the slide that says "we are next to
+ *      people you have heard of", and it is the one thing an issuer cannot
+ *      assert about itself — only a register can.
+ *   2. The property. Our claim block, our mark, and a paragraph.
+ *   3. The zones. What is inside the ground just established.
+ *
+ * These are generated whether or not there is data behind them, unlike every
+ * other candidate here — with one exception: slide one is pointless without
+ * tenure, so if no boundary has been loaded it is not offered, because an
+ * empty district view is a slide about nothing.
+ */
+export function openingChapters(project, zones, datasets) {
+  const out = [];
+  const site = (datasets || []).find((d) => d.kind === "site");
+  const owners = site?.stats?.owners || [];
+  const subject = (site?.stats?.subject_owner || "").trim();
+  const neighbours = owners.filter(
+    (o) => (o.owner || "").trim().toUpperCase() !== subject.toUpperCase(),
+  );
+  const place = project?.location || "";
+
+  if (site) {
+    // Wide enough to contain the neighbours, low enough that the ground still
+    // reads as ground. Terrain solid: this slide is about surface, not depth.
+    out.push({
+      id: "open:district", zone_id: null, spine: -30, opening: true,
+      section: "The property",
+      title: place ? `${project?.name || "The property"} — ${place}` : (project?.name || "The property"),
+      body: neighbours.length
+        ? `The land package and the ground around it. ${
+            neighbours.length} other holder${neighbours.length === 1 ? "" : "s"
+          } border this property; the companies among them are named on their own claims.`
+        : "The land package, as registered.",
+      camera: { h: 18, p: -46, r: 12000 },
+      layers: { ground: 1.0, site: true, blocks: false, targets: false },
+      needs: ["site"],
+    });
+  }
+
+  out.push({
+    id: "open:property", zone_id: null, spine: -20, opening: true,
+    section: "The property",
+    title: project?.name || "The property",
+    // The author's own words when they have written them. The fallback is
+    // deliberately thin — a generated paragraph that sounds authored is worse
+    // than an obvious placeholder, because nobody edits what reads as finished.
+    body: (project?.brand?.summary || "").trim() ||
+      `${project?.commodity ? project.commodity + ". " : ""}${
+        place ? place + ". " : ""}Add a description in the project settings — this is the slide that introduces the company.`,
+    camera: { h: 24, p: -38, r: 5200 },
+    layers: { ground: 1.0, site: !!site, blocks: false, targets: false },
+    needs: [],
+  });
+
+  const named = (zones || []).filter((z) =>
+    (datasets || []).some((d) => d.zone_id === z.id));
+  if (named.length) {
+    out.push({
+      id: "open:zones", zone_id: null, spine: -10, opening: true,
+      section: "The property",
+      title: named.length === 1 ? named[0].name : "Targets on the property",
+      body: named.length === 1
+        ? `One zone on the package: ${named[0].name}.`
+        : `${named.length} zones across the package — ${
+            named.map((z) => z.name).join(", ")}.`,
+      camera: { h: 20, p: -40, r: 7000 },
+      layers: { ground: 1.0, site: !!site, targets: true, blocks: false },
+      needs: [],
+    });
+  }
+  return out;
+}
+
 export function projectCandidates(project, zones, datasets) {
   const out = [];
+  out.push(...openingChapters(project, zones, datasets));
 
   // A property-scale opener earns its place only when there is more than one
   // zone, or a property outline to show. Otherwise it duplicates the zone
   // overview from a slightly different altitude.
+  // Only when there is no tenure file, in which case the opening trio has no
+  // district slide and this is the widest view the deck can offer.
   const anyData = (zones || []).some((z) => kindsOf(datasets, z.id).size);
-  if (anyData && (zones.length > 1 || kindsOf(datasets, zones[0]?.id).has("site"))) {
+  const hasSite = (datasets || []).some((d) => d.kind === "site");
+  if (!hasSite && anyData && zones.length > 1) {
     out.push({
       id: "project:property", zone_id: null, spine: 0,
       section: "The property", title: project?.name || "The property",
@@ -294,12 +380,14 @@ export function defaultOrder(candidates, zones, cap = 14) {
 
   let order = spine, dropped = 0;
   if (spine.length > cap) {
+    // The opening is exempt. Trimming a deck should never cost it the slide
+    // that says where the property is or the one that introduces the company.
     // Trim by taking the weakest beat from the fullest zone, repeatedly, so a
     // three-zone property loses its third section before it loses a zone's
     // overview. Never trims the property-level slides.
     const byZone = new Map();
     spine.forEach((c) => {
-      if (c.zone_id === null) return;
+      if (c.zone_id === null || c.opening) return;
       if (!byZone.has(c.zone_id)) byZone.set(c.zone_id, []);
       byZone.get(c.zone_id).push(c);
     });

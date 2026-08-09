@@ -278,6 +278,53 @@ them. Authoring becomes curation rather than construction.
 
 ## Log
 
+- **2026-08-09** — **Every deck opens the same way**, and the pieces that
+  opening needs.
+
+  Three slides, generated always and exempt from trimming: the **district**,
+  wide, with the neighbouring companies named on their own ground; the
+  **property**, with the issuer's mark and their paragraph; then the **zones**.
+  A deck that begins inside the orebody asks an audience to care about a body
+  of rock before it has been told where the rock is or who owns it, and the
+  answer to both is what makes the rest worth watching. The district slide is
+  the exception to "generate everything": with no boundary loaded it is a slide
+  about nothing, so it is not offered.
+
+  **The issuer's own brand** — logo and a one-paragraph description — on
+  `projects.brand`. It is the only part of slide two a database cannot derive,
+  and the fallback text is deliberately a visible placeholder: a generated
+  paragraph that sounds authored is worse, because nobody edits what reads as
+  finished.
+
+  **Per-holder overrides.** Which neighbours to feature (the company/person
+  split is now only the default — a numbered company can be the interesting one
+  and a named individual can be a vendor with a royalty), and a free line on
+  each card for the thing the register does not know: *1.2 Moz Au · TSXV:BAR*.
+  That line is set apart on the card — its own rule, the holder's colour rather
+  than the data grey — and named in the audit trail, because claims and
+  hectares come from a public register and this does not. On a NEIGHBOUR's card
+  it is an assertion about a third party.
+
+  **The register is fetched now, not uploaded.** New `tenure` edge function
+  proxying BC Mineral Titles Online; the console widens the property's own
+  extent by ~5 km, pulls the surrounding ground, and merges it into the
+  boundary dataset without touching a single ring the customer supplied. It has
+  to be server-side: BC's WFS sends no `access-control-allow-origin`, so a
+  browser fetch is blocked outright.
+
+  The trap there is worth recording. **WFS 2.0 with an EPSG:4326 bbox is
+  latitude first.** Getting it backwards does not error — it returns an empty
+  collection from the ocean off Somalia, which a console would render as "this
+  property has no neighbours". The test asserts the known holders come back,
+  not merely that the call succeeded.
+
+  **British Columbia only**, and the function says so by name for any other
+  jurisdiction rather than returning nothing. Every register publishes tenure
+  differently and there is nothing to generalise to; elsewhere, upload.
+
+  22 holder assertions · 35 slide assertions · 8 tenure assertions against the
+  live register. Full regression green.
+
 - **2026-08-09** — **Neighbouring assets.** Companies whose tenure surrounds
   the project now render as assets in their own right: a colour, a filled
   parcel, and a callout carrying a mark, the registered name and the figures —

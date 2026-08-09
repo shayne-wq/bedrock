@@ -694,6 +694,15 @@ async function parseAux(kind, chosen) {
   // in it is the subject. Guessing wrong here is what makes a deck draw
   // somebody else's tenure in its own colour, so it is recorded rather than
   // inferred again downstream.
+  const ringsBbox = (rings) => {
+    let w = Infinity, s2 = Infinity, e = -Infinity, n = -Infinity;
+    rings.forEach((g) => g.ring.forEach(([lon, lat]) => {
+      if (lon < w) w = lon; if (lon > e) e = lon;
+      if (lat < s2) s2 = lat; if (lat > n) n = lat;
+    }));
+    return Number.isFinite(w) ? [w, s2, e, n] : null;
+  };
+
   const subjectOwner = (rings) => {
     const t = new Map();
     rings.forEach((g) => {
@@ -744,7 +753,11 @@ async function parseAux(kind, chosen) {
 
     return {
       payload: { format: "orebody-claims/1", crs: "EPSG:4326", rings },
-      stats: { rings: rings.length, owners, subject_owner: subjectOwner(rings) },
+      // The extent goes in stats so the console knows WHERE this project is
+      // without downloading the artifact again — which is what the registry
+      // lookup needs in order to ask for the ground around it.
+      stats: { rings: rings.length, owners, subject_owner: subjectOwner(rings),
+               bbox: ringsBbox(rings) },
       provenance: { parsed: "claims", ring_count: rings.length,
                     holders: owners.length },
     };

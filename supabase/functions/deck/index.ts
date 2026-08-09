@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
   // row and passing it through handed every anonymous visitor the org's UUID.
   const { data: project } = await db
     .from("projects")
-    .select("name, commodity, location, epsg, holders")
+    .select("name, commodity, location, epsg, holders, brand")
     .eq("id", deck.project_id)
     .maybeSingle();
 
