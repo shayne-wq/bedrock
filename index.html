@@ -188,6 +188,20 @@
   /* Presenter cut-off. Sits inline with Back/Next so it reads as part of the
      deck controls, not as a settings escapee. Goes gold when held, because a
      presenter who has overridden the deck needs to see that they have. */
+  /* Terrain opacity, beside the cut-off. Two ends as buttons and a slider
+     between them: "show me the mountain" and "take it away" are the two a
+     presenter asks for mid-sentence, and hunting a slider to an end is not
+     something anyone does while talking. */
+  #pgnd{display:flex;align-items:center;gap:7px;margin-right:14px;
+        padding:0 12px 0 0;border-right:1px solid rgba(255,255,255,.14)}
+  #pgnd .pl{font-family:'JetBrains Mono',monospace;font-size:10px;
+            letter-spacing:.09em;text-transform:uppercase;color:#8A8F98}
+  #pgndr{width:88px;accent-color:#C99A3A}
+  #pgndv{font-family:'JetBrains Mono',monospace;font-size:11px;color:#EDEEEC;
+         min-width:62px;text-align:right}
+  #pgnd.held .pl{color:#C99A3A}
+  @media (max-width:1100px){ #pgnd{display:none} }
+
   #pcut{display:flex;align-items:center;gap:8px;margin-right:14px;
         padding:0 12px 0 0;border-right:1px solid rgba(255,255,255,.14)}
   #pcut .pl{font-family:'JetBrains Mono',monospace;font-size:10px;
@@ -792,6 +806,15 @@
              aria-label="Cut-off grade">
       <span id="pcutv">0.50 g/t</span>
       <button id="pcutx" class="btn sm" hidden title="Return to the chapter's cut-off">Reset</button>
+    </div>
+    <div id="pgnd" title="Terrain opacity — held across chapters once you move it">
+      <span class="pl">Terrain</span>
+      <button id="pgnd0" class="btn sm" title="Cut the ground away completely">0%</button>
+      <input type="range" id="pgndr" min="0" max="100" step="5" value="0"
+             aria-label="Terrain opacity">
+      <button id="pgnd100" class="btn sm" title="Solid ground">100%</button>
+      <span id="pgndv">cut away</span>
+      <button id="pgndx" class="btn sm" hidden title="Return to the chapter's terrain">Reset</button>
     </div>
     <button id="prev" class="btn">‹ Back</button>
     <span class="count" id="count">1 / 9</span>
@@ -1620,6 +1643,11 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
   // navigation stops writing to it until Reset, so an answer given live to
   // "what if we only mined above 5 grams" survives the next slide.
   let cutHold=false;
+  // Same contract as the cut-off: once a presenter dials the terrain, chapter
+  // navigation stops writing to it until Reset. Answering "what does it look
+  // like with the mountain back on" and then losing it at the next slide is
+  // the behaviour that makes a live control useless.
+  let groundHold=false;
   let mode='grade', cutIdx=CUT_DEFAULT_IDX, vein=-1, clsOn={0:true,1:true,2:true,3:true},
       cur=0, drills=false, playing=false, narrating=false, dwellTimer=null, restoring=false;
   const cutVal=()=>LADDER[cutIdx];
@@ -4488,10 +4516,28 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     // With the ground intact the deposit must draw over it, or it disappears
     // inside the mountain entirely.
     viewer.scene.globe.depthTestAgainstTerrain=a<0.9;
-    $('ground').value=Math.round(a*100);
-    $('groundv').textContent=a===0?'cut away':Math.round(a*100)+'%';
+    const pct=Math.round(a*100), label=a===0?'cut away':pct+'%';
+    $('ground').value=pct;
+    $('groundv').textContent=label;
+    // Both controls are views on one value. Updating only the one that was
+    // touched lets Explore and the presenter bar disagree about what is on
+    // screen — the same class of bug as a readout that does not match the
+    // geometry.
+    const pr=$('pgndr'); if(pr) pr.value=pct;
+    const pv=$('pgndv'); if(pv) pv.textContent=label;
+    const pg=$('pgnd'); if(pg) pg.classList.toggle('held',groundHold);
+    const px=$('pgndx'); if(px) px.hidden=!groundHold;
   }
-  $('ground').oninput=e=>setGround((+e.target.value)/100);
+  const holdGround=a=>{ groundHold=true; setGround(a); };
+  $('ground').oninput=e=>holdGround((+e.target.value)/100);
+  $('pgndr').oninput=e=>holdGround((+e.target.value)/100);
+  // The two ends get their own buttons because they are the two a presenter
+  // actually wants mid-sentence: show me the mountain, now take it away.
+  $('pgnd0').onclick=()=>holdGround(0);
+  $('pgnd100').onclick=()=>holdGround(1);
+  $('pgndx').onclick=()=>{ groundHold=false;
+    const c=CHAPTERS[cur];
+    setGround(c && c.ground!==undefined ? c.ground : groundAlpha); };
   // ---- deposits ----------------------------------------------------------
   // One deck, more than one orebody. Everything derived from the model is
   // swapped together: geometry, extents, rollups, lattice, class labels, the
@@ -5179,7 +5225,10 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     // Cutting the ground away is a deliberate beat, not a permanent state:
     // overhead shots read better with the mountain intact and the deposit shown
     // through it, and the cut earns its impact when the subsurface is the point.
-    const ga=(c.ground===undefined)?groundAlpha:c.ground;
+    // Held terrain wins over the chapter's. Refresh it anyway so the "held"
+    // badge repaints on every chapter change — otherwise the presenter loses
+    // track of the fact that the deck is no longer driving it.
+    const ga=groundHold?groundAlpha:((c.ground===undefined)?groundAlpha:c.ground);
     setGround(ga);
     apply(); frameFor(c,!initial); paintUI();
     if(narrating) speak(c);

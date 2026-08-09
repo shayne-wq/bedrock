@@ -138,7 +138,7 @@ reach; that case is called out in the dialog rather than silently shipped.
 ## Controls
 
 `←` `→` chapters · `P` autoplay · `N` narration · `E` Explore panel ·
-`A` asset only · `R` record · `D` draw · `G` areas · `H` hole ledger ·
+`0`/`100` terrain opacity (nav bar) · `A` asset only · `R` record · `D` draw · `G` areas · `H` hole ledger ·
 `I` intercept callouts · `B` blackout · `O` property columns · `C` copy camera
 
 `?embed=1` strips the chrome for iframe embedding and autostarts on Begin;
