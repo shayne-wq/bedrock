@@ -6482,6 +6482,25 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   }
   // Recomputed per export rather than fixed at load: the footer has to describe
   // what is actually on the slide, not what might be.
+  // The deck's own name, for exported files. This was hard-coded to
+  // "Elk-Gold-Siwash-North", so every customer's PowerPoint arrived named
+  // after the demo property — on a document they are about to send to an
+  // investor.
+  function deckName(){
+    const t=(document.title||'').split(' · ')[0].trim();
+    return (t||'orebody-deck').replace(/[^\w\- ]+/g,'').replace(/\s+/g,'-').slice(0,60);
+  }
+  // Where the live deck lives, so a static slide is a doorway rather than a
+  // dead end. A PowerPoint is forwarded, opened offline, printed — and the one
+  // thing it cannot do is show the model turning. The link is how somebody
+  // gets from the picture to the thing.
+  function liveUrl(){
+    const u=new URL(location.href);
+    u.searchParams.delete('embed'); u.searchParams.delete('author');
+    u.searchParams.delete('data'); u.searchParams.delete('fresh');
+    u.hash='';
+    return u.toString();
+  }
   function foot(){
     const f=[];
     if(drills&&DRILL_SYNTHETIC) f.push('drill holes');
@@ -6505,19 +6524,26 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       toast('Building deck…',60000);
       await loadJs('pptx');
       const shots=await shoot();
+      const live=liveUrl();
       const p=new PptxGenJS(); p.layout='LAYOUT_16x9';
       shots.forEach(s=>{
         const sl=p.addSlide();
         sl.background={color:'07090A'};
-        sl.addImage({data:s.img,x:0,y:0,w:'100%',h:'100%'});
+        // The whole image is the link. A viewer who wants the live model
+        // should not have to find a small piece of text to click.
+        sl.addImage({data:s.img,x:0,y:0,w:'100%',h:'100%',
+                     hyperlink:{url:live,tooltip:'Open the interactive 3D deck'}});
         sl.addShape(p.ShapeType.rect,{x:0,y:3.4,w:'100%',h:2.2,fill:{color:'07090A',transparency:22}});
         sl.addText(s.title,{x:0.5,y:3.6,w:8.5,h:0.6,fontSize:26,bold:true,color:'FFFFFF',fontFace:'Arial'});
         sl.addText(s.body,{x:0.5,y:4.25,w:8.5,h:0.9,fontSize:13,color:'C6CAC5',fontFace:'Arial'});
         sl.addText(fmt(s.stats.t)+'   ·   '+s.stats.g.toFixed(2)+' g/t AuEq   ·   '+fmtoz(s.stats.oz),
           {x:0.5,y:5.05,w:8.5,h:0.35,fontSize:12,color:'C99A3A',fontFace:'Consolas'});
         sl.addText(foot(),{x:0.5,y:5.32,w:8.5,h:0.34,fontSize:10,color:'C6CAC5',fontFace:'Arial'});
+        sl.addText('Open in 3D  \u2192',{x:8.05,y:0.22,w:1.6,h:0.3,fontSize:11,
+          color:'C99A3A',fontFace:'Arial',align:'right',
+          hyperlink:{url:live,tooltip:'Open the interactive 3D deck'}});
       });
-      await p.writeFile({fileName:'Elk-Gold-Siwash-North.pptx'});
+      await p.writeFile({fileName:deckName()+'.pptx'});
       toast('PPTX saved');
     }catch(e){ toast('PPTX failed: '+e.message,5000); }
   };
@@ -6528,6 +6554,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       await loadJs('pdf');
       const shots=await shoot();
       const {jsPDF}=window.jspdf;
+      const live=liveUrl();
       const doc=new jsPDF({orientation:'landscape',unit:'pt',format:[960,540]});
       shots.forEach((s,i)=>{
         if(i) doc.addPage([960,540],'landscape');
@@ -6541,8 +6568,13 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
         doc.text(fmt(s.stats.t)+'   ·   '+s.stats.g.toFixed(2)+' g/t AuEq   ·   '+fmtoz(s.stats.oz),40,492);
         doc.setTextColor(198,202,197); doc.setFontSize(10);
         doc.text(doc.splitTextToSize(foot(),880),40,512);
+        // Same reasoning as the PPTX: the page is the link.
+        doc.link(0,0,960,360,{url:live});
+        doc.setTextColor(201,154,58); doc.setFontSize(11);
+        doc.text('Open in 3D \u2192',830,34);
+        doc.link(820,20,110,20,{url:live});
       });
-      doc.save('Elk-Gold-Siwash-North.pdf');
+      doc.save(deckName()+'.pdf');
       toast('PDF saved');
     }catch(e){ toast('PDF failed: '+e.message,5000); }
   };

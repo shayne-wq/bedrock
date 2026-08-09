@@ -278,6 +278,35 @@ them. Authoring becomes curation rather than construction.
 
 ## Log
 
+- **2026-08-09** — **Embedding, per destination.** Four places people actually
+  want to put a deck, and they want four different things: WordPress and
+  Elementor take markup, Wix and Notion take a bare URL, PowerPoint takes a URL
+  through the Web Viewer add-in, and Google Slides takes none of them, because
+  **Google Slides cannot embed live web content at all.** There is no iframe
+  and no add-in equivalent, and nothing we can ship changes it. The panel says
+  so rather than leaving somebody to find out ten minutes before a meeting; the
+  route there is the PPTX import.
+
+  The embed panel also now surfaces whether the token it is building a snippet
+  for actually *permits* embedding, and any domain restriction on it. It was
+  happily generating an iframe for a link whose `allow_embed` is false, which
+  renders as a 403 on the customer's website.
+
+  **The exports are doorways now.** A PowerPoint gets forwarded, opened
+  offline, printed — the one thing it cannot do is show the model turning. Both
+  the PPTX and the PDF carry a link back to the live deck on every slide, with
+  the image itself as the target rather than a small piece of text.
+
+  And the export filename was the literal string `Elk-Gold-Siwash-North`, so
+  every customer's PowerPoint arrived named after our demo property, on a
+  document they were about to send to an investor. Derived from the deck now,
+  and the test proves derivation by renaming the deck and looking at the file
+  rather than by reading the code.
+
+  9 export assertions, made against the bytes: slide count, the external
+  hyperlink relationship in the .pptx, `/URI` link annotations in the PDF, and
+  the filename. Full regression green.
+
 - **2026-08-09** — **The studio.** Four pieces of the authoring loop, and five
   bugs found underneath them — three of which were losing people's work.
 

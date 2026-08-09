@@ -699,7 +699,9 @@ function newLink() {
 }
 
 function embedSnippet(token) {
-  const src = shareUrl(token, true);
+  const link = links.find((l) => l.token === token) || {};
+  const src = shareUrl(token, true);        // carries embed=1, for attribution
+  const plain = shareUrl(token, false);     // no embed flag, for openers
   const snippet =
 `<!-- ${deck.title} -->
 <div style="position:relative;width:100%;padding-top:56.25%;border-radius:6px;overflow:hidden;background:#07090A">
@@ -707,24 +709,102 @@ function embedSnippet(token) {
     title="${deck.title}" loading="lazy" allowfullscreen
     style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
 </div>`;
+
+  // Each of these wants a different artifact, and handing everyone the same
+  // iframe is why "embed it on our site" turns into a support thread. Wix's
+  // element takes a URL, not HTML. PowerPoint's add-in takes a URL. Google
+  // Slides takes neither, because it cannot embed live web content at all —
+  // which is a fact about Google Slides and is said here rather than left for
+  // somebody to discover ten minutes before a meeting.
+  const TABS = [
+    ["web", "WordPress · Elementor · Squarespace"],
+    ["url", "Wix · Notion · Confluence"],
+    ["ppt", "PowerPoint"],
+    ["gs", "Google Slides"],
+  ];
+
+  const codeBox = (t) => `<pre class="snip">${esc(t)}</pre>`;
+
+  const panes = {
+    web: `
+      <p class="sub">Paste into a <b>WordPress Custom HTML block</b>, an
+         <b>Elementor HTML widget</b>, or a <b>Squarespace Code block</b>.
+         It keeps a 16:9 shape at any width.</p>
+      ${codeBox(snippet)}
+      <button class="btn primary" data-copy-text="${esc(snippet)}">Copy the snippet</button>
+      <div class="note" style="margin-top:12px">If the iframe disappears when you
+        save, your host is stripping HTML — that is WordPress.com on the lower
+        plans, and some security plugins. Use the URL on the next tab with an
+        “Embed” block instead.</div>`,
+    url: `
+      <p class="sub">These take a <b>URL</b>, not markup. In Wix add
+         <b>Embed → Embed a Site</b>; in Notion paste the link and choose
+         <b>Embed</b>; in Confluence use the <b>iframe</b> macro.</p>
+      ${codeBox(src)}
+      <button class="btn primary" data-copy-text="${esc(src)}">Copy the URL</button>`,
+    ppt: `
+      <p class="sub">Two ways, and they are for different rooms.</p>
+      <h3 style="margin:14px 0 6px">Live, inside the slide</h3>
+      <p class="sub">Insert → Get Add-ins → search <b>Web Viewer</b> → add it to
+         a slide and paste this URL. It is a real 3D deck on the slide, and it
+         needs an internet connection at the moment you present.</p>
+      ${codeBox(src)}
+      <button class="btn" data-copy-text="${esc(src)}">Copy the URL</button>
+      <h3 style="margin:18px 0 6px">Static, with a way back</h3>
+      <p class="sub">Open the deck, press <b>Explore → PPTX</b>. You get one
+         slide per chapter as a rendered image with its caption and figures, and
+         every slide links back to the live deck. That is the one to send, and
+         the one that survives a room with no wifi.</p>
+      <a class="btn" href="${esc(plain)}" target="_blank" rel="noopener">Open the deck</a>`,
+    gs: `
+      <p class="sub"><b>Google Slides cannot embed live web content.</b> There is
+         no iframe, no add-in equivalent to Web Viewer, and nothing we can ship
+         that changes it. So the route is the export:</p>
+      <ol class="steps">
+        <li>Open the deck and press <b>Explore → PPTX</b>.</li>
+        <li>In Google Slides: <b>File → Import slides</b>, upload the .pptx,
+            select all.</li>
+        <li>Every slide keeps its link back to the live deck, so clicking one in
+            presentation mode opens the 3D in a browser tab.</li>
+      </ol>
+      <p class="sub">If you want the model actually moving inside Slides, the
+         only thing that works is video: record a flythrough with <b>REC</b> in
+         the viewer, upload it to Drive, and insert it as a video.</p>
+      <a class="btn" href="${esc(plain)}" target="_blank" rel="noopener">Open the deck</a>`,
+  };
+
   modal(`
-    <h2>Embed on your website</h2>
-    <p class="sub">Paste into a WordPress Custom HTML block, an Elementor HTML
-       widget, or any page that accepts raw HTML.</p>
-    <pre style="font-family:var(--mono);font-size:11px;line-height:1.6;background:var(--bg);
-      border:1px solid var(--line);border-radius:var(--r-pan);padding:12px;overflow:auto;
-      white-space:pre-wrap;word-break:break-all;color:#9fd8c8">${esc(snippet)}</pre>
-    <div class="note" style="margin-top:12px">This links rather than copies, so
-      republishing the deck updates every site it is embedded on. Views from
-      those sites appear under <b>Audience</b>, broken down by which page they
-      came from.</div>
+    <h2>Embed this deck</h2>
+    ${!link.allow_embed ? `<div class="note warn" style="margin-bottom:12px">
+      <b>This link does not permit embedding.</b> It will load on its own page
+      but refuse to run in a frame, so the snippet below would show an error.
+      Create a link with embedding allowed, or turn it on for this one.</div>` : ""}
+    ${link.domains?.length ? `<div class="note" style="margin-bottom:12px">
+      Restricted to <b>${esc(link.domains.join(", "))}</b>. Embedded anywhere
+      else it refuses to load.</div>` : ""}
+    <div class="tabs" id="etabs">${TABS.map(([k, label], i) =>
+      `<button class="tab ${i ? "" : "on"}" data-tab="${k}">${esc(label)}</button>`).join("")}</div>
+    <div id="epane">${panes.web}</div>
+    <div class="note" style="margin-top:14px">Every one of these links rather
+      than copies, so republishing updates each place it appears. Views arrive
+      under <b>Audience</b>, split by which page they came from.</div>
     <div class="row-actions" style="margin-top:16px">
-      <button class="btn primary" id="csnip">Copy snippet</button>
       <button class="btn" id="cdone">Close</button>
     </div>`);
+
+  const wireCopies = () => {
+    document.querySelectorAll("[data-copy-text]").forEach((b) =>
+      b.onclick = () => navigator.clipboard.writeText(b.dataset.copyText)
+        .then(() => toast("Copied"), () => toast("Copy failed", true)));
+  };
+  wireCopies();
   $("cdone").onclick = closeModal;
-  $("csnip").onclick = () => navigator.clipboard.writeText(snippet)
-    .then(() => toast("Snippet copied"), () => toast("Copy failed", true));
+  document.querySelectorAll("#etabs .tab").forEach((b) =>
+    b.onclick = () => {
+      document.querySelectorAll("#etabs .tab").forEach((x) => x.classList.toggle("on", x === b));
+      $("epane").innerHTML = panes[b.dataset.tab];
+      wireCopies();
+    });
 }
 
 // ------------------------------------------------------------- analytics ---

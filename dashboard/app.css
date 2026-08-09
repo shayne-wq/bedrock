@@ -413,3 +413,18 @@ tbody tr:last-child td { border-bottom: 0; }
         padding:1px 5px;border-radius:3px;background:rgba(217,88,74,.16);color:#E08C82}
 .sttime{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#7FB77E}
 .sttime.bad{color:#E08C82}
+
+/* ---- embed panel -------------------------------------------------------
+   Four destinations that each want a different artifact: markup, a bare URL,
+   an add-in, or an import. Tabs rather than one long page, because nobody is
+   publishing to all four at once. */
+.tabs{display:flex;gap:2px;margin:0 0 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tabs .tab{padding:8px 12px;border:0;border-bottom:2px solid transparent;background:none;
+           color:#8C948C;font:inherit;font-size:12px;cursor:pointer}
+.tabs .tab:hover{color:#C6CAC5}
+.tabs .tab.on{color:#C99A3A;border-bottom-color:#C99A3A}
+.snip{font-family:var(--mono);font-size:11px;line-height:1.6;background:var(--bg);
+      border:1px solid var(--line);border-radius:var(--r-pan);padding:12px;overflow:auto;
+      white-space:pre-wrap;word-break:break-all;color:#9fd8c8;margin:0 0 12px}
+.steps{margin:8px 0 12px;padding-left:20px;color:var(--ink-2);font-size:13px;line-height:1.7}
+.steps li{margin-bottom:4px}
