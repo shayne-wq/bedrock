@@ -689,6 +689,22 @@ async function parseAux(kind, chosen) {
     return s.format;
   };
 
+  // Whose ground is this file? An uploaded boundary is the issuer's own — you
+  // do not upload your neighbour's claims — so the holder with the most ground
+  // in it is the subject. Guessing wrong here is what makes a deck draw
+  // somebody else's tenure in its own colour, so it is recorded rather than
+  // inferred again downstream.
+  const subjectOwner = (rings) => {
+    const t = new Map();
+    rings.forEach((g) => {
+      const o = String(g.props?.OWNER_NAME || g.props?.owner || "").trim();
+      if (o) t.set(o, (t.get(o) || 0) + (Number(g.props?.AREA_IN_HECTARES) || 1));
+    });
+    let best = "", n = -1;
+    t.forEach((v, k) => { if (v > n) { n = v; best = k; } });
+    return best;
+  };
+
   if (kind === "site") {
     const rings = [];
     for (const c of chosen) {
@@ -699,10 +715,38 @@ async function parseAux(kind, chosen) {
                 : (() => { throw new Error(`${c.file.name}: claims must be GeoJSON or KML.`); })();
       got.forEach((g) => rings.push(g));
     }
+    // Roll the register up per holder at ingest, so the console can offer a
+    // logo slot per company without re-reading the boundary file, and so the
+    // count and hectares it shows are the same numbers the viewer draws.
+    //
+    // Deduped by tenure id, never by ring: a MultiPolygon claim arrives as
+    // several rings, and counting those reports a holder as owning more ground
+    // and more claims than the register says — on the one panel whose entire
+    // subject is who owns what.
+    const by = new Map(), seen = new Set();
+    rings.forEach((g, i) => {
+      const pr = g.props || {};
+      const owner = String(pr.OWNER_NAME || pr.owner || "").trim();
+      if (!owner) return;
+      const k = owner.toUpperCase().replace(/\s+/g, " ");
+      const h = by.get(k) || { owner, claims: 0, ha: 0 };
+      const t = pr.TENURE_NUMBER_ID ?? pr.tenure ?? `r${i}`;
+      if (!seen.has(`${k}|${t}`)) {
+        seen.add(`${k}|${t}`);
+        h.claims++;
+        h.ha += Number(pr.AREA_IN_HECTARES || pr.ha || 0) || 0;
+      }
+      by.set(k, h);
+    });
+    const owners = [...by.values()]
+      .map((h) => ({ ...h, ha: Math.round(h.ha * 10) / 10 }))
+      .sort((a, b) => b.ha - a.ha);
+
     return {
       payload: { format: "orebody-claims/1", crs: "EPSG:4326", rings },
-      stats: { rings: rings.length },
-      provenance: { parsed: "claims", ring_count: rings.length },
+      stats: { rings: rings.length, owners, subject_owner: subjectOwner(rings) },
+      provenance: { parsed: "claims", ring_count: rings.length,
+                    holders: owners.length },
     };
   }
 

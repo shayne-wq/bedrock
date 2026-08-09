@@ -268,7 +268,7 @@ function newProject() {
 async function renderProject(id) {
   view.innerHTML = skeleton(5);
   const { data: p, error } = await db.from("projects")
-    .select("id, name, commodity, location, epsg, org_id").eq("id", id).maybeSingle();
+    .select("id, name, commodity, location, epsg, org_id, holders").eq("id", id).maybeSingle();
   if (error) return fail("Project", error);
   if (!p) {
     view.innerHTML = `<div class="empty"><h3>Project not found</h3>
@@ -387,6 +387,18 @@ async function renderProject(id) {
         </div>`}
     </div>
 
+    <div class="panel" id="nbpanel" hidden>
+      <div class="row"><h2 class="grow">Neighbouring ground</h2>
+        <span class="hint" id="nbcount"></span></div>
+      <p class="lead" style="margin:0 0 12px">Companies whose tenure surrounds
+         this project, read from the register in your uploaded boundary file.
+         A logo is the difference between a name a generalist has never heard
+         and one they recognise, which is most of why this layer is worth a
+         slide. Private individuals are shown as one anonymous group and are
+         not listed here.</p>
+      <div id="nblist"></div>
+    </div>
+
     <div class="panel">
       <h2>Decks</h2>
       ${!decks?.length ? `
@@ -410,6 +422,7 @@ async function renderProject(id) {
     </div>`;
 
   wire(view);
+  renderHolders(p, datasets || []);
   view.querySelectorAll("[data-del]").forEach((b) => {
     b.onclick = async () => {
       if (!confirm("Remove this dataset? Decks that use it will stop rendering it.")) return;
@@ -578,3 +591,129 @@ addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
 
 export { route };
 boot();
+
+// ------------------------------------------------- neighbouring holders ----
+// The register names whoever holds the ground around a project, and the viewer
+// draws the companies among them as their own assets — colour, parcel, name.
+// The one thing it cannot derive is a logo, and the logo is most of the value:
+// "Vizsla Copper Corp." means nothing to a generalist investor and its mark
+// means a great deal.
+//
+// Supplied here, never fetched. A company's mark is its trademark, and pulling
+// one off the web to put beside real tenure on an investor slide is not a
+// thing to do automatically.
+
+// Same rule as the viewer's, and the same reason: ten of the sixteen holders
+// around the demo property are private individuals. They are not listed in
+// this panel at all — there is nothing to brand, and a console that invites
+// you to upload a logo for a named private citizen is asking a strange
+// question.
+const CORP_RE =
+  /\b(CORP|CORPORATION|INC|INCORPORATED|LTD|LIMITED|LLC|LLP|PLC|COMPANY|RESOURCES|MINERALS|METALS|MINING|EXPLORATION|VENTURES|HOLDINGS|GROUP|PARTNERSHIP|TRUST|SOCIETY|NATION|BAND|MUNICIPALITY|PROVINCE|CROWN)\b/i;
+const normOwner = (x) => (x || "").trim().toUpperCase().replace(/\s+/g, " ");
+const isCorporate = (n) => !!n && (CORP_RE.test(n.trim()) || n.indexOf(",") < 0);
+
+async function renderHolders(project, datasets) {
+  const site = datasets.find((d) => d.kind === "site");
+  const owners = site?.stats?.owners;
+  const panel = $("nbpanel");
+  if (!panel || !Array.isArray(owners) || !owners.length) return;
+
+  const subject = normOwner(site.stats.subject_owner || "");
+  const corps = owners
+    .filter((o) => normOwner(o.owner) !== subject && isCorporate(o.owner))
+    .sort((a, b) => (b.ha || 0) - (a.ha || 0));
+  if (!corps.length) return;
+
+  panel.hidden = false;
+  const stored = project.holders || {};
+  const logoOf = (name) => {
+    const v = stored[name] ?? stored[normOwner(name)];
+    return (v && typeof v === "object" ? v.logo : v) || "";
+  };
+
+  $("nbcount").textContent =
+    `${corps.length} compan${corps.length === 1 ? "y" : "ies"}`;
+  $("nblist").innerHTML = corps.map((o) => {
+    const logo = logoOf(o.owner);
+    return `<div class="nbrow" data-owner="${esc(o.owner)}">
+      <div class="nblogo">${logo
+        ? `<img src="${esc(logo)}" alt="">`
+        : `<span>${esc(initials(o.owner))}</span>`}</div>
+      <div class="grow">
+        <b>${esc(o.owner)}</b>
+        <span class="mono hint">${o.claims || 0} claim${o.claims === 1 ? "" : "s"}
+          · ${Math.round(o.ha || 0).toLocaleString()} ha</span>
+      </div>
+      <div class="row-actions">
+        <label class="btn sm">Logo<input type="file" accept="image/*" hidden
+          data-logo="${esc(o.owner)}"></label>
+        ${logo ? `<button class="btn sm danger" data-rmlogo="${esc(o.owner)}">Remove</button>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+
+  const initialsOf = initials;
+  $("nblist").querySelectorAll("[data-logo]").forEach((inp) => {
+    inp.onchange = async () => {
+      const f = inp.files?.[0];
+      if (!f) return;
+      try {
+        const data = await shrinkLogo(f);
+        await saveHolder(project, inp.dataset.logo, data);
+      } catch (e) { fail("Logo", e); }
+    };
+  });
+  $("nblist").querySelectorAll("[data-rmlogo]").forEach((b) => {
+    b.onclick = () => saveHolder(project, b.dataset.rmlogo, null);
+  });
+  void initialsOf;
+}
+
+function initials(name) {
+  const stop = /^(CORP|CORPORATION|INC|INCORPORATED|LTD|LIMITED|LLC|LLP|PLC|CO|COMPANY|THE|AND|OF)\.?$/i;
+  const w = (name || "").split(/[\s.,]+/).filter((x) => x && !stop.test(x));
+  return (w.slice(0, 2).map((x) => x[0]).join("") || "?").toUpperCase();
+}
+
+// Downscaled here rather than stored as uploaded. These live in a jsonb column
+// that ships inside the deck payload on every open, so a 900 KB press-kit PNG
+// would be paid for by every viewer, every time, to draw a 40 px square.
+function shrinkLogo(file, max = 160) {
+  return new Promise((res, rej) => {
+    if (!/^image\//.test(file.type)) return rej(new Error("That is not an image."));
+    if (file.size > 8 * 1024 * 1024) return rej(new Error("That image is over 8 MB."));
+    const fr = new FileReader();
+    fr.onerror = () => rej(new Error("Could not read that file."));
+    fr.onload = () => {
+      const im = new Image();
+      im.onerror = () => rej(new Error("Could not decode that image."));
+      im.onload = () => {
+        const s = Math.min(1, max / Math.max(im.width, im.height));
+        const cv = document.createElement("canvas");
+        cv.width = Math.max(1, Math.round(im.width * s));
+        cv.height = Math.max(1, Math.round(im.height * s));
+        // PNG, not JPEG: a logo on a dark card needs its transparency, and a
+        // white JPEG box around a wordmark looks like a mistake.
+        cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
+        res(cv.toDataURL("image/png"));
+      };
+      im.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+
+async function saveHolder(project, owner, logo) {
+  const holders = { ...(project.holders || {}) };
+  const key = normOwner(owner);
+  // Drop any legacy key for the same holder under different spacing, so the
+  // register's inconsistency cannot leave two entries fighting.
+  Object.keys(holders).forEach((k) => { if (normOwner(k) === key) delete holders[k]; });
+  if (logo) holders[key] = { logo };
+  const { error } = await db.from("projects").update({ holders }).eq("id", project.id);
+  if (error) return fail("Save logo", error);
+  project.holders = holders;
+  toast(logo ? "Logo saved" : "Logo removed");
+  route();
+}

@@ -27,7 +27,7 @@ collar/survey/assay CSVs replace the synthetic ones the same path serves them.
 If the drill manifest says synthetic:true the viewer stamps a permanent,
 non-dismissable warning — do not weaken that.
 """
-import csv, struct, base64, json, bisect, math
+import csv, struct, base64, json, bisect, math, re
 from collections import defaultdict
 from pathlib import Path
 
@@ -364,6 +364,7 @@ _tenure_p = ROOT / "data" / "bc_tenures_elk.geojson"
 REAL_CLAIMS: list = []
 CLAIMS_ATTRIB = ""
 CLAIMS_SUBJECT = ""
+
 if _tenure_p.exists():
     _tj = json.loads(_tenure_p.read_text())
     if _tj.get("synthetic") is True:                 # refuse to mislabel
@@ -387,6 +388,8 @@ if _tenure_p.exists():
                 "name": _p.get("CLAIM_NAME") or str(_p.get("TENURE_NUMBER_ID") or "Tenure"),
                 "tenure": _p.get("TENURE_NUMBER_ID"),
                 "owner": (_p.get("OWNER_NAME") or "").strip(),
+                "kind": _p.get("TENURE_TYPE_DESCRIPTION") or "",
+                "ha": round(float(_p.get("AREA_IN_HECTARES") or 0), 1),
                 # Whose ground this is. The issuer's tenure and a neighbour's
                 # must never render alike: a deck that draws someone else's
                 # claims in its own colour is claiming them.
@@ -1460,7 +1463,7 @@ let N=__N__,
       ZTOP=__ZTOP__, ZBOT=__ZBOT__;
 let CHAPTERS=__CHAPTERS__, RUNS=__RUNS__, BUCKETS=__BUCKETS__, VEINS=__VEINS__,
       LADDER=__LADDER__, CLASS_LABELS=__CLASS_LABELS__, CLASS_CONFIRMED=__CLASS_CONFIRMED__,
-      PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, REAL_CLAIMS=__REAL_CLAIMS__, CLAIMS_ATTRIB=__CLAIMS_ATTRIB__, CLAIMS_SUBJECT=__CLAIMS_SUBJECT__, GEOPHYS=__GEOPHYS__, GEOPHYS_SYNTHETIC=__GEOPHYS_SYNTHETIC__, STATIONS=__STATIONS__, DEPOSITS=__DEPOSITS__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
+      PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, REAL_CLAIMS=__REAL_CLAIMS__, CLAIMS_ATTRIB=__CLAIMS_ATTRIB__, CLAIMS_SUBJECT=__CLAIMS_SUBJECT__, HOLDER_LOGOS=__HOLDER_LOGOS__, GEOPHYS=__GEOPHYS__, GEOPHYS_SYNTHETIC=__GEOPHYS_SYNTHETIC__, STATIONS=__STATIONS__, DEPOSITS=__DEPOSITS__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
 // ---- projections -------------------------------------------------------
 // The viewer used to hard-code EPSG:26910 — NAD83 / UTM 10N, which is Elk
 // Gold's grid and nobody else's. Every project outside one zone of British
@@ -1798,6 +1801,74 @@ function holesFromArtifact(a, floor){
   });
   return out;
 }
+// Is this registered holder a company or a person?
+//
+// It matters more than it sounds. Of the sixteen holders around Elk Gold, ten
+// are private individuals — a public register is full of them. "A listed
+// copper company holds the ground along strike" is the fact an investor came
+// for; "RIPPON, DONALD JOHN holds three placer claims" is noise, and putting a
+// named private citizen in a callout on an investor deck is a thing to do
+// deliberately or not at all. Companies get a colour, a mark and their name.
+// People get a quiet outline and a line in an aggregate.
+//
+// A corporate suffix decides it; failing that, the register's own "SURNAME,
+// FIRST MIDDLE" comma says person. An unrecognised name with no comma is read
+// as a company, which is the safer error: a real company shown quietly is a
+// missed opportunity, a named individual is a decision nobody made.
+const CORP_RE=/\b(CORP|CORPORATION|INC|INCORPORATED|LTD|LIMITED|LLC|LLP|PLC|COMPANY|RESOURCES|MINERALS|METALS|MINING|EXPLORATION|VENTURES|HOLDINGS|GROUP|PARTNERSHIP|TRUST|SOCIETY|NATION|BAND|MUNICIPALITY|PROVINCE|CROWN)\b/i;
+const normOwner=x=>(x||'').trim().toUpperCase().replace(/\s+/g,' ');
+function isCorporate(name){
+  const n=(name||'').trim();
+  if(!n) return false;
+  if(CORP_RE.test(n)) return true;
+  return n.indexOf(',')<0;
+}
+
+// One holder per registered owner, from whatever claims we have — baked or
+// hydrated. Area is summed once per TENURE_NUMBER_ID, never once per ring: a
+// MultiPolygon claim arrives as several entries, and summing those would
+// report a holder as owning two or three times the ground the register says,
+// on the one slide whose whole subject is who owns what.
+function rollHolders(claims, subjectOwner){
+  const SUBJ=normOwner(subjectOwner);
+  const by={}, seen={};
+  (claims||[]).forEach(c=>{
+    const k=normOwner(c.owner);
+    if(!k) return;
+    const h=by[k]||(by[k]={owner:c.owner.trim(), claims:0, ha:0, rings:0,
+                           subject:SUBJ?k===SUBJ:!!c.subject,
+                           corporate:isCorporate(c.owner)});
+    h.rings++;
+    // COUNT and area both dedupe by tenure. A MultiPolygon claim arrives as
+    // several entries — Elk Gold's 29 registered claims are 30 rings — and
+    // counting rings put "30 claims" on a card next to a register that says
+    // 29. Area was already deduped; the count was not, which is the more
+    // visible of the two because it is the number in the caption.
+    const t=c.tenure==null?('r:'+k+':'+h.rings):('t:'+c.tenure);
+    if(!seen[t]){ seen[t]=1; h.claims++; h.ha+=(+c.ha||0); }
+  });
+  // Largest first, because the ranking drives colour assignment: the neighbour
+  // worth talking about should get the strongest one rather than whichever
+  // happened to come first out of the register.
+  return Object.keys(by).map(k=>by[k])
+    .map(h=>({...h, ha:Math.round(h.ha*10)/10}))
+    .sort((a,b)=>(a.subject?0:1)-(b.subject?0:1) ||
+                 (a.corporate?0:1)-(b.corporate?0:1) || b.ha-a.ha);
+}
+
+// Neighbour logos as supplied by the console, keyed the way the viewer
+// normalises owner names — a public register's spacing is not consistent and
+// an exact-string map would silently miss half the matches.
+function applyHolderLogos(project){
+  HOLDER_LOGOS={};
+  const hs=(project&&project.holders)||{};
+  Object.keys(hs).forEach(k=>{
+    const v=hs[k];
+    const url=(v&&typeof v==='object')?v.logo:v;
+    if(typeof url==='string'&&url) HOLDER_LOGOS[normOwner(k)]=url;
+  });
+}
+
 function claimsFromArtifact(a){
   return (a.rings||[]).map(r=>{
     const p=r.props||{};
@@ -1808,6 +1879,8 @@ function claimsFromArtifact(a){
             // nobody uploads their neighbour's claims — so it draws as
             // subject. Neighbours come from a register, not from a file.
             subject:true, neighbour:false,
+            kind:p.TENURE_TYPE_DESCRIPTION||'',
+            ha:+(p.AREA_IN_HECTARES||p.ha||0)||0,
             ll:r.ring.reduce((acc,c)=>{acc.push(c[0],c[1]);return acc;},[])};
   }).filter(c=>c.ll.length>=6);
 }
@@ -1973,6 +2046,7 @@ async function hydrate(token){
            'tonnage, grade or contained metal is reported.'}];
     if(payload.deck&&payload.deck.title){
       document.title=payload.deck.title+' · Orebody Present';
+      applyHolderLogos(payload.project);
       const bn2=document.querySelector('#brand .n');
       if(bn2){ bn2.textContent=payload.deck.title;
         const pn=(payload.project||{}).name;
@@ -2086,6 +2160,7 @@ async function hydrate(token){
   CHAPTERS=chs.length?chs:defaultChapters((payload.deck||{}).title);
   if(payload.deck&&payload.deck.title){
     document.title=payload.deck.title+' · Orebody Present';
+    applyHolderLogos(payload.project);
     // Built as nodes, not innerHTML. Deck and project names are tenant-authored
     // strings arriving over the wire; the one place they must never land is a
     // markup sink.
@@ -3831,6 +3906,43 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   // Clamped to terrain rather than floated at a guessed elevation, so they sit
   // on the actual ground the deposit is under.
   let siteEnts=null, siteOn=false, targetsOn=true;
+  // Holder logos, supplied and never scraped: a company's mark is its
+  // trademark, and generating one for a neighbour would put a fake identity on
+  // a real map. Decoded once at boot into a cache the card renderer can read
+  // synchronously; the site layer rebuilds when they land so a logo that
+  // arrives late still appears.
+  const LOGO_IMG={};
+  let logosReady=false;
+  function preloadLogos(){
+    const src=(typeof HOLDER_LOGOS==='object'&&HOLDER_LOGOS)||{};
+    const keys=Object.keys(src);
+    if(!keys.length){ logosReady=true; return Promise.resolve(); }
+    return Promise.all(keys.map(k=>new Promise(res=>{
+      const im=new Image();
+      im.onload=()=>{ LOGO_IMG[k.trim().toUpperCase().replace(/\s+/g,' ')]=im; res(); };
+      // A logo that will not decode is not worth failing a deck over. The card
+      // falls back to a monogram, which is what it does when none was supplied.
+      im.onerror=()=>res();
+      im.src=src[k];
+    }))).then(()=>{ logosReady=true; });
+  }
+
+  // Registers shout. "BARRANCO GOLD MINING CORP." set in caps on a card is the
+  // register's formatting, not a company's name as anyone writes it.
+  function titleCase(n){
+    const small=/^(and|of|the|de|du|von|van)$/i;
+    const acronym=/^(BC|USA|UK|NL|JV|II|III|IV)$/;
+    return (n||'').toLowerCase().replace(/\s+/g,' ').trim()
+      .split(' ').map((w,i)=>{
+        const up=w.toUpperCase().replace(/[^A-Z]/g,'');
+        if(acronym.test(up)) return w.toUpperCase();
+        if(i&&small.test(w)) return w;
+        return w.replace(/^[a-z]/,ch=>ch.toUpperCase());
+      }).join(' ')
+      .replace(/\bCorp\b\.?/,'Corp.').replace(/\bLtd\b\.?/,'Ltd.')
+      .replace(/\bInc\b\.?/,'Inc.');
+  }
+
   function buildSite(){
     if(siteEnts||!SITE.areas) return siteEnts;
     siteEnts=[];
@@ -3842,45 +3954,196 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     //
     // Already WGS84, so no proj4 hop — deg() is for the UTM site features.
     if(REAL_CLAIMS.length){
-      // The issuer's ground is gold and heavy; everyone else's is thin and
-      // grey, and carries the registered holder's name. Both are real tenure
-      // from the same public register, so neither is dashed — the distinction
-      // being drawn here is ownership, not certainty.
-      //
       // Naming the neighbour is the point. "A listed company holds the claims
-      // along strike" is often the most interesting thing on the map, and it
+      // along strike" is often the most interesting thing on this map, and it
       // is not something an issuer can assert about itself — only the register
       // can say it.
-      const seenOwner={};
-      REAL_CLAIMS.forEach(c=>{
-        const mine=c.subject||!c.neighbour;
+    const HOLDERS=rollHolders(REAL_CLAIMS, CLAIMS_SUBJECT);
+    // Who owns what, and the one thing this layer must never get wrong.
+    //
+    // `_subject` on a tenure means it OVERLAPS THE DEPOSIT EXTENT, not that we
+    // own it. Several neighbours do — Coast Copper's Home Brew sits right on
+    // the deposit. The old test was `c.subject || !c.neighbour`, so that claim
+    // rendered in the issuer's gold: the deck drew a competitor's ground as its
+    // own, immediately beside the orebody, on the slide about who holds what.
+    // Ownership is the owner name and nothing else. Where a supplied file
+    // declares no subject owner there is nothing to compare against, and the
+    // positional flags are the only thing left.
+    const norm=normOwner;
+    const SUBJ=norm(CLAIMS_SUBJECT);
+    const isMine=c=>SUBJ ? norm(c.owner)===SUBJ : (c.subject||!c.neighbour);
+
+    // A neighbour's palette. Cool tones only: it must share nothing with the
+    // grade ramp, which owns green through magenta, and nothing with the gold
+    // the issuer's own ground is drawn in. Assigned by rank, so the neighbour
+    // worth talking about gets the strongest colour rather than whichever
+    // happened to come first out of the register.
+    const NB_HUES=['#4EC9B0','#5B8DEF','#A78BFA','#22D3EE','#7FB77E','#C0A16B'];
+    const holderStyle={};
+    let hi_=0;
+    (HOLDERS||[]).filter(h=>!h.subject&&h.corporate)
+                 .forEach(h=>{ holderStyle[norm(h.owner)]=NB_HUES[hi_++%NB_HUES.length]; });
+    const hueFor=c=>isMine(c) ? '#F2C14E' : (holderStyle[norm(c.owner)] || '#7C8792');
+
+    // Trade-off worth stating: a company gets a coloured, filled parcel with
+    // its name on it; a private individual gets a grey outline and no name.
+    // Ten of the sixteen holders here are people. "A listed copper company
+    // holds the ground along strike" is what an investor came for; a named
+    // private citizen on an investor deck is a decision, not a default.
+    const corpSet={};
+    (HOLDERS||[]).forEach(h=>{ if(h.corporate) corpSet[norm(h.owner)]=1; });
+    const named=c=>!isMine(c) && !!corpSet[norm(c.owner)];
+
+    REAL_CLAIMS.forEach(c=>{
+      const mine=isMine(c), hue=hueFor(c), show=mine||named(c);
+      const pos=Cesium.Cartesian3.fromDegreesArray(c.ll);
+      // A filled parcel reads as ground somebody holds; a wire reads as a
+      // drawing. Kept very low so the terrain and the orebody still win.
+      if(show && !mine){
         siteEnts.push(viewer.entities.add({
-          name:c.name+(c.tenure?('  ·  tenure '+c.tenure):'')+
-               (c.owner?('  ·  '+c.owner):''),
-          polyline:{positions:Cesium.Cartesian3.fromDegreesArray(c.ll),
-            width:mine?2.5:1.4,clampToGround:true,
-            material:Cesium.Color.fromCssColorString(mine?'#F2C14E':'#8C948C')
-              .withAlpha(mine?1:0.75)}}));
-        // One label per neighbouring holder, not one per tenure — a company
-        // with nine claims would otherwise write its name nine times.
-        if(!mine && c.owner && !seenOwner[c.owner]){
-          seenOwner[c.owner]=1;
-          let mx=0,my=0; for(let i=0;i<c.ll.length;i+=2){mx+=c.ll[i];my+=c.ll[i+1];}
-          const n2=c.ll.length/2;
-          siteEnts.push(viewer.entities.add({
-            position:Cesium.Cartesian3.fromDegrees(mx/n2,my/n2,ZTOP+GEOID+90),
-            label:{text:c.owner,
-              font:'500 11px Archivo, system-ui, sans-serif',
-              fillColor:Cesium.Color.fromCssColorString('#C6CAC5'),
-              showBackground:true,
-              backgroundColor:new Cesium.Color(0.03,0.04,0.05,0.72),
-              backgroundPadding:new Cesium.Cartesian2(7,4),
-              verticalOrigin:Cesium.VerticalOrigin.BOTTOM,
-              scaleByDistance:new Cesium.NearFarScalar(2000,1.0,20000,0.4),
-              distanceDisplayCondition:new Cesium.DistanceDisplayCondition(0,26000),
-              disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
-        }
-      });
+          polygon:{hierarchy:pos,
+            material:Cesium.Color.fromCssColorString(hue).withAlpha(0.13),
+            classificationType:Cesium.ClassificationType.TERRAIN}}));
+      }
+      siteEnts.push(viewer.entities.add({
+        name:c.name+(c.tenure?('  ·  tenure '+c.tenure):'')+
+             (c.owner?('  ·  '+c.owner):''),
+        polyline:{positions:pos,
+          width:mine?2.6:(show?2.0:1.1), clampToGround:true,
+          material:Cesium.Color.fromCssColorString(hue)
+            .withAlpha(mine?1:(show?0.95:0.5))}}));
+    });
+
+    // ---- the callouts ------------------------------------------------------
+    // Composited to a canvas rather than assembled from a Cesium billboard
+    // plus two labels, because the layout is the point: a mark, a name and a
+    // figure, aligned, at a fixed size, that reads at a glance from across a
+    // room. Three stacked entities cannot be made to do that reliably.
+    function initials(name){
+      const stop=/^(CORP|CORPORATION|INC|INCORPORATED|LTD|LIMITED|LLC|LLP|PLC|CO|COMPANY|THE|AND|OF)\.?$/i;
+      const w=(name||'').split(/[\s.,]+/).filter(x=>x&&!stop.test(x));
+      return (w.slice(0,2).map(x=>x[0]).join('')||'?').toUpperCase();
+    }
+    const nf=n=>Math.round(n).toLocaleString();
+
+    function holderCard(title, sub, hue, img){
+      const R=Math.min(2, Math.max(1, devicePixelRatio||1));
+      const pad=12, logo=40, gap=12, h=64;
+      const m=document.createElement('canvas').getContext('2d');
+      m.font='600 15px Archivo, system-ui, sans-serif';
+      const wT=m.measureText(title).width;
+      m.font='500 11px "JetBrains Mono", monospace';
+      const wS=m.measureText(sub).width;
+      const w=Math.ceil(pad*2+logo+gap+Math.max(wT,wS)+4);
+      const cv=document.createElement('canvas');
+      cv.width=Math.ceil(w*R); cv.height=Math.ceil(h*R);
+      const g=cv.getContext('2d'); g.scale(R,R);
+      const round=(x,y,ww,hh,r)=>{ g.beginPath(); g.moveTo(x+r,y);
+        g.arcTo(x+ww,y,x+ww,y+hh,r); g.arcTo(x+ww,y+hh,x,y+hh,r);
+        g.arcTo(x,y+hh,x,y,r); g.arcTo(x,y,x+ww,y,r); g.closePath(); };
+      g.fillStyle='rgba(10,13,14,0.93)'; round(0.5,0.5,w-1,h-1,7); g.fill();
+      g.strokeStyle=hue; g.globalAlpha=0.55; g.lineWidth=1; g.stroke(); g.globalAlpha=1;
+      // Accent edge, so the card and the parcel it belongs to are obviously
+      // the same object even when they are far apart on screen.
+      g.fillStyle=hue; round(0.5,0.5,3.5,h-1,2); g.fill();
+      const lx=pad+2, ly=(h-logo)/2;
+      if(img){
+        g.save(); round(lx,ly,logo,logo,5); g.clip();
+        g.fillStyle='#FFFFFF'; g.fillRect(lx,ly,logo,logo);
+        // contain, not cover: a wordmark cropped to a square is unreadable and
+        // a logo distorted to fit is worse than no logo.
+        const s=Math.min(logo/img.width, logo/img.height);
+        const dw=img.width*s, dh=img.height*s;
+        g.drawImage(img, lx+(logo-dw)/2, ly+(logo-dh)/2, dw, dh);
+        g.restore();
+      } else {
+        // No mark supplied. A monogram in the holder's own colour, which is an
+        // honest placeholder — inventing a company's logo would be putting a
+        // fake identity on a real map.
+        g.fillStyle=hue; g.globalAlpha=0.22; round(lx,ly,logo,logo,5); g.fill();
+        g.globalAlpha=1; g.strokeStyle=hue; g.globalAlpha=0.5;
+        round(lx+0.5,ly+0.5,logo-1,logo-1,5); g.stroke(); g.globalAlpha=1;
+        g.fillStyle=hue; g.font='600 16px Archivo, system-ui, sans-serif';
+        g.textAlign='center'; g.textBaseline='middle';
+        g.fillText(initials(title), lx+logo/2, ly+logo/2+0.5);
+        g.textAlign='left'; g.textBaseline='alphabetic';
+      }
+      const tx=lx+logo+gap;
+      g.fillStyle='#EDEEEC'; g.font='600 15px Archivo, system-ui, sans-serif';
+      g.fillText(title, tx, 28);
+      g.fillStyle='#8C948C'; g.font='500 11px "JetBrains Mono", monospace';
+      g.fillText(sub, tx, 45);
+      return cv.toDataURL('image/png');
+    }
+
+    function placeCard(lon, lat, title, sub, hue, img, lift){
+      const base=Cesium.Cartesian3.fromDegrees(lon,lat,ZTOP+GEOID+40);
+      const top=Cesium.Cartesian3.fromDegrees(lon,lat,ZTOP+GEOID+330+(lift||0));
+      siteEnts.push(viewer.entities.add({polyline:{positions:[base,top],
+        width:1.1, arcType:Cesium.ArcType.NONE,
+        material:Cesium.Color.fromCssColorString(hue).withAlpha(0.55)}}));
+      siteEnts.push(viewer.entities.add({position:base,
+        point:{pixelSize:6, color:Cesium.Color.fromCssColorString(hue),
+               outlineColor:new Cesium.Color(0.04,0.05,0.06,0.9), outlineWidth:1.5,
+               disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+      siteEnts.push(viewer.entities.add({position:top,
+        billboard:{image:holderCard(title,sub,hue,img),
+          verticalOrigin:Cesium.VerticalOrigin.BOTTOM,
+          // The card is authored at 1x; the canvas is drawn at devicePixelRatio
+          // so it stays sharp, which means scaling it back down here.
+          scale:1/Math.min(2,Math.max(1,devicePixelRatio||1)),
+          scaleByDistance:new Cesium.NearFarScalar(4000,1.0,42000,0.85),
+          distanceDisplayCondition:new Cesium.DistanceDisplayCondition(0,60000),
+          disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+    }
+
+    // Centroid of every ring a holder owns, area-weighted by ring vertex count
+    // only as a tie-break — a plain mean of ring centroids puts the card on the
+    // holder's ground, which is all it has to do.
+    const centroids={};
+    REAL_CLAIMS.forEach(c=>{
+      const k=norm(c.owner); if(!k) return;
+      let x=0,y=0; for(let i=0;i<c.ll.length;i+=2){x+=c.ll[i];y+=c.ll[i+1];}
+      const n2=c.ll.length/2;
+      const e=centroids[k]||(centroids[k]={x:0,y:0,n:0});
+      e.x+=x/n2; e.y+=y/n2; e.n++;
+    });
+
+    (HOLDERS||[]).forEach(h=>{
+      if(h.subject || !h.corporate) return;
+      const k=norm(h.owner), ct=centroids[k];
+      if(!ct) return;
+      placeCard(ct.x/ct.n, ct.y/ct.n, titleCase(h.owner),
+                h.claims+(h.claims===1?' claim':' claims')+'  ·  '+nf(h.ha)+' ha',
+                holderStyle[k]||'#7C8792', LOGO_IMG[k]||null);
+    });
+
+    const me=(HOLDERS||[]).find(h=>h.subject);
+    if(me){
+      const ct=centroids[norm(me.owner)];
+      if(ct) placeCard(ct.x/ct.n, ct.y/ct.n, titleCase(me.owner),
+                       me.claims+(me.claims===1?' claim':' claims')+'  ·  '+nf(me.ha)+' ha',
+                       '#F2C14E', LOGO_IMG[norm(me.owner)]||null,
+                       // Clear of the site furniture, which sits at the
+                       // deposit — the same place this card's centroid lands.
+                       (SITE.labels||[]).length*130+260);
+    }
+
+    // Everyone else, as one card and no names. The register lists them; an
+    // investor deck does not need to.
+    const priv=(HOLDERS||[]).filter(h=>!h.subject&&!h.corporate);
+    if(priv.length){
+      let x=0,y=0,n=0;
+      priv.forEach(h=>{ const ct=centroids[norm(h.owner)];
+        if(ct){ x+=ct.x/ct.n; y+=ct.y/ct.n; n++; } });
+      if(n){
+        const claims=priv.reduce((s,h)=>s+h.claims,0);
+        const ha=priv.reduce((s,h)=>s+h.ha,0);
+        placeCard(x/n, y/n, 'Privately held',
+                  claims+' claims  ·  '+nf(ha)+' ha  ·  '+priv.length+' holders',
+                  '#7C8792', null);
+      }
+    }
     } else {
       // No tenure file baked: fall back to the fabricated ring, dashed, so the
       // deck still draws a boundary and still tells the truth about it.
@@ -3932,10 +4195,16 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
         width:4,clampToGround:true,
         material:Cesium.Color.fromCssColorString('#E8B33C').withAlpha(0.9)}})));
     // Labels on leader lines, the way a map annotation reads.
-    (SITE.labels||[]).forEach(l=>{
+    // Every one of these declares its own dz, and from a plan view several of
+    // them project to nearly the same point on screen — four captions stacked
+    // on one another in the middle of the deposit, which is where the eye goes
+    // first. Fanned by index so they at least miss each other, on top of
+    // whatever height the feature asked for.
+    (SITE.labels||[]).forEach((l,li)=>{
       const ll=proj4(PROJ,'WGS84',l.at);
+      const fan=li*70;
       const base=Cesium.Cartesian3.fromDegrees(ll[0],ll[1],ZTOP+GEOID-40);
-      const tip=Cesium.Cartesian3.fromDegrees(ll[0],ll[1],ZTOP+GEOID+(l.dz||250));
+      const tip=Cesium.Cartesian3.fromDegrees(ll[0],ll[1],ZTOP+GEOID+(l.dz||250)+fan);
       siteEnts.push(viewer.entities.add({polyline:{positions:[base,tip],width:1,
         material:Cesium.Color.WHITE.withAlpha(.42),arcType:Cesium.ArcType.NONE}}));
       siteEnts.push(viewer.entities.add({position:tip,
@@ -3945,11 +4214,26 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
           backgroundColor:new Cesium.Color(0.03,0.04,0.05,0.82),
           backgroundPadding:new Cesium.Cartesian2(9,6),
           verticalOrigin:Cesium.VerticalOrigin.BOTTOM,
+          // World-space separation does almost nothing from directly overhead,
+          // which is exactly the chapter these labels pile up on: a 250 m
+          // difference in height projects to a few pixels at a pitch of -90.
+          // The screen-space offset is what actually keeps them apart there.
+          pixelOffset:new Cesium.Cartesian2(0,-li*30),
           disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
     });
     return siteEnts;
   }
   const showSite=on=>{ if(on) buildSite(); if(siteEnts) siteEnts.forEach(e=>e.show=on); };
+  // Logos decode asynchronously and the cards are drawn synchronously, so a
+  // layer built before they land would show monograms forever. Drop it once
+  // and let the next showSite rebuild with the marks in place.
+  preloadLogos().then(()=>{
+    if(!siteEnts||!Object.keys(LOGO_IMG).length) return;
+    const was=siteOn;
+    siteEnts.forEach(e=>viewer.entities.remove(e));
+    siteEnts=null;
+    if(was) showSite(true);
+  });
 
   // ---- geophysics: a survey that was never flown ------------------------
   // FABRICATED, and structurally so: the field is synthesised from the block
@@ -6868,6 +7152,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     chapter:(n)=>CHAPTERS[n],
     capture:()=>({camera:captureCamera(), layers:captureLayers()}),
     transition:previewTransition,
+    holders:()=>rollHolders(REAL_CLAIMS, CLAIMS_SUBJECT),
     areas:()=>({auth:areasAuth.length, local:areas.length,
                 stored:Object.keys(areasLocal).length, pts:areaPts.length, mode:areaMode,
                 labels:areasAuth.concat(areas).map(a=>a.label)}),
@@ -6970,6 +7255,10 @@ for k, v in {
     "__SITE__": js(SITE),
     "__SITE_SYNTHETIC__": "true" if SITE_SYNTHETIC else "false",
     "__REAL_CLAIMS__": js(REAL_CLAIMS),
+    # Logos are supplied, never scraped. A company's mark is its trademark, and
+    # inventing one for a neighbour would put a fake identity on a real map.
+    # Absent, the viewer draws a monogram instead.
+    "__HOLDER_LOGOS__": js({}),
     "__CLAIMS_ATTRIB__": js(CLAIMS_ATTRIB),
     "__CLAIMS_SUBJECT__": js(CLAIMS_SUBJECT),
     "__DRILL_SYNTHETIC__": "true" if DRILL_SYNTHETIC else "false",

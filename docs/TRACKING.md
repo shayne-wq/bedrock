@@ -278,6 +278,50 @@ them. Authoring becomes curation rather than construction.
 
 ## Log
 
+- **2026-08-09** — **Neighbouring assets.** Companies whose tenure surrounds
+  the project now render as assets in their own right: a colour, a filled
+  parcel, and a callout carrying a mark, the registered name and the figures —
+  `Barranco Gold Mining Corp. · 5 claims · 2,228 ha`. Cards are composited to a
+  canvas rather than assembled from a billboard plus two labels, because the
+  layout is the point and three stacked entities cannot be made to align.
+
+  **Two bugs, and the first is the reason this layer needs care.** `_subject`
+  on a tenure means it OVERLAPS THE DEPOSIT EXTENT, not that we own it — and
+  Coast Copper's Home Brew claim sits right on the deposit. The test was
+  `c.subject || !c.neighbour`, so that claim rendered in the issuer's gold: the
+  deck drew a competitor's ground as its own, next to the orebody, on the slide
+  about who holds what. Ownership is the registered owner name and nothing
+  else. Second: claim COUNTS were per ring rather than per tenure, so Elk
+  Gold's 29 registered claims were captioned as 30. Area was already deduped;
+  the count was not, and the count is the number in the caption.
+
+  **A judgement, stated because it is one.** Ten of the sixteen holders here
+  are private individuals. Companies get a colour, a mark and their name;
+  people get a quiet outline and one aggregate card reading *Privately held ·
+  16 claims · 6,272 ha · 11 holders*. "A listed copper company holds the ground
+  along strike" is what an investor came for; a named private citizen on an
+  investor deck is a decision, not a default.
+
+  Logos are **supplied, never fetched** — a company's mark is its trademark,
+  and putting one we found beside real tenure would be an identity we invented
+  on a real map. Uploaded per holder in the console (downscaled to 160 px, PNG
+  so wordmarks keep their transparency), stored on `projects.holders`, signed
+  through the deck payload. Absent, the card draws a monogram, which is honest
+  about being a placeholder.
+
+  The rollup moved out of the Python bake into the viewer, so a hydrated
+  customer deck gets the same layer the demo does rather than a second
+  implementation that drifts. Ingest computes the same rollup so the console
+  can offer a logo slot without re-reading the boundary file.
+
+  Also: the conceptual site captions were stacking on one point in plan view.
+  Fanned in screen space, because a world-space offset projects to nothing at a
+  pitch of −90, which is precisely the chapter they pile up on.
+
+  16 holder assertions — including that Coast Copper is not drawn as ours, that
+  areas and counts match the register, and that gold appears only on the
+  issuer's own rings. Full regression green.
+
 - **2026-08-09** — **Embedding, per destination.** Four places people actually
   want to put a deck, and they want four different things: WordPress and
   Elementor take markup, Wix and Notion take a bare URL, PowerPoint takes a URL

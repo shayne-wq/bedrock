@@ -428,3 +428,15 @@ tbody tr:last-child td { border-bottom: 0; }
       white-space:pre-wrap;word-break:break-all;color:#9fd8c8;margin:0 0 12px}
 .steps{margin:8px 0 12px;padding-left:20px;color:var(--ink-2);font-size:13px;line-height:1.7}
 .steps li{margin-bottom:4px}
+
+/* ---- neighbouring holders ---------------------------------------------- */
+.nbrow{display:flex;align-items:center;gap:12px;padding:10px 0;
+       border-bottom:1px solid rgba(255,255,255,.06)}
+.nbrow:last-child{border-bottom:0}
+.nbrow b{display:block;font-size:13.5px;color:#EDEEEC;font-weight:500}
+.nbrow .hint{display:block;font-size:10.5px;margin-top:2px}
+.nblogo{flex:0 0 auto;width:40px;height:40px;border-radius:5px;overflow:hidden;
+        display:flex;align-items:center;justify-content:center;
+        background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10)}
+.nblogo img{max-width:100%;max-height:100%;object-fit:contain;background:#fff}
+.nblogo span{font-family:var(--mono);font-size:13px;color:#C99A3A;letter-spacing:.04em}
