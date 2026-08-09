@@ -406,3 +406,28 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# ---- edge functions -------------------------------------------------------
+# Which functions the platform may serve WITHOUT a JWT, declared here rather
+# than left to whoever last typed the deploy command.
+#
+# This file is the reason: `deck`, `track` and `diag` are reached by anonymous
+# viewers — a share link is opened by people who have no account and never
+# will — and they were public only because someone had once deployed them with
+# --no-verify-jwt. A later `supabase functions deploy deck` without the flag
+# silently re-armed the gate and 401'd every live share link in the wild, with
+# nothing in the repo to say it should not have.
+#
+# Each of these does its own authorisation on the token in the URL. `tenure` is
+# deliberately absent: it is a console feature and must stay signed-in.
+[functions.deck]
+verify_jwt = false
+
+[functions.track]
+verify_jwt = false
+
+[functions.diag]
+verify_jwt = false
+
+[functions.tenure]
+verify_jwt = true
