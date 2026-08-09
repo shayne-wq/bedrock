@@ -17,6 +17,11 @@ Purpose is the same as the VRIFY audit: feature parity and better craft for
 Orebody. We match capability and craft; we do not copy their name, wordmark,
 marketing copy, or their customers' project data.
 
+**One item below is upgraded from inference to confirmed**: the homepage's
+regional/surrounding-assets treatment, reported firsthand after direct
+viewing (2026-08-09) — see "Audit 2 — confirmed" below. Everything else
+keeps its original reconstructed-not-hands-on status.
+
 ---
 
 ## Audit 1 — product surfaces
@@ -36,6 +41,27 @@ sales," "Watch demos." This implies **some self-serve tier exists** —
 notably different from the fully sales-led motion the VRIFY audit describes
 (VRIFY's own `/ai-demo` page is "a booking form with no product in it"). Worth
 confirming firsthand; automated page summaries can misread nav structure.
+
+### Confirmed by direct viewing (2026-08-09) — the homepage's regional treatment
+
+Unlike everything else in this document, this was reported firsthand after
+directly viewing `terrahutton.io`, not reconstructed from search results:
+
+**The homepage shows surrounding assets and claims, and lets the user upload
+logos for neighboring companies so investors can see at a glance what's
+around the project.** This sharpens what the AntaKori/Regulus post implied
+(district-consolidation framing, "convergence of demand, infrastructure and
+M&A opportunity") into an actual described mechanism: it isn't just camera
+framing or a text callout — a neighboring operator's **brand/logo** is
+placed on the map at their claim, so the district reads visually (whose
+ground is whose, at a glance) rather than requiring the viewer to read
+owner-name labels.
+
+**This is the single most concrete, confirmed capability in this whole
+audit** — everything else here is inferred from copy; this is a described
+product mechanism. It also directly answers the open question this audit's
+first pass couldn't resolve (what "district/M&A positioning" actually looks
+like as a UI, not just a marketing phrase).
 
 ---
 
@@ -155,12 +181,16 @@ that market — just apparently more recently than VRIFY has.
 
 ## Gap analysis vs Orebody
 
-**Where Terrahutton may be ahead (confirmed claim or plausible inference):**
-- **District/M&A strategic-positioning as a named, marketed feature.**
-  Orebody's viewer renders property, tenure, and surrounding claims, but
-  nothing in the codebase explicitly narrates a neighboring operator's
-  mine-life stage or an M&A thesis as a chapter/feature. Worth considering
-  as a chapter type.
+**Where Terrahutton is ahead — confirmed, not inferred:**
+- **Neighbor branding on the surrounding-claims map.** Orebody already
+  renders real surrounding tenure as solid polygons with an owner-name text
+  label (`data/bc_tenures_elk.geojson`, `SITE.claims` in the viewer — e.g.
+  the neighboring "Home Brew" claim owned by "COAST COPPER CORP." in the
+  Elk Gold demo data). Terrahutton goes further: **the user can upload a
+  logo for a neighboring company**, so the district map shows whose ground
+  is whose visually rather than by reading a text label. Same underlying
+  data (property polygons + owner), a materially better presentation of it.
+  Tracked as issue #9.
 - **Per-client subdomain/branding** (`<client>.terrahutton.io`) may read as
   more "their own site" to a customer than a share-token URL off
   `orebody-fawn.vercel.app`. A custom-domain or white-label option is a

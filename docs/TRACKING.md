@@ -27,6 +27,12 @@ projects hold **multiple zones**, each with its own block model, drills,
 surfaces, property and geophysics; a deck records the zones it spans. The
 **authoring/upload path is done**; the viewer still renders a single deposit.
 
+Competitive audits: `docs/vrify-audit.md` (hands-on, feature-complete) and
+`docs/terrahutton-audit.md` (mostly reconstructed from marketing copy — the
+domain is network-blocked from this session — except one directly-viewed,
+confirmed feature: neighbor logos on the surrounding-claims map, tracked as
+#9 below).
+
 ---
 
 ## P0 — exploration blockers
@@ -49,6 +55,11 @@ surfaces, property and geophysics; a deck records the zones it spans. The
   <https://github.com/shayne-wq/orebody/issues/4>
 - [ ] 🔴 **#5 — Geochemistry dataset kind** (soil / rock / stream sediment).
   <https://github.com/shayne-wq/orebody/issues/5>
+- [ ] 🔴 **#9 — Neighbor/competitor logos on surrounding claims.** Upload a
+  logo per neighboring operator so the district map shows whose ground is
+  whose visually, not just a text label. Confirmed-by-viewing feature from
+  the Terrahutton audit — the one fully hands-on-verified finding in it.
+  <https://github.com/shayne-wq/orebody/issues/9>
 
 ## P2 — parsing & authoring polish
 
