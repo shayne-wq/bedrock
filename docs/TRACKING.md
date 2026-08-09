@@ -73,6 +73,20 @@ confirmed feature: neighbor logos on the surrounding-claims map, tracked as
 
 ---
 
+## Phase 2 — enhanced maps & terrain realism (deferred by design)
+
+Ship what exists now; this is its own phase, not mixed into the backlog
+above. Bundles sun-synced lighting/shadows/fog (needs real visual QA before
+shipping — this sandbox can't render-test Cesium changes), a Cesium ion
+evaluation (pricing researched 2026-08-09, see the issue), customer-uploaded
+imagery/terrain draped over the property extent (reuses the existing
+colour-pop masking mechanism), and reality-capture mesh as the ceiling.
+
+- [ ] 🔴 **#10 — Enhanced maps & terrain realism.**
+  <https://github.com/shayne-wq/orebody/issues/10>
+
+---
+
 ## Data the deck can consume (per zone)
 
 | Dataset | Required (resource) | Required (exploration) | Format | Notes |
