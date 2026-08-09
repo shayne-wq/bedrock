@@ -1449,6 +1449,14 @@ HTML = r"""<!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/proj4@2.11.0/dist/proj4.js"
         integrity="sha384-BIsA8GBrihzaRmijjpqTCihj8D5Vox3hyBFg9sJiTGAEOv6KusZ8QOCKbTFEAfhm"
         crossorigin="anonymous"></script>
+<!-- Polygon union, for dissolving a holder's tenure into one outline. A
+     company with nine adjacent cell claims should read as one property, not as
+     nine rectangles with the internal fences drawn in. Optional: if it fails
+     to load the claims layer falls back to drawing each tenure separately,
+     which is what it did before. -->
+<script src="https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/dist/polygon-clipping.umd.js"
+        integrity="sha384-1rzjf0+iuELMhFIrp9iYaamoIVLnUjHj93MbKlIsn5PnIJDXT7ynaE0i6IhYsOOV"
+        crossorigin="anonymous"></script>
 <script>
 // `let`, not `const`, for everything the model determines.
 //
@@ -4084,24 +4092,71 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     (HOLDERS||[]).forEach(h=>{ if(!h.subject&&featured(h)) featSet[norm(h.owner)]=1; });
     const named=c=>!isMine(c) && !!featSet[norm(c.owner)];
 
-    REAL_CLAIMS.forEach(c=>{
-      const mine=isMine(c), hue=hueFor(c), show=mine||named(c);
-      const pos=Cesium.Cartesian3.fromDegreesArray(c.ll);
-      // A filled parcel reads as ground somebody holds; a wire reads as a
-      // drawing. Kept very low so the terrain and the orebody still win.
-      if(show && !mine){
-        siteEnts.push(viewer.entities.add({
-          polygon:{hierarchy:pos,
-            material:Cesium.Color.fromCssColorString(hue).withAlpha(0.13),
-            classificationType:Cesium.ClassificationType.TERRAIN}}));
+    // Dissolve each holder's tenure into one outline.
+    //
+    // A company with twenty-nine adjacent cell claims was drawn as
+    // twenty-nine rectangles, and what an audience saw was a grid of internal
+    // fences. Nobody holds "twenty-nine rectangles" — they hold one property,
+    // and the line that matters is the one around the outside of it. The
+    // internal boundaries are an artefact of how a registry issues ground, not
+    // a fact about the asset.
+    //
+    // The union is real, not a convex hull or a buffer: a holder whose ground
+    // is in two disconnected pieces draws as two pieces, and one whose claims
+    // ring a gap they do not own draws with the hole in it. Both happen here.
+    function dissolve(list){
+      const polys=[];
+      list.forEach(c=>{
+        const ring=[];
+        for(let i=0;i<c.ll.length;i+=2) ring.push([c.ll[i],c.ll[i+1]]);
+        if(ring.length>=3) polys.push([ring]);
+      });
+      if(!polys.length) return [];
+      // No library, or a degenerate geometry it refuses: fall back to the
+      // individual claims. A layer that draws the fences is worse-looking; a
+      // layer that draws nothing is a missing slide.
+      if(typeof polygonClipping==='undefined') return polys;
+      try{ return polygonClipping.union(polys[0], ...polys.slice(1)); }
+      catch(e){
+        console.warn('Orebody: could not dissolve tenure for one holder — '+
+                     'drawing the claims individually.', e);
+        return polys;
       }
-      siteEnts.push(viewer.entities.add({
-        name:c.name+(c.tenure?('  ·  tenure '+c.tenure):'')+
-             (c.owner?('  ·  '+c.owner):''),
-        polyline:{positions:pos,
-          width:mine?2.6:(show?2.0:1.1), clampToGround:true,
-          material:Cesium.Color.fromCssColorString(hue)
-            .withAlpha(mine?1:(show?0.95:0.5))}}));
+    }
+
+    const byHolder={};
+    REAL_CLAIMS.forEach(c=>{ const k=norm(c.owner)||'\u0000'; (byHolder[k]=byHolder[k]||[]).push(c); });
+
+    Object.keys(byHolder).forEach(k=>{
+      const list=byHolder[k], c0=list[0];
+      const mine=isMine(c0), hue=hueFor(c0), show=mine||named(c0);
+      const label=(c0.owner?titleCase(c0.owner):'Tenure')+
+        '  ·  '+list.length+(list.length===1?' claim':' claims');
+      dissolve(list).forEach(poly=>{
+        // Ring 0 is the outside; the rest are holes in it.
+        const outer=poly[0]; if(!outer||outer.length<3) return;
+        const flat=r=>{const a=[];r.forEach(pt=>{a.push(pt[0],pt[1]);});return a;};
+        if(show && !mine){
+          const hier=new Cesium.PolygonHierarchy(
+            Cesium.Cartesian3.fromDegreesArray(flat(outer)),
+            poly.slice(1).map(h=>new Cesium.PolygonHierarchy(
+              Cesium.Cartesian3.fromDegreesArray(flat(h)))));
+          siteEnts.push(viewer.entities.add({name:label,
+            polygon:{hierarchy:hier,
+              material:Cesium.Color.fromCssColorString(hue).withAlpha(0.13),
+              classificationType:Cesium.ClassificationType.TERRAIN}}));
+        }
+        // Every ring gets a line, holes included — a doughnut of claims with
+        // an undrawn hole reads as ground the holder owns and does not.
+        poly.forEach(ring=>{
+          if(ring.length<3) return;
+          siteEnts.push(viewer.entities.add({name:label,
+            polyline:{positions:Cesium.Cartesian3.fromDegreesArray(flat(ring)),
+              width:mine?2.8:(show?2.2:1.2), clampToGround:true,
+              material:Cesium.Color.fromCssColorString(hue)
+                .withAlpha(mine?1:(show?0.95:0.5))}}));
+        });
+      });
     });
 
     // ---- the callouts ------------------------------------------------------

@@ -71,26 +71,43 @@ await pg.evaluate(() => window.__api.go(11));   // site layer on
 await pg.waitForTimeout(9000);
 const drawn = await pg.evaluate(() => {
   const v = window.__viewer, t = v.clock.currentTime;
-  let cards = 0, fills = 0, gold = 0;
+  let cards = 0, fills = 0, gold = 0, goldVerts = 0, rippon = 0;
   v.entities.values.forEach((e) => {
     if (e.billboard) cards++;
     if (e.polygon) fills++;
     if (e.polyline && e.polyline.material && e.polyline.material.color) {
       const c = e.polyline.material.color.getValue(t);
-      if (c && Math.abs(c.red - 0.949) < 0.02 && Math.abs(c.green - 0.757) < 0.02) gold++;
+      if (c && Math.abs(c.red - 0.949) < 0.02 && Math.abs(c.green - 0.757) < 0.02) {
+        gold++;
+        const p = e.polyline.positions.getValue(t);
+        if (p && p.length > goldVerts) goldVerts = p.length;
+      }
     }
+    if (/Rippon/i.test(e.name || "") && e.polyline) rippon++;
   });
-  return { cards, fills, gold };
+  return { cards, fills, gold, goldVerts, rippon };
 });
+const drawnVerts = drawn.goldVerts;
+const splitParts = drawn.rippon;
 const corps = H.filter((h) => !h.subject && h.corporate).length;
 ok("one card per company, plus the issuer, plus one for the rest",
    drawn.cards === corps + 2, `${drawn.cards} cards, ${corps} companies`);
 ok("neighbouring parcels are filled", drawn.fills > 0, String(drawn.fills));
-ok("the issuer's ground is drawn gold", drawn.gold >= 29, String(drawn.gold));
-// 30 rings for 29 registered claims — one is a MultiPolygon, and drawing both
-// its rings is correct. Plus the issuer's own callout leader, also gold.
-ok("gold is drawn for the issuer's rings and nothing else", drawn.gold === 31,
-   String(drawn.gold));
+ok("the issuer's ground is drawn gold", drawn.gold >= 1, String(drawn.gold));
+// The dissolve is the point of this block. Elk Gold holds 29 adjacent cell
+// claims; drawn separately that is 30 gold rectangles and an audience sees a
+// grid of internal fences. Dissolved it is ONE outline — plus the callout's
+// own leader line, which is also gold.
+ok("the issuer's claims are dissolved into one outline", drawn.gold === 2,
+   `${drawn.gold} gold lines for 29 claims`);
+ok("and the outline is the union, not a box around everything", (() => {
+  // A convex hull or a bounding box would have four or five vertices. The real
+  // union of 29 cell claims is a staircase.
+  const v = drawnVerts;
+  return v > 20 && v < 200;
+})(), String(drawnVerts) + " vertices");
+ok("a holder whose ground is in two pieces still draws two",
+   splitParts >= 2, `Rippon drew ${splitParts} parts`);
 
 console.log("\n== author overrides");
 // Feature toggles, callout notes and the issuer's own mark are the only parts
