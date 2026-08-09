@@ -1629,6 +1629,44 @@ function toast(msg,ms){$('toast').textContent=msg;$('toast').classList.add('on')
 // Everything anyone needs to tell us why a deck did not open, in one tap.
 // Reading a stack off a phone screen and retyping it is why three reports in a
 // row arrived without one.
+// Where a failure reports itself. Fixed rather than derived from ?api,
+// because the whole point is that it works on a deck opened with no
+// parameters at all — which is every deck anyone is actually sent.
+const DIAG_URL='https://czuaqwtngduvlisxonkh.supabase.co/functions/v1/diag';
+let diagSent=false;
+// Reports ONLY on failure. Never on a load that worked. Carries the boot
+// phase, the error, the user agent, screen geometry and whether WebGL exists —
+// enough to reproduce a rendering failure, and nothing about who is looking or
+// what they are looking at.
+function reportFailure(message, stack){
+  if(diagSent) return; diagSent=true;
+  try{
+    const body=JSON.stringify({
+      phase:BOOT_PHASE, message:String(message||'').slice(0,500),
+      stack:String(stack||'').slice(0,3000),
+      ua:navigator.userAgent, build:'__SWVER__',
+      screen:screen.width+'x'+screen.height, dpr:window.devicePixelRatio||1,
+      online:navigator.onLine, memory:navigator.deviceMemory||null,
+      href:location.origin+location.pathname,
+      webgl:(()=>{try{const c=document.createElement('canvas');
+        return c.getContext('webgl2')?'webgl2':c.getContext('webgl')?'webgl1':'none';}
+        catch(e){return 'threw';}})(),
+    });
+    // sendBeacon survives the page going away; fetch is the fallback for
+    // browsers that refuse a beacon of this type.
+    // text/plain, not application/json. JSON is not a CORS-safelisted content
+    // type, so a beacon carrying it needs a preflight — and sendBeacon cannot
+    // preflight. It returns true, the request is dropped, and nothing ever
+    // arrives. The body is still JSON; the function reads it with .text() and
+    // parses it, so the header buys nothing and costs the whole report.
+    const blob=new Blob([body],{type:'text/plain;charset=UTF-8'});
+    if(!navigator.sendBeacon||!navigator.sendBeacon(DIAG_URL,blob)){
+      fetch(DIAG_URL,{method:'POST',headers:{'content-type':'text/plain'},
+                      body:body,keepalive:true,mode:'cors'}).catch(()=>{});
+    }
+  }catch(e){}
+}
+
 function diagnostics(extra){
   return ['Orebody diagnostics',
     'phase: '+BOOT_PHASE,
@@ -1702,6 +1740,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     if(why) why.textContent='Still working on: '+BOOT_PHASE+
       '. On a slow connection the model can take a while — or something is stuck.';
     if(act) act.classList.add('on');
+    reportFailure('boot stalled past the watchdog','');
   },20000);
   const stopWatchdog=()=>{ booted=true; clearTimeout(watchdog); };
   try{
@@ -1754,6 +1793,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     const st=$('status'); if(st){ st.className=''; st.textContent=''; }
     toast(why+' — showing the text version of the deck',9000);
     console.warn('Orebody: '+why+'; rendered as text instead.');
+    reportFailure(why,'');
   }
 
   bootPhase('contacting terrain and imagery services');
@@ -5516,6 +5556,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     console.error('Orebody boot failed during "'+BOOT_PHASE+'"');
     console.error(e);
     if(e&&e.stack) console.error(e.stack);
+    reportFailure(msg, e&&e.stack);
   }catch(_){}
   // On screen as well as in the console: most people who hit this are on a
   // phone or in someone else's meeting and will never open devtools, and
