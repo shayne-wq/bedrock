@@ -151,17 +151,68 @@ function spacingProfile(values) {
   // Share of gaps that ARE the mode, exactly. Larger gaps are holes in the
   // grid and are expected; the number is a texture measure, not a verdict.
   //
-  // Be clear about what this cannot do: a 2.5 m sub-block inside a 10 m parent
-  // produces gaps of 2.5 and 10, which is indistinguishable by coordinates
-  // alone from a 2.5 m grid with holes. Detected on a synthetic case and it
-  // sailed through at share 1.00. Coordinates cannot answer this question —
-  // per-block dimension columns can, and that is the signal the refusal
-  // actually rests on.
+  // What the SHARE cannot do: a 2.5 m sub-block inside a 10 m parent produces
+  // gaps of 2.5 and 10, which by gap size alone is indistinguishable from a
+  // 2.5 m grid with holes. That was true, and it was where this stopped.
+  //
+  // It is not where the evidence stops. See latticeProfile below: the gaps
+  // cannot tell the two apart, but the CENTRES can.
   let exact = 0;
   for (const [d, c] of counts) if (Math.abs(d - best) < 1e-6) exact += c;
   return { value: best, share: total ? exact / total : 0 };
 }
 function spacing(values) { return spacingProfile(values).value; }
+
+/** Do these coordinates sit on ONE lattice of the given pitch?
+ *
+ *  This is the signal the gap histogram misses, and it is decisive for the
+ *  case this detector previously documented as undetectable.
+ *
+ *  On a uniform grid every centre is origin + pitch x k, so every coordinate
+ *  leaves the SAME remainder modulo the pitch. One residual class, always,
+ *  however many holes the grid has — a hole removes a centre, it does not
+ *  move the survivors off the lattice.
+ *
+ *  Sub-block a 10 m parent into 2.5 m children and the children's centres are
+ *  at 1.25, 3.75, 6.25, 8.75 while the surviving parent's centre is at 5.0.
+ *  Modulo 2.5 that is 1.25 for every child and 0.0 for the parent: two
+ *  classes, and no amount of holes in a real grid produces a second one.
+ *
+ *  The honest limit is the factor, not the method. A parent that is an ODD
+ *  multiple of the child — 7.5 m over 2.5 m — puts the parent centre back on
+ *  a child centre and this sees one class again. Sub-blocking is nearly always
+ *  by two or four, so this catches the common case and misses an uncommon one;
+ *  `ragged` still flags that as uncertain rather than passing it as clean.
+ *
+ *  @returns {{classes:number, offGrid:number}} how many residual classes, and
+ *  the share of coordinates NOT in the largest one.
+ */
+function latticeProfile(values, pitch) {
+  if (!(pitch > 0) || values.length < 8) return { classes: 1, offGrid: 0 };
+  // Not Math.min(...values): a 40,000-row sample is past the argument limit
+  // and would throw rather than answer.
+  let base = Infinity;
+  for (const v of values) if (v < base) base = v;
+  // A hundredth of a cell. Survey coordinates carry rounding; a second class
+  // 1.25 m away from the first is a different cell size, and 0.001 m is float.
+  const tol = Math.max(pitch / 100, 1e-6);
+  const res = new Array(values.length);
+  for (let i = 0; i < values.length; i++) {
+    let r = ((values[i] - base) % pitch + pitch) % pitch;
+    if (pitch - r < tol) r = 0;               // just under the pitch is zero
+    res[i] = r;
+  }
+  res.sort((a, b) => a - b);
+  let classes = 0, biggest = 0, start = 0;
+  for (let i = 1; i <= res.length; i++) {
+    if (i === res.length || res[i] - res[start] > tol) {
+      classes++;
+      if (i - start > biggest) biggest = i - start;
+      start = i;
+    }
+  }
+  return { classes, offGrid: 1 - biggest / res.length };
+}
 
 /** Read a sample to infer block dimensions and a representative density.
  *
@@ -210,11 +261,44 @@ export async function probe(lines, mapping, sampleRows = 40000) {
   // legitimate patchy model would be its own kind of wrong.
   const dimCols = !!(m.dimX && m.dimY && m.dimZ);
   const ragged = Math.min(px.share, py.share, pz.share) < 0.55;
+
+  // The third signal, and the one that closes the documented hole. A uniform
+  // grid puts every centre in one residual class per axis; two classes means
+  // two cell sizes in the same file, which is sub-blocking by definition.
+  //
+  // One percent, not zero: a handful of rows can be off-lattice for dull
+  // reasons — a truncated coordinate, a hand-edited row — and refusing an
+  // entire model over four bad rows would be its own kind of wrong.
+  const lx = latticeProfile(xs, px.value);
+  const ly = latticeProfile(ys, py.value);
+  const lz = latticeProfile(zs, pz.value);
+  const offGrid = Math.max(lx.offGrid, ly.offGrid, lz.offGrid);
+  const offLattice = offGrid > 0.01;
+
+  // What the user is told, in the order the evidence is worth. `uncertain` is
+  // deliberately its own verdict: the issue this closes asked for the
+  // uncertainty to be visible rather than collapsed into a yes or a no, and a
+  // patchy-but-uniform model is a real thing people load.
+  const reasons = [];
+  if (dimCols) reasons.push("the file carries per-block dimension columns");
+  if (offLattice) {
+    reasons.push(`${Math.round(offGrid * 100)}% of block centres do not sit on ` +
+                 "the same grid as the rest, which means more than one cell size");
+  }
+  if (!dimCols && !offLattice && ragged) {
+    reasons.push("block spacing is irregular — which can be a patchy grid, or " +
+                 "sub-blocking on an odd factor that the centre test cannot see");
+  }
+  const verdict = (dimCols || offLattice) ? "sub-blocked"
+                : ragged ? "uncertain" : "uniform";
+
   return {
     header, mapping: m, sampled: n,
     dx: px.value, dy: py.value, dz: pz.value,
     spacingShare: { x: px.share, y: py.share, z: pz.share },
-    dimCols, ragged, subBlocked: dimCols,
+    offGrid, offLattice, latticeClasses: Math.max(lx.classes, ly.classes, lz.classes),
+    uniformity: { verdict, reasons },
+    dimCols, ragged, subBlocked: dimCols || offLattice,
     densityMedian: ds.length ? ds[ds.length >> 1] : null,
     densityUniform: ds.length ? ds[0] === ds[ds.length - 1] : false,
   };
@@ -259,8 +343,9 @@ export async function extract(lines, opts) {
   // tonnage that looks right, reconciles against itself, and is false.
   if (opts.subBlocked && !opts.acceptUniform) {
     throw new Error(
-      "This looks like a SUB-BLOCKED model: the file carries per-block " +
-      "dimensions, or the block centres do not sit on one regular grid. " +
+      "This looks like a SUB-BLOCKED model: " + (opts.subBlockedWhy ||
+        "the file carries per-block dimensions, or the block centres do not " +
+        "sit on one regular grid") + ". " +
       "Orebody computes tonnage from a single block volume, so it would " +
       "report a confident wrong number for a model like this. Export on a " +
       "regular grid, or re-block it, before loading.");

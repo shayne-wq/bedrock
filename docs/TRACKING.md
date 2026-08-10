@@ -355,6 +355,43 @@ under the public basemap, no client imagery involved.
 
 ## Log
 
+- **2026-08-10** — **#11 was never a boot failure, and #12 has a floor that
+  cannot be raised.** Both P0s worked; both turned out to be different problems
+  than the tracker described.
+
+  **#11.** Booted an iPhone 17 Pro simulator — real Mobile Safari — and looked.
+  WebGL is fine. Terrain renders, the orebody renders, nothing throws. Nothing
+  ever threw, which is why six rounds of boot diagnostics found nothing: there
+  was nothing to report. The deck was unusable because **there was no phone
+  layout**. `#cap` is a desktop sidebar and became the whole page; `#tools` and
+  `#nav` are flex rows sized for 1600px and ran off both edges with Next and
+  Play off-screen; `#intro` is a gradient over the live scene, so on a centred
+  phone layout the splash title and chapter one's title interleaved into an
+  unreadable pile. That last one is what "it doesn't work on my phone" actually
+  looked like. Fixed and verified on the simulator. **Still owed: a pass on the
+  physical device** — a simulator shares WebKit but not the memory ceiling.
+
+  **#12.** Added the signal the detector said did not exist. Its comment read
+  *"coordinates cannot answer this question"*; they can, just not from the gap
+  histogram it was looking at. A uniform grid puts every centre in ONE residual
+  class modulo the cell pitch — holes remove centres, they never move the
+  survivors off the lattice. Sub-block a 10 m parent into 2.5 m children and the
+  children sit at 1.25/3.75/6.25/8.75 while the surviving parent sits at 5.0:
+  two classes, decisively. The 2.5-in-10 case the code documented as
+  undetectable is now caught.
+
+  **The floor**: an ODD factor — 2.5 m inside 7.5 m — puts every child centre
+  and every surviving parent centre on the same fine lattice. Those coordinates
+  are not merely similar to a patchy 2.5 m grid, they are the *same set*. No
+  coordinate test separates them, and the suite asserts the miss so nobody
+  reads the detector as total. The mitigation is the issue's own fallback: an
+  explicit cell-size confirmation at ingest, asked on **every** model because
+  the undetectable case looks exactly like the clean one. A silent wrong
+  tonnage becomes an assumption somebody put their name to.
+
+  18 sub-block assertions, including that a patchy grid and a sub-blocked model
+  built to produce identical gap histograms come back with different verdicts.
+
 - **2026-08-10** — Reviewed `docs/COMPARISON.md` and both competitive audits;
   synthesised the highest-value features per platform (Orebody / VRIFY
   Present / Terrahutton) and a "10 candidates, cut to 5" pass on what to

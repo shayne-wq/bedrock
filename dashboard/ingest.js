@@ -172,18 +172,50 @@ async function step2(project, zone, file, onDone) {
 
     ${p.subBlocked ? `<div class="note bad">
       <b>This looks like a sub-blocked model.</b>
-      ${p.dimCols ? "The file carries per-block dimensions"
-                  : "The block centres do not all sit on one regular grid"} —
+      ${esc(p.uniformity.reasons[0] || "the cells are not all the same size")} —
       which means the cells are not all the same size. Orebody computes tonnage
       from a single block volume, so it would report a confident wrong number
       for a model like this rather than fail. Re-block it onto a regular grid,
       or export the parent cells only, and load that instead.
     </div>` : ""}
 
-    <div class="row-actions" style="margin-top:18px">
-      <button class="btn primary" id="run" ${p.subBlocked ? "disabled" : ""}>Read the model</button>
+    <!-- The confirmation exists because detection has a floor that cannot be
+         raised. Sub-blocking on an ODD factor — 2.5 m cells inside a 7.5 m
+         parent — puts every child centre and every surviving parent centre on
+         the same fine lattice. The occupied coordinates are not merely similar
+         to a patchy 2.5 m grid, they are the SAME SET. No coordinate test can
+         separate them, and no amount of cleverness here will change that.
+
+         So the last line of defence is not a detector, it is a person. One
+         number, stated plainly, that somebody has to agree to — which turns a
+         silent wrong tonnage into an assumption on the record. It is asked on
+         every model, not only suspicious ones, because the undetectable case
+         looks exactly like the clean one. -->
+    <label class="checkline" style="margin-top:16px;align-items:flex-start">
+      <input type="checkbox" id="dimok">
+      <span style="font-size:13px;color:var(--ink-2);line-height:1.5">
+        I confirm every block in this model is
+        <b id="dimecho">${p.dx} × ${p.dy} × ${p.dz} m</b>.
+        Tonnage is computed from that one volume; if some cells are smaller,
+        every figure in the deck will be wrong and nothing will look wrong.
+      </span>
+    </label>
+
+    <div class="row-actions" style="margin-top:14px">
+      <button class="btn primary" id="run" ${p.subBlocked ? "disabled" : ""} disabled>Read the model</button>
       <button class="btn" id="cancel">Cancel</button>
     </div>`);
+
+  // Keep the confirmation honest: it names the numbers currently in the boxes,
+  // so editing a dimension after ticking re-states what is being agreed to.
+  const echo = () => {
+    const e = $("dimecho");
+    if (e) e.textContent = `${$("dx").value} × ${$("dy").value} × ${$("dz").value} m`;
+  };
+  ["dx", "dy", "dz"].forEach((id) => { if ($(id)) $(id).oninput = echo; });
+  $("dimok").onchange = () => {
+    $("run").disabled = p.subBlocked || !$("dimok").checked;
+  };
 
   $("cancel").onclick = closeModal;
   $("run").onclick = () => {
@@ -207,6 +239,7 @@ async function step2(project, zone, file, onDone) {
       // confident wrong tonnage. Surfaced in step 2 as well, because being
       // told at the end of a two-minute read is a worse way to find out.
       subBlocked: p.subBlocked,
+      subBlockedWhy: p.uniformity.reasons[0] || null,
     }, onDone);
   };
 }
