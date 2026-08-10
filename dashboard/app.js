@@ -344,7 +344,10 @@ async function renderProject(id) {
         <p>${esc(p.location || "No location set")} · EPSG ${p.epsg}
            · ${zs.length} zone${zs.length === 1 ? "" : "s"}</p>
       </div>
-      <button class="btn primary" id="newdeck" ${zonesWithData.length ? "" : "disabled"}>New deck</button>
+      <div class="row-actions">
+        <button class="btn" id="editproj">Project settings</button>
+        <button class="btn primary" id="newdeck" ${zonesWithData.length ? "" : "disabled"}>New deck</button>
+      </div>
     </div></header>
 
     ${fabricated.length ? `<div class="note warn" style="margin-bottom:16px">
@@ -374,6 +377,8 @@ async function renderProject(id) {
             ${s ? `<span class="zsub">${fmtT(s.tonnes)} · ${s.grade_gt} g/t · ${fmtOz(s.oz)}</span>`
                 : nk ? `<span class="zsub">Exploration stage — ${nk} dataset${nk === 1 ? "" : "s"} · no resource estimate</span>`
                 : `<span class="zsub">Empty — add whatever this zone has</span>`}</div>
+            <button class="btn sm" data-renamezone="${z.id}"
+              data-zname="${esc(z.name)}">Rename</button>
             <button class="btn sm danger" data-delzone="${z.id}">Delete zone</button></div>
           <div class="slots">${KINDS.map((k) => slot(z, k)).join("")}</div>
         </div>`;
@@ -449,6 +454,20 @@ async function renderProject(id) {
     </div>`;
 
   wire(view);
+  $("editproj").onclick = () => editProject(p);
+  view.querySelectorAll("[data-renamezone]").forEach((b) => {
+    b.onclick = async () => {
+      const name = prompt("Zone name", b.dataset.zname);
+      if (name === null) return;
+      if (!name.trim()) return toast("A zone needs a name.", true);
+      const { error } = await db.from("zones")
+        .update({ name: name.trim(), slug: slugify(name.trim()) })
+        .eq("id", b.dataset.renamezone);
+      if (error) return fail("Rename zone", error);
+      toast("Zone renamed");
+      route();
+    };
+  });
   renderHolders(p, datasets || []);
   $("bsave").onclick = () => saveBrand(p, { summary: $("bsum").value.trim() });
   $("blogo").onchange = async () => {
@@ -952,4 +971,67 @@ async function mergeClaims(project, zoneId, site, cur, extra, body, added) {
     ? `Added ${added} boundaries — the register capped the result, so there may be more`
     : `Added ${added} neighbouring boundaries`);
   route();
+}
+
+// ----------------------------------------------------- project settings ----
+// Everything the create form asks for was, until now, permanent. A typo in the
+// name lived on every slide; a wrong location put the wrong place in the
+// opening slide's own title; and a wrong EPSG put the entire deposit somewhere
+// else on earth with no way back short of deleting the project and re-loading
+// every file.
+function editProject(p) {
+  modal(`
+    <h2>Project settings</h2>
+    <div class="field"><label for="epn">Name</label>
+      <input type="text" id="epn" value="${esc(p.name)}"></div>
+    <div class="grid two">
+      <div class="field"><label for="epc">Commodity</label>
+        <input type="text" id="epc" value="${esc(p.commodity || "")}" placeholder="Gold"></div>
+      <div class="field"><label for="epl">Location</label>
+        <input type="text" id="epl" value="${esc(p.location || "")}"
+               placeholder="Nicola, British Columbia">
+        <p class="hintline">Used in the opening slide's own title, so it is read
+          aloud as often as the project name.</p></div>
+    </div>
+    <div class="field"><label for="epe">Coordinate system (EPSG)</label>
+      <input type="number" id="epe" value="${p.epsg}">
+      <p class="hintline">Every coordinate already loaded was read as being in
+        this system. Changing it does not move the data — it changes where the
+        same numbers are understood to be, so a model that was in the right
+        place will move.</p></div>
+    <div class="note warn" id="epsgwarn" hidden>
+      <b>Changing the coordinate system moves everything already loaded.</b>
+      Block models, drilling and surfaces are stored in the project's own
+      system and reprojected for display. Only change this if the current value
+      is wrong; if the data was exported in a different system, re-export it.
+    </div>
+    <div class="row-actions" style="margin-top:16px">
+      <button class="btn primary" id="epgo">Save</button>
+      <button class="btn" id="epno">Cancel</button>
+    </div>`);
+  $("epno").onclick = closeModal;
+  // The warning appears only when the value actually changes, so it reads as a
+  // consequence of what they just did rather than as boilerplate.
+  $("epe").oninput = () => {
+    $("epsgwarn").hidden = Number($("epe").value) === p.epsg;
+  };
+  $("epgo").onclick = async () => {
+    const name = $("epn").value.trim();
+    if (!name) return toast("A project needs a name.", true);
+    const epsg = Number($("epe").value) || p.epsg;
+    if (epsg !== p.epsg &&
+        !confirm(`Change the coordinate system from EPSG ${p.epsg} to ${epsg}?\n\n` +
+                 "Everything already loaded will be understood as being in the " +
+                 "new system, which will move it.")) return;
+    const { error } = await db.from("projects").update({
+      name, slug: slugify(name),
+      commodity: $("epc").value.trim() || null,
+      location: $("epl").value.trim() || null,
+      epsg,
+    }).eq("id", p.id);
+    if (error) return fail("Save project", error);
+    closeModal();
+    toast("Project saved");
+    route();
+  };
 }

@@ -355,6 +355,36 @@ under the public basemap, no client imagery involved.
 
 ## Log
 
+- **2026-08-10** — **Console input audit, and a syntax error that had taken the
+  whole console down.**
+
+  Audited what the viewer consumes against what the console can supply. Three
+  things were readable everywhere and editable nowhere, all set once at
+  creation and then permanent: **the project itself** (name, commodity,
+  location, EPSG — a wrong EPSG put the deposit somewhere else on earth with no
+  way back short of deleting the project and re-loading every file), **zone
+  names**, and **the deck subtitle**. All three are editable now. Changing EPSG
+  warns, on change rather than as boilerplate, that it moves everything already
+  loaded.
+
+  While testing it: `import { … readGeochem,, readGeoTiff }` — a double comma
+  my own patch script wrote into `ingest.js` during the GeoTIFF work. A syntax
+  error in one module takes down every module that imports it, so **the entire
+  console was a blank page**, shipped and deployed.
+
+  The check that should have caught it reported success the whole time. It
+  parsed each file with `new vm.Script(src)` after stripping `import` lines
+  with a regex — deleting exactly the thing that was broken. Replaced with
+  `tools/verify_modules.mjs`, which compiles every browser module as a real ES
+  module, imports and all, nothing stripped.
+
+  15 input assertions driven in a signed-in browser. Two assertions were also
+  removed from the console-flow suite: they asserted a mark appears on screen
+  within N seconds of a save, which measures the length of the full-page
+  re-render flash rather than whether the write worked — flaky between runs and
+  uninformative when red. The writes are proven against the database instead;
+  the flash stays a known open issue.
+
 - **2026-08-10** — **The five comparables-driven issues, worked.** #11, #12,
   #15, #13, #14 shipped; #10 tier 1 shipped with lighting deliberately not
   taken.

@@ -67,6 +67,13 @@ export async function renderDeck(id, view) {
         <h1 id="dtitle" contenteditable="plaintext-only"
             style="outline:none;border-bottom:1px dashed transparent"
             title="Click to rename">${esc(deck.title)}</h1>
+        <!-- The subtitle is on the deck's opening card in the viewer and was
+             readable everywhere and editable nowhere: set once at creation,
+             then permanent. -->
+        <p id="dsub" contenteditable="plaintext-only"
+           style="outline:none;margin:4px 0 0;color:var(--ink-2);font-size:14px"
+           data-placeholder="Add a subtitle"
+           title="Click to edit">${esc(deck.subtitle || "")}</p>
       </div>
       <div class="row-actions">
         <span class="chip ${deck.status === "published" ? "live" : "draft"}"
@@ -137,6 +144,17 @@ export async function renderDeck(id, view) {
   renderChapters();
   renderShares();
   renderAnalytics();
+
+  // Saved on blur, like the title, rather than per keystroke.
+  $("dsub").onblur = async () => {
+    const v = $("dsub").textContent.trim();
+    if (v === (deck.subtitle || "")) return;
+    const { error } = await db.from("decks")
+      .update({ subtitle: v || null }).eq("id", deck.id);
+    if (error) return fail("Save subtitle", error);
+    deck.subtitle = v || null;
+    toast("Subtitle saved");
+  };
 
   $("preview").onclick = () => {
     const t = links.find((l) => !l.revoked_at);

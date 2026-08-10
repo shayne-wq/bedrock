@@ -449,3 +449,6 @@ tbody tr:last-child td { border-bottom: 0; }
 .nbnote:disabled{opacity:.45}
 .nbjur{font-family:var(--mono);font-size:11px;background:var(--bg);color:#C6CAC5;
        border:1px solid var(--line);border-radius:4px;padding:6px 8px}
+/* A contenteditable that is empty looks like a rendering fault rather than an
+   invitation, so it says what it is until there is something in it. */
+[contenteditable][data-placeholder]:empty::before{content:attr(data-placeholder);color:#6b7580}

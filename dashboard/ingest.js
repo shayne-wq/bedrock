@@ -15,7 +15,7 @@ import {
 import {
   sniff, readGeoJSON, readKML, readOBJ, readGOCAD, readDXF,
   readCollars, readSurveys, readAssays, desurvey,
-  readWorldFile, worldExtent, magProduct, readGeochem,, readGeoTiff
+  readWorldFile, worldExtent, magProduct, readGeochem, readGeoTiff
 } from "./lib/formats.js";
 
 let worker = null;
