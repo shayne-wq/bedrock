@@ -4118,7 +4118,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   // ---- site features: claims, infrastructure, roads, labels ----
   // Clamped to terrain rather than floated at a guessed elevation, so they sit
   // on the actual ground the deposit is under.
-  let siteEnts=null, siteOn=false, targetsOn=true;
+  let siteEnts=null, siteOn=false, targetsOn=true, sitePitClips=null;
   // Holder logos, supplied and never scraped: a company's mark is its
   // trademark, and generating one for a neighbour would put a fake identity on
   // a real map. Decoded once at boot into a cache the card renderer can read
@@ -4451,6 +4451,9 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
           material:new Cesium.PolylineDashMaterialProperty({
             color:Cesium.Color.fromCssColorString('#F2C14E'),dashLength:26})}})));
     }
+    // Collected while the areas are walked, applied to the globe once: the
+    // clipping collection is global state, not per entity.
+    const pitClips=[];
     (SITE.areas||[]).forEach(a=>{
       // A pit is a hole, not a painted patch. Filling it flat put a pale slab
       // over the exact ground the plan view exists to show, which is the same
@@ -4469,22 +4472,75 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
           material:Cesium.Color.fromCssColorString(isPit?'#E4EAF0':a.color)
             .withAlpha(isPit?1:0.95)}}));
       if(isPit){
+        // A pit is a hole. It was drawn as five wireframe rings BELOW the
+        // ground, which the terrain then occluded — so the one feature that is
+        // supposed to read as an excavation read as a faint scribble under a
+        // hillside.
+        //
+        // Two things make it an excavation rather than a drawing. The terrain
+        // is CLIPPED inside the rim, so there is a real hole in the ground
+        // instead of geometry hidden behind it. And each bench is a solid
+        // annular floor with a vertical face above it, so the steps catch the
+        // light and the thing has a bottom you can see.
         const mx=a.ring.reduce((s,q)=>s+q[0],0)/a.ring.length;
         const my=a.ring.reduce((s,q)=>s+q[1],0)/a.ring.length;
-        const NB=5, depth=240;
-        for(let b=1;b<=NB;b++){
-          const shrink=1-(b/NB)*0.66;
-          const z=ZTOP+GEOID-(depth*b/NB);
-          const pos=a.ring.map(c=>{
-            const ll=proj4(PROJ,'WGS84',
-              [mx+(c[0]-mx)*shrink, my+(c[1]-my)*shrink]);
-            return Cesium.Cartesian3.fromDegrees(ll[0],ll[1],
-              EXAG===1?z:(CZ+GEOID+(z-CZ-GEOID)*EXAG));});
-          pos.push(pos[0]);
-          siteEnts.push(viewer.entities.add({polyline:{positions:pos,width:1.8,
-            arcType:Cesium.ArcType.NONE,
-            material:Cesium.Color.fromCssColorString('#C7D0D8').withAlpha(0.9-b*0.11)}}));
+        // Benches at a believable height. A 320 m pit in twelve lifts is ~27 m
+        // a bench, which is two 13 m flitches — the shape of the thing a mining
+        // engineer would actually draw, rather than a smooth cone.
+        const NB=12, depth=320, taper=0.82;
+        // The rim belongs on the GROUND, not at the top of the block model.
+        // ZTOP is the highest modelled block — usually the ridge — so a pit
+        // pinned to it stands proud of the hillside like a bowl set down on
+        // it, which is the one thing an excavation must not look like. Ask the
+        // globe how high the ground is at the pit's own centre.
+        const cll=proj4(PROJ,'WGS84',[mx,my]);
+        const gh=viewer.scene.globe.getHeight(
+          Cesium.Cartographic.fromDegrees(cll[0],cll[1]));
+        // Undefined until the terrain tile under the pit has loaded, which on
+        // a cold open it has not — hence the rebuild below. Sunk slightly, so
+        // the rim cuts in rather than grazing the surface.
+        const rim=(gh===undefined?ZTOP+GEOID:gh+GEOID)-8;
+        const zf=z=>EXAG===1?z:(CZ+GEOID+(z-CZ-GEOID)*EXAG);
+        const ringLL=k=>a.ring.map(c=>proj4(PROJ,'WGS84',
+          [mx+(c[0]-mx)*k, my+(c[1]-my)*k]));
+        const at=(lls,z)=>{ const out=[];
+          lls.forEach(ll=>out.push(Cesium.Cartesian3.fromDegrees(ll[0],ll[1],zf(z))));
+          return out; };
+        // Rock, not paint. Faces darker than floors is what makes a terrace
+        // read as a terrace at a distance — the same reason a contour map does
+        // not work as a picture of a pit.
+        const FACE='#7E7468', FLOOR='#A79C8C';
+        for(let b=0;b<NB;b++){
+          const k0=1-(b/NB)*taper, k1=1-((b+1)/NB)*taper;
+          const z0=rim-depth*(b/NB), z1=rim-depth*((b+1)/NB);
+          const l0=ringLL(k0), l1=ringLL(k1);
+          // The bench face: a vertical wall dropping from this ring to the next
+          // level down.
+          siteEnts.push(viewer.entities.add({name:a.name,
+            wall:{positions:at(l0,z0),
+              minimumHeights:l0.map(()=>zf(z1)),
+              maximumHeights:l0.map(()=>zf(z0)),
+              material:Cesium.Color.fromCssColorString(FACE)
+                .withAlpha(0.98).darken(b*0.03,new Cesium.Color())}}));
+          // The bench floor: the flat step, as a ring with the next bench
+          // punched out of it. A disc would bury every bench below this one.
+          siteEnts.push(viewer.entities.add({name:a.name,
+            polygon:{
+              hierarchy:new Cesium.PolygonHierarchy(at(l0,z1),
+                [new Cesium.PolygonHierarchy(at(l1,z1))]),
+              perPositionHeight:true,
+              material:Cesium.Color.fromCssColorString(FLOOR).withAlpha(0.98)}}));
         }
+        // The floor of the pit.
+        siteEnts.push(viewer.entities.add({name:a.name,
+          polygon:{hierarchy:new Cesium.PolygonHierarchy(at(ringLL(1-taper),rim-depth)),
+            perPositionHeight:true,
+            material:Cesium.Color.fromCssColorString(FLOOR).darken(0.25,new Cesium.Color())
+              .withAlpha(0.98)}}));
+        // Cut the ground away inside the rim. Without this the pit is behind
+        // the hillside rather than in it.
+        pitClips.push(new Cesium.ClippingPolygon({
+          positions:Cesium.Cartesian3.fromDegreesArray(deg(a.ring))}));
       }
     });
     (SITE.roads||[]).forEach(rd=>siteEnts.push(viewer.entities.add({name:rd.name,
@@ -4518,9 +4574,40 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
           pixelOffset:new Cesium.Cartesian2(0,-li*30),
           disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
     });
+    // One collection for every pit on the property. Held rather than applied
+    // here, because the globe must not stay punctured when the site layer is
+    // switched off.
+    sitePitClips = pitClips.length
+      ? new Cesium.ClippingPolygonCollection({polygons:pitClips})
+      : null;
     return siteEnts;
   }
-  const showSite=on=>{ if(on) buildSite(); if(siteEnts) siteEnts.forEach(e=>e.show=on); };
+  // The pit rim is sampled from the terrain, and the terrain is not there yet
+  // on a cold open — so the first build seats the pit at the model top and
+  // looks wrong. Rebuild the layer once, when the ground under it exists.
+  let siteReseated=false;
+  viewer.scene.globe.tileLoadProgressEvent.addEventListener(q=>{
+    if(siteReseated || q!==0 || !siteEnts) return;
+    siteReseated=true;
+    const was=siteOn;
+    siteEnts.forEach(e=>viewer.entities.remove(e));
+    siteEnts=null;
+    if(was) showSite(true);
+  });
+  const showSite=on=>{
+    if(on) buildSite();
+    if(siteEnts) siteEnts.forEach(e=>e.show=on);
+    // A hole in the terrain is not a property of an entity, so it does not
+    // follow entity.show. Applied and removed by hand, or the ground stays
+    // punctured on every later chapter.
+    try{
+      viewer.scene.globe.clippingPolygons = (on && sitePitClips) ? sitePitClips : undefined;
+    }catch(e){
+      // Older Cesium, or a device that refuses the extra texture. The pit still
+      // draws; it just sits behind the hillside as it used to.
+      console.warn('Orebody: terrain clipping unavailable — pits will not be cut in.',e);
+    }
+  };
   // Logos decode asynchronously and the cards are drawn synchronously, so a
   // layer built before they land would show monograms forever. Drop it once
   // and let the next showSite rebuild with the marks in place.

@@ -380,6 +380,29 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
 
 ## Log
 
+- **2026-08-10** — **The open pit is an excavation now, not a scribble.** Five
+  wireframe rings drawn BELOW the terrain, which then occluded them — so the
+  one feature whose whole job is to read as a hole read as a faint contour
+  under a hillside.
+
+  Two changes make it an excavation. The terrain is **clipped inside the rim**
+  (`ClippingPolygonCollection`), so there is a real hole in the ground rather
+  than geometry hidden behind it. And each of twelve benches is a solid annular
+  floor with a vertical face above it, faces darker than floors, so the steps
+  catch the light and the pit has a bottom you can see. Annular, not disc — a
+  disc at each level would bury every bench below it.
+
+  The rim is sampled from the **ground**, not from `ZTOP`. Pinned to the top of
+  the block model it sat proud of the hillside like a bowl set down on it,
+  which is the one thing an excavation must not look like. The terrain tile
+  under the pit has not loaded on a cold open, so the layer rebuilds itself
+  once the ground exists.
+
+  Note this raises the stakes on labelling rather than lowering them: the pit
+  is **fabricated**, the banner and the per-feature "(conceptual)" tags are
+  untouched, and something that now looks this much like a mine plan needs them
+  more than the old wireframe did.
+
 - **2026-08-10 (night)** — Real work landed on all six items from the
   comparables-driven P0 section above, same session: mobile turned out to be
   a pure layout bug, not a boot/WebGL failure (fixed, pending physical-device
