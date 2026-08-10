@@ -107,7 +107,12 @@ figure img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit
   line-height: 1.4; letter-spacing: -0.015em; max-width: 46ch; margin: 0; color: var(--ink); }
 .quote figcaption { font-family: var(--mono); font-size: 12px; color: var(--ink-mute); margin: 26px 0 0; }
 
-.wordmark-close { position: relative; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-2); }
+/* Overflow is visible now, so the wordmark can cross the bottom edge; z-index
+   puts that overhang on top of the footer rather than under it. The section
+   used to clip, which is what kept the K's trailing advance from scrolling the
+   page — the wordmark clips itself instead, see below. */
+.wordmark-close { position: relative; z-index: 2; display: flex; flex-direction: column;
+  background: var(--bg-2); }
 .wc-copy { position: relative; z-index: 2; padding: 8px var(--edge) 40px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
 .wc-copy h3 { font-family: var(--heading); font-weight: 600; font-size: clamp(24px, 3vw, 34px); letter-spacing: -0.02em; color: var(--ink); margin: 0; }
 .wc-figure { position: relative; margin: 0; aspect-ratio: 16/7; overflow: hidden; }
@@ -118,22 +123,51 @@ figure img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit
    for Archivo Black at this tracking: ink is 5.335x the font size and the B's
    left bearing is 0.074x. So 100 / 5.335 = 18.744vw puts the ink at exactly one
    viewport wide, and pulling left by 0.074 x 18.744 = 1.387vw starts it at zero.
-   The ~1.5vw of trailing advance overflows into the section's overflow:hidden.
    No max — filling the width is the point, and a cap breaks it on a wide
-   monitor. Percentage units mean this holds at every width without a query. */
-.wc-wordmark { position: absolute; z-index: 2; left: 0; right: 0; bottom: -0.1em;
+   monitor. Percentage units mean this holds at every width without a query.
+
+   It also crosses the seam into the white footer, which means one word has to
+   be white on the photograph and dark on the white below it. Rather than draw
+   it twice and hope two copies stay registered, the fill is a single gradient
+   with a hard stop, clipped to the glyphs. Every figure below is measured, in
+   em, so the whole arrangement scales with the font size:
+
+     line box is 1em tall (line-height 1); the ink runs 0.134em to 0.846em
+     inside it, so the letterforms are 0.712em deep.
+     bottom: -0.332em puts the ink bottom 0.178em past the seam — a quarter of
+     the letter height sitting on the footer.
+     the seam is then 1 - 0.332 = 0.668em down from the element's top, which is
+     exactly where the gradient switches colour. */
+/* overflow:hidden here, not on the section, because the section now has to let
+   the bleed through. It clips the K's trailing advance — whitespace inside the
+   glyph's advance width, which is layout overflow and would put a horizontal
+   scrollbar on the page (clip-path would not have helped: it clips painting,
+   not layout). The box runs 0 to 100vw and the ink runs 0 to 100vw, so this
+   costs a sub-pixel sliver of the K and nothing else. */
+.wc-wordmark { position: absolute; z-index: 2; left: 0; right: 0; bottom: -0.332em;
+  overflow: hidden;
   font-family: var(--wordmark); font-weight: 400; white-space: nowrap;
   font-size: 18.744vw; margin-left: -1.387vw; line-height: 1; letter-spacing: -0.01em;
-  color: var(--bg-2); mix-blend-mode: screen;
-  filter: invert(1) brightness(2); pointer-events: none; }
+  color: transparent; pointer-events: none;
+  background-image: linear-gradient(to bottom, #fff 0 0.668em, var(--bg) 0.668em);
+  -webkit-background-clip: text; background-clip: text; }
 
-footer { padding: 28px 0; border-top: 1px solid var(--border); font-family: var(--mono); font-size: 12px; color: var(--ink-mute); }
+/* White, and the only light surface on the page — which is what lets the
+   wordmark's overhang read as one letterform crossing a hard edge rather than
+   as two separate marks. No border-top: the colour change is the seam.
+   Top padding clears the overhang. The wordmark hangs 0.178em below the seam
+   at a font-size of 18.744vw, so the overhang is 3.34vw and the padding
+   tracks it rather than being a number that only works at one width. */
+footer { position: relative; z-index: 1; background: #fff;
+  padding: calc(3.34vw + 26px) 0 30px;
+  font-family: var(--mono); font-size: 12px; color: #6d7472; }
 .foot-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
 .foot-links { display: flex; gap: 24px; }
-.foot-credit { margin: 16px 0 0; font-size: 11px; letter-spacing: 0.04em; color: var(--ink-mute); }
-.foot-credit a { color: var(--ink-dim); }
-.foot-links a { color: inherit; }
-.foot-links a:hover { color: var(--ink); }
+.foot-credit { margin: 16px 0 0; font-size: 11px; letter-spacing: 0.04em; color: #6d7472; }
+.foot-credit a { color: #14171a; }
+.foot-links a { color: #14171a; }
+/* The site's cyan is 2.2:1 on white and cannot carry a link here. */
+.foot-links a:hover, .foot-credit a:hover { color: #006786; }
 
 @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } .col:nth-child(odd) { border-right: none; padding-left: 0; } .col:nth-child(even) { padding-left: 0; } .stats { grid-template-columns: 1fr; } .stat + .stat { border-left: none; border-top: 1px solid var(--border); } }
 @media (max-width: 720px) { .split-grid { grid-template-columns: 1fr; } .split-figure, .split.rev .split-figure { order: -1; } }
@@ -300,8 +334,10 @@ footer { padding: 28px 0; border-top: 1px solid var(--border); font-family: var(
   </div>
   <figure class="wc-figure">
     <img src="img/footer-terrain.jpg" alt="" width="2200" height="962" loading="lazy" decoding="async">
-    <span class="wc-wordmark">BEDROCK</span>
   </figure>
+  <!-- Outside the figure: it has to cross the figure's bottom edge and finish
+       on the footer, so it is positioned against the section instead. -->
+  <span class="wc-wordmark">BEDROCK</span>
 </section>
 
 <footer>
