@@ -76,13 +76,21 @@ confirmed feature: neighbor logos on the surrounding-claims map, tracked as
 ## Phase 2 — enhanced maps & terrain realism (deferred by design)
 
 Ship what exists now; this is its own phase, not mixed into the backlog
-above. Bundles sun-synced lighting/shadows/fog (needs real visual QA before
-shipping — this sandbox can't render-test Cesium changes), a Cesium ion
-evaluation (pricing researched 2026-08-09, see the issue), customer-uploaded
-imagery/terrain draped over the property extent (reuses the existing
-colour-pop masking mechanism), and reality-capture mesh as the ceiling.
+above. Scope corrected 2026-08-10: **no client-supplied imagery or footage
+of any kind** — customer-uploaded orthophoto draping and a drone-
+photogrammetry reality mesh were both cut. Reasoning: photography/footage
+carries no backing number, unlike every other input this product handles,
+and it's closer to VRIFY's art-directed, done-for-you model than to
+Orebody's "nothing on screen the data doesn't support" thesis — see the
+issue for the full writeup. What remains: sun-synced lighting/shadows/fog on
+the existing **public** basemap (needs real visual QA before shipping — this
+sandbox can't render-test Cesium changes) and a Cesium ion evaluation for
+better **public** terrain/imagery (pricing researched 2026-08-09, see the
+issue). The existing 360° ground-level vantage points are unaffected — they
+already stand a virtual camera on real terrain under the public basemap, no
+client imagery involved.
 
-- [ ] 🔴 **#10 — Enhanced maps & terrain realism.**
+- [ ] 🔴 **#10 — Enhanced maps & terrain realism (public-data only).**
   <https://github.com/shayne-wq/orebody/issues/10>
 
 ---
