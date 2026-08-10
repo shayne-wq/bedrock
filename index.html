@@ -2273,6 +2273,37 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     // The cutout is the claim block when there is one, otherwise the deposit.
     maskLayer.cutoutRectangle=on?POP_RECT:undefined;
   }
+  // ---- terrain realism, tier 1 -------------------------------------------
+  // Free, public data only. No Cesium ion account, no client photography.
+  //
+  // FOG earns its place first because it is additive: it touches nothing but
+  // distance, and a district shot without it has a hard, flat horizon that
+  // reads as a game level rather than as ground. Density is deliberately low —
+  // this is atmosphere, not weather, and a deck that looks hazy looks like it
+  // is hiding something.
+  viewer.scene.fog.enabled=true;
+  viewer.scene.fog.density=0.00015;
+  viewer.scene.fog.screenSpaceErrorFactor=2.0;
+
+  // SHARPER TILES close in. The default error tolerance is tuned for a globe
+  // you fly around; this is a camera that parks 2 km from one mountain and
+  // stays there, so the extra requests are paid once and then not again.
+  viewer.scene.globe.maximumScreenSpaceError=1.5;
+
+  // LIGHTING IS DELIBERATELY LEFT OFF, and this is the note for whoever
+  // reaches for it next.
+  //
+  // `globe.enableLighting` sun-shades the terrain, which does make relief
+  // read. But the ore blocks already render through MaterialAppearance with
+  // flat:false — they are lit — and the grade ramp's discrete bands were tuned
+  // against the current, effectively flat, illumination. Turning on a real sun
+  // re-shades every shell by its facing, so two blocks in the same grade band
+  // stop matching each other and stop matching the legend. The legend is the
+  // contract; terrain relief is a nicety. Tried and reverted rather than
+  // guessed at: it is visible immediately on the "high-grade core" chapter.
+  //
+  // Doing it properly means lighting the terrain without lighting the blocks,
+  // which is a shader change, not a flag.
   viewer.scene.skyAtmosphere.show=true;
   viewer.scene.globe.tileLoadProgressEvent.addEventListener(q=>setStat('terrain tiles: '+q));
   // iOS reclaims WebGL contexts under memory pressure, and reloading straight

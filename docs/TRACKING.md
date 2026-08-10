@@ -355,6 +355,39 @@ under the public basemap, no client imagery involved.
 
 ## Log
 
+- **2026-08-10** — **The five comparables-driven issues, worked.** #11, #12,
+  #15, #13, #14 shipped; #10 tier 1 shipped with lighting deliberately not
+  taken.
+
+  **#13 GeoTIFF** is read directly now, georeferencing from its own tags. The
+  old path asked a customer to degrade their contractor's deliverable to PNG
+  and then re-supply by hand the six numbers the file already carried. A
+  single-band grid gets a 2–98 percentile stretch, not min/max, or one hot cell
+  flattens a magnetics survey to black. The EPSG is recorded, never converted.
+  Geosoft `.grd`/`.gxf` refused by name pointing at what Oasis montaj exports
+  in one click. The fixture is written byte by byte so the expected tie point
+  is known rather than assumed — a decoder subtly wrong about georeferencing
+  puts a survey in the wrong place and looks fine doing it.
+
+  **#14 Saskatchewan** wired as a second bounded adapter. BC's WFS takes a bbox
+  latitude-first and Saskatchewan's ArcGIS takes it longitude-first, and
+  neither errors when you get it wrong — which is the argument against a
+  generic abstraction. Two registers **checked and rejected, recorded by name**:
+  Finland (Tukes) advertises Query on polygons and returns every attribute with
+  a null geometry; BLM returns clean geometry but no claimant, and the holder
+  is the entire point. A register qualifies only if one queryable layer carries
+  both the boundary and the holder — that criterion now lives beside the
+  adapters.
+
+  **#10 tier 1**: fog and a tighter screen-space error. **Lighting was tried and
+  left off deliberately** — the ore shells already render lit, and the grade
+  ramp's discrete bands were tuned against flat illumination, so a real sun
+  re-shades each shell by its facing and two blocks in the same band stop
+  matching each other and stop matching the legend. The legend is the contract.
+  Doing it properly means lighting terrain without lighting blocks, which is a
+  shader change, not a flag. Verified visually on the high-grade-core chapter
+  rather than reasoned about.
+
 - **2026-08-10** — **#11 was never a boot failure, and #12 has a floor that
   cannot be raised.** Both P0s worked; both turned out to be different problems
   than the tracker described.
