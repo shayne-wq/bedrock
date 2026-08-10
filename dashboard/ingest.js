@@ -15,7 +15,8 @@ import {
 import {
   sniff, readGeoJSON, readKML, readOBJ, readGOCAD, readDXF,
   readCollars, readSurveys, readAssays, desurvey,
-  readWorldFile, worldExtent, magProduct, readGeochem, readGeoTiff, demToMesh
+  readWorldFile, worldExtent, magProduct, readGeochem, readGeoTiff, demToMesh,
+  readAsciiGrid
 } from "./lib/formats.js";
 
 let worker = null;
@@ -651,14 +652,44 @@ export function classify(file) {
 
   // Drills come as three named files. Match the part, not just the kind, so a
   // multi-file drop can fill all three at once.
+  //
+  // Gated on a TABULAR extension, and it has to be: these rules match a word
+  // anywhere in the name, and "survey" is a word that belongs to half the
+  // industry. `survey.las` is a LiDAR scan and `TMI_survey.tfw` is the world
+  // file for a magnetics image, and both were being filed as drill surveys —
+  // silently, because a drills slot with the wrong file in it looks exactly
+  // like a drills slot. Collars, surveys and assays are always a table.
+  const tabular = /\.(csv|txt|tsv)$/.test(n);
   // Geochem before drilling: a file called "soil_assays.csv" is a soil survey,
   // not a drill assay table, and "assay" would otherwise claim it.
-  if (/soil|stream|silt|rockchip|rock_chip|talus|geochem|till/.test(n)) {
+  if (tabular && /soil|stream|silt|rockchip|rock_chip|talus|geochem|till/.test(n)) {
     return { kind: "geochem", part: "samples" };
   }
-  if (/collar/.test(n)) return { kind: "drills", part: "collars" };
-  if (/survey|desurvey/.test(n)) return { kind: "drills", part: "surveys" };
-  if (/assay|sample/.test(n)) return { kind: "drills", part: "assays" };
+  if (tabular && /collar/.test(n)) return { kind: "drills", part: "collars" };
+  if (tabular && /survey|desurvey/.test(n)) return { kind: "drills", part: "surveys" };
+  if (tabular && /assay|sample/.test(n)) return { kind: "drills", part: "assays" };
+
+  // Topography BEFORE surfaces and before the grid rules, and it has to be:
+  // every route below would otherwise claim it. A DEM named dem.tif went to
+  // geophysics and was treated as a magnetics image; a triangulated DTM named
+  // topo.obj went to vein surfaces. And `classify` never returned "topography"
+  // at all, so the slot could only ever be filled by clicking Add on it — the
+  // one dataset the geologists asked for by name was the one you could not
+  // drop.
+  //
+  // Named, not sniffed. A .tif is a DEM or a magnetics grid depending entirely
+  // on what it is of, and nothing in the bytes distinguishes them; the export
+  // is called dtm/dem/topo by every package that writes one. A bare grid.tif
+  // still falls through to geophysics, which is the commoner case.
+  if (/(^|[^a-z])(dem|dtm|dsm|topo|topography|terrain|elevation|ground|lidar|contour|bathy)/
+        .test(n) && /\.(tiff?|obj|dxf|ts|asc)$/.test(n)) {
+    return { kind: "topography", part: "surface" };
+  }
+  // Point clouds route here too. They are refused — a deck draws a surface, not
+  // returns — but refused with the advice to export a DEM or a triangulated
+  // ground, which beats "could not tell what that file is" for a file that is
+  // unmistakably terrain.
+  if (/\.(las|laz|e57)$/.test(n)) return { kind: "topography", part: "surface" };
 
   if (/\.(obj|dxf|ts)$/.test(n)) return { kind: "surfaces", part: "mesh" };
 
@@ -815,7 +846,16 @@ async function parseAux(kind, chosen) {
     }
 
     let mesh, extent = null, epsg = null, note = "";
-    if (/\.(tiff?)$/.test(nm)) {
+    if (/\.asc$/.test(nm)) {
+      // Plain text, no library, and the format every one of these packages
+      // exports without complaint.
+      const dem = readAsciiGrid(await textOf(c.file), c.file.name);
+      mesh = demToMesh(dem);
+      extent = dem.extent; epsg = dem.epsg;
+      note = `${dem.width} x ${dem.height} ESRI ASCII grid, sampled every ` +
+             `${mesh.step} cell${mesh.step === 1 ? "" : "s"}` +
+             " — no projection in the file, read as the project's own grid";
+    } else if (/\.(tiff?)$/.test(nm)) {
       const dem = await readGeoTiff(c.file);
       if (!dem) {
         throw new Error(`${c.file.name} is a TIFF with no georeferencing, so ` +
@@ -835,8 +875,9 @@ async function parseAux(kind, chosen) {
               : fmt === "gocad" ? readGOCAD(text, c.file.name)
               : fmt === "dxf" ? readDXF(text, c.file.name)
               : (() => { throw new Error(
-                  `${c.file.name}: topography must be a GeoTIFF DEM, or a ` +
-                  "triangulated surface as OBJ, GOCAD .ts or DXF."); })();
+                  `${c.file.name}: topography must be a GeoTIFF DEM, an ESRI ` +
+                  "ASCII grid (.asc), or a triangulated surface as OBJ, " +
+                  "GOCAD .ts or DXF."); })();
       mesh = { verts: m.verts, faces: m.faces };
       const zs = m.verts.map((v) => v[2]).filter(Number.isFinite);
       mesh.zMin = Math.min(...zs); mesh.zMax = Math.max(...zs);

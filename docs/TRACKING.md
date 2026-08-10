@@ -531,6 +531,52 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   global on all three paths, so nothing re-introduces a window. Re-run green:
   holeview 32, capture 28, ui 37, labels 11, transition 11, pit clean.
 
+- **2026-08-10** — **Drag-and-drop ingest audited against what the four packages
+  actually export. Three routing bugs, all silent.**
+
+  Shayne is sourcing data from real companies, so the question stopped being
+  "can we parse this" and became "does a dropped folder land in the right
+  slots". The parsers were fine. The **router** was not, and nothing tested it —
+  `tools/verify_dragdrop.mjs` is new, 63 assertions, filenames these packages
+  actually write.
+
+  1. **Topography could not be dropped at all.** `parseAux` has handled it since
+     the GeoTIFF work — DEM or triangulated DTM, with a proper refusal for point
+     clouds — but `classify()` never returned `"topography"` in any branch. The
+     slot could only ever be filled by clicking Add on it. The one dataset the
+     geologists asked for by name was the one you could not drag in.
+  2. **A DEM was filed as magnetics.** Every `.tif` went to geophysics, so
+     `dem.tif` would have been draped as a magnetics image; a triangulated DTM
+     named `topo.obj` went to vein surfaces. Topography is now matched by name
+     (dem/dtm/dsm/topo/terrain/elevation/ground/lidar/contour/bathy) ahead of
+     both, because nothing in a raster's bytes says whether it is ground or
+     magnetics — but a bare `grid.tif` still falls through to geophysics, which
+     is the commoner case.
+  3. **"survey" is a word that belongs to half the industry.** The drill rules
+     matched it anywhere in a filename regardless of extension, so `survey.las`
+     (a LiDAR scan) and `TMI_survey.tfw` (a world file) were both filed as drill
+     surveys — silently, because a drills slot with the wrong file in it looks
+     exactly like a drills slot. Those rules are now gated on a tabular
+     extension; collars, surveys and assays are always a table.
+
+  Point clouds (`.las/.laz/.e57`) now route to topography as well, so they are
+  refused with "export the derived surface" rather than "could not tell what
+  that file is" — a better answer for a file that is unmistakably terrain.
+
+  **Added: ESRI ASCII grid (`.asc`).** The one raster all four packages export
+  without argument, and the only one that needs no library. Its own new test
+  caught a **half-cell inversion in it**: `xllcorner` is the outer corner and
+  `xllcenter` is the centre, and I had the offset backwards in both directions —
+  which shifts an entire terrain by half a cell, silently, forever. It carries
+  no CRS, so `epsg: null` is returned and the project's own grid is used rather
+  than a guess, and the provenance line says so.
+
+  Standing position on the vendor formats, now asserted rather than assumed: all
+  eleven — Vulcan, Deswik, MinePlan, Micromine, Leapfrog, Datamine, Surpac, OMF,
+  Geosoft, shapefile, LiDAR — are refused **by name, with the export to use**.
+  That is the product: the honest answer to a `.bmf` is "export CSV", not a
+  parser that guesses what its columns mean.
+
 - **2026-08-10** — **Vulcan .bmf reader: attempted, and abandoned on evidence.**
 
   Asked to read Lisheen's block model so one demo could carry both real drilling

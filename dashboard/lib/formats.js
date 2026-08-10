@@ -118,10 +118,15 @@ export function sniff(file) {
   // for by name rather than here.
   if (/\.(tiff?)$/.test(n)) return { readable: true, format: "geotiff" };
   if (/\.(png|jpe?g)$/.test(n)) return { readable: true, format: "image" };
-  if (/\.(csv|txt)$/.test(n)) return { readable: true, format: "csv" };
+  if (/\.(csv|txt|tsv)$/.test(n)) return { readable: true, format: "csv" };
+  // ESRI ASCII grid — the DEM every one of these packages exports without
+  // argument, and the only raster here that needs no library to read.
+  if (/\.asc$/.test(n)) return { readable: true, format: "ascgrid" };
   return { readable: false, format: "unknown", label: ext || "no extension",
-           advice: "Supported: CSV for models and drilling, GeoJSON or KML for " +
-                   "claims, OBJ, GOCAD .ts or DXF for surfaces." };
+           advice: "Supported: CSV for models, drilling and geochemistry; " +
+                   "GeoJSON or KML for claims; OBJ, GOCAD .ts or DXF for " +
+                   "surfaces; GeoTIFF or ESRI ASCII grid (.asc) for terrain " +
+                   "and geophysics." };
 }
 
 // -------------------------------------------------------------- helpers ----
@@ -760,6 +765,71 @@ export async function readGeoTiff(file) {
   // picture; a DEM wants the numbers, and the same file can be either.
   return { extent, bitmap, width: w, height: h, epsg, bands: rasters.length,
            band: rasters[0], nodata };
+}
+
+/**
+ * ESRI ASCII grid (.asc) — a DEM as plain text.
+ *
+ * Worth reading because it is the one raster format every package in the list
+ * writes without argument: Leapfrog, Micromine, Deswik, MinePlan and QGIS all
+ * export it, and unlike GeoTIFF it needs no library. Six header lines, then the
+ * grid, row 0 at the NORTH edge — the same orientation demToMesh already
+ * assumes, so the output is the shape readGeoTiff returns and nothing
+ * downstream has to know which reader produced it.
+ *
+ * It carries no CRS. That is a property of the format, not a gap here: a .asc
+ * is bare numbers, and the projection travels in a sibling .prj or in the
+ * reader's head. `epsg: null` says so rather than guessing, and the caller
+ * falls back to the project's own grid — which for a customer's own survey of
+ * their own ground is right far more often than any guess would be.
+ */
+export function readAsciiGrid(text, name = "grid.asc") {
+  const head = {};
+  const lines = text.split(/\r?\n/);
+  let i = 0;
+  // Header keys are case-insensitive and the count varies: yllcenter is as
+  // legal as yllcorner, and half a cell is a whole cell of error if ignored.
+  for (; i < lines.length && i < 12; i++) {
+    const m = lines[i].trim().match(/^([A-Za-z_]+)\s+(-?[\d.eE+]+)\s*$/);
+    if (!m) break;
+    head[m[1].toLowerCase()] = parseFloat(m[2]);
+  }
+  const w = head.ncols, h = head.nrows, cell = head.cellsize;
+  if (!(w > 0 && h > 0 && cell > 0)) {
+    throw new Error(`${name} is not an ESRI ASCII grid — it needs ncols, ` +
+                    "nrows and cellsize in its header.");
+  }
+  // xllcorner is the OUTER corner of the lower-left cell; xllcenter is that
+  // cell's centre. The extent this returns is in cell CENTRES, matching what a
+  // GeoTIFF gives demToMesh — so a corner header gains half a cell and a centre
+  // header gains nothing. Half a cell is a whole terrain shifted sideways, and
+  // at a 10 m grid nothing downstream would ever mention it.
+  const isCentre = head.xllcenter !== undefined;
+  const west = isCentre ? head.xllcenter : head.xllcorner + cell / 2;
+  const south = isCentre ? head.yllcenter : head.yllcorner + cell / 2;
+  const nodata = head.nodata_value ?? -9999;
+
+  const band = new Float32Array(w * h);
+  let k = 0;
+  for (; i < lines.length && k < band.length; i++) {
+    const row = lines[i];
+    if (!row) continue;
+    // split on runs of whitespace; a row may wrap across several lines
+    for (const tok of row.trim().split(/\s+/)) {
+      if (tok === "") continue;
+      if (k >= band.length) break;
+      const v = +tok;
+      band[k++] = v === nodata ? NaN : v;
+    }
+  }
+  if (k < band.length) {
+    throw new Error(`${name} ends early: ${k.toLocaleString()} values for a ` +
+      `${w} x ${h} grid, which needs ${(w * h).toLocaleString()}.`);
+  }
+  return {
+    width: w, height: h, band, nodata: null, epsg: null, bands: 1, bitmap: null,
+    extent: { west, south, east: west + (w - 1) * cell, north: south + (h - 1) * cell },
+  };
 }
 
 /**
