@@ -426,8 +426,9 @@ async function renderProject(id) {
          this project, read from the register in your uploaded boundary file.
          A logo is the difference between a name a generalist has never heard
          and one they recognise, which is most of why this layer is worth a
-         slide. Private individuals are shown as one anonymous group and are
-         not listed here.</p>
+         slide. Companies are listed first because they are what appears on the
+         map; everyone else is behind the count at the foot of the list, and on
+         the deck they are one anonymous group.</p>
       <div id="nblist"></div>
     </div>
 
@@ -667,6 +668,10 @@ const CORP_RE =
 const normOwner = (x) => (x || "").trim().toUpperCase().replace(/\s+/g, " ");
 const isCorporate = (n) => !!n && (CORP_RE.test(n.trim()) || n.indexOf(",") < 0);
 
+// Whether the tail of individual holders is open. Module-level so a repaint
+// after a save does not silently collapse a list somebody had expanded.
+let holdersExpanded = false;
+
 async function renderHolders(project, datasets) {
   const site = datasets.find((d) => d.kind === "site");
   const owners = site?.stats?.owners;
@@ -708,9 +713,20 @@ async function renderHolders(project, datasets) {
     return typeof m.feature === "boolean" ? m.feature : isCorporate(o.owner);
   };
 
+  // Show the ones that end up on the map, and hide the tail behind a count.
+  //
+  // Listing every holder was right in principle — a numbered company can be
+  // the interesting one — and wrong on screen: after a registry fetch this is
+  // sixty-odd rows, nearly all private individuals, and the panel ran seven
+  // thousand pixels down the page and buried everything under it. The people
+  // are still reachable; they are just not the first thing you have to scroll
+  // past.
   const on = corps.filter(featured).length;
+  const lead = corps.filter((o) => featured(o) || isCorporate(o.owner));
+  const rest = corps.filter((o) => !lead.includes(o));
+  const shown = holdersExpanded ? corps : lead;
   $("nbcount").textContent = `${on} of ${corps.length} featured`;
-  $("nblist").innerHTML = corps.map((o) => {
+  $("nblist").innerHTML = shown.map((o) => {
     const logo = logoOf(o.owner), m = metaOf(o.owner), f = featured(o);
     return `<div class="nbrow ${f ? "" : "off"}" data-owner="${esc(o.owner)}">
       <div class="nblogo">${logo
@@ -734,7 +750,18 @@ async function renderHolders(project, datasets) {
         ${logo ? `<button class="btn sm danger" data-rmlogo="${esc(o.owner)}">Remove</button>` : ""}
       </div>
     </div>`;
-  }).join("");
+  }).join("") + (rest.length ? `
+    <button class="btn sm" id="nbmore" style="margin-top:10px">${
+      holdersExpanded
+        ? `Hide the other ${rest.length}`
+        : `Show ${rest.length} more holder${rest.length === 1 ? "" : "s"} — ` +
+          `individuals and unfeatured`}</button>` : "");
+  if ($("nbmore")) {
+    $("nbmore").onclick = () => {
+      holdersExpanded = !holdersExpanded;
+      renderHolders(project, datasets);
+    };
+  }
 
   const initialsOf = initials;
   $("nblist").querySelectorAll("[data-logo]").forEach((inp) => {
