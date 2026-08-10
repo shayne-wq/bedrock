@@ -474,7 +474,7 @@ if _geo_p.exists():
 _T = stats["total"]
 _M = stats["by_class"]
 CHAPTERS = [
-  {"h": 26, "p": -28, "r": 4200, "dwell": 9, "ground": 1.0, "slide": {
+  {"h": 26, "p": -28, "r": 4200, "dwell": 9, "slide": {
      "eyebrow": "The project",
      "section": "The project", "title": "Elk Gold - Siwash North",
      "body": "A drill-defined, high-grade gold system in the Nicola region of "
@@ -502,9 +502,9 @@ CHAPTERS = [
   # turn at "The orebody", which is where the blocks-then-surfaces contrast in
   # the next chapter's copy actually lands.
   {"h": 28, "p": -26, "r": 3600, "cut": 1.5, "xray": True, "mode": "grade", "dwell": 9,
-   "ground": 1.0, "surfaces": "veins", "section": "The project", "title": "A high-grade gold system", "body": "The Elk Gold project sits in the Nicola region of southern British Columbia, southeast of Merritt — road-accessible, in an established mining district. The vein domains are drawn as solid bodies, so the structural grain of the system reads immediately."},
+   "surfaces": "veins", "section": "The project", "title": "A high-grade gold system", "body": "The Elk Gold project sits in the Nicola region of southern British Columbia, southeast of Merritt — road-accessible, in an established mining district. The vein domains are drawn as solid bodies, so the structural grain of the system reads immediately."},
   {"h": 30, "p": -22, "r": 2500, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 9,
-   "ground": 1.0, "section": "The ground", "title": "On real ground", "body": "Every block is placed at its true UTM position on real terrain — this is the actual mountain the deposit sits inside."},
+   "section": "The ground", "title": "On real ground", "body": "Every block is placed at its true UTM position on real terrain — this is the actual mountain the deposit sits inside."},
   # The one chapter whose copy has to argue against its own picture. A layer
   # this suggestive is exactly where a deck stops being a visualization and
   # starts being a claim, so the body text says what it is before the audience
@@ -515,7 +515,7 @@ CHAPTERS = [
    "ground": 1.0, "geo": "rtp", "site": True, "blocks": False, "section": "The ground",
    "title": "The magnetic picture", "body": "Reduced-to-pole magnetics draped over the property, with the tenure boundaries on top. This survey is FABRICATED — nothing was flown, and the field was synthesised from the block model itself, so the anomaly sits over the deposit because it was built from it. It shows how a real survey would sit in the deck; it is not evidence for anything."},
   {"h": 52, "p": -24, "r": 2600, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11,
-   "ground": 0.42, "section": "The ground", "title": "The orebody", "body": "Forty-six vein domains threading the ridge, drawn as the blocks they are modelled as. Above a gram the sheets separate and the northwest structural grain of the system becomes obvious."},
+   "ground": 0.1, "section": "The ground", "title": "The orebody", "body": "Forty-six vein domains threading the ridge, drawn as the blocks they are modelled as. Above a gram the sheets separate and the northwest structural grain of the system becomes obvious."},
   {"h": 50, "p": -22, "r": 2100, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 12,
    "ground": 0.0, "surfaces": "veins", "section": "The deposit",
    "title": "The veins as bodies", "body": "The same domains drawn as solid geological surfaces rather than blocks \u2014 the hull of each vein, extracted face by face from the model so nothing is invented between the data points.",
@@ -544,7 +544,7 @@ CHAPTERS = [
   # Straight down, ground intact, body replaced by the grade map. Overhead is
   # the one angle where the 3D model tells you least and the map tells you most.
   {"h": 0, "p": -90, "r": 2350, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 11,
-   "ground": 1.0, "plan": True, "site": True, "section": "Drilling & geometry",
+   "ground": 1.0, "plan": True, "blocks": False, "site": True, "section": "Drilling & geometry",
    "title": "Footprint in plan",
    "body": "Overhead, the body itself tells you nothing \u2014 you see the top of it and the ground disappears. So this is grade times thickness accumulated down every column, laid on the terrain: where the metal is, and how much of it, against the ground you would actually mine.",
    "pin": {"at": [693500, 5525900], "dz": 260, "text": "Grade \u00d7 thickness, g\u00b7m"}},
@@ -599,20 +599,20 @@ CHAPTERS = [
   {"h": 40, "p": -34, "r": 2400, "cut": 1.0, "xray": True, "mode": "class", "dwell": 11,
    "ground": 0.0, "deposit": "nicola", "section": "A second deposit",
    "title": "A different kind of deposit", "body": "Broad disseminated zones on a coarser 12 × 12 × 8 m lattice rather than Siwash North's narrow high-grade sheets on 10 × 5 × 5 m — more tonnes, less grade. The deck carries both models and the readout re-totals for whichever is loaded. Still fabricated."},
-  {"h": 34, "p": -28, "r": 3000, "dwell": 12, "ground": 1.0, "deposit": "siwash", "section": "Appendix", "slide": {
+  {"h": 34, "p": -28, "r": 3000, "dwell": 12, "deposit": "siwash", "section": "Appendix", "slide": {
      "eyebrow": "Grade-tonnage",
      "title": "What a cut-off costs you",
      "body": "Every cut-off trades tonnes for grade. This curve is computed from the "
              "same rollups the readout uses, so it cannot disagree with anything else "
              "in the deck.",
      "chart": "gradeTonnage"}},
-  {"h": 40, "p": -30, "r": 2600, "dwell": 12, "ground": 1.0, "section": "Appendix", "slide": {
+  {"h": 40, "p": -30, "r": 2600, "dwell": 12, "section": "Appendix", "slide": {
      "eyebrow": "Where the metal is",
      "title": "Ten domains carry it",
      "body": "Contained ounces by vein domain, share-weighted so blocks straddling "
              "two domains are split rather than double-counted.",
      "chart": "veinContribution"}},
-  {"h": 30, "p": -26, "r": 3200, "dwell": 11, "ground": 1.0, "section": "Appendix", "slide": {
+  {"h": 30, "p": -26, "r": 3200, "dwell": 11, "section": "Appendix", "slide": {
      "eyebrow": "Resource by confidence",
      "title": "What is known, and how well",
      "body": "Classification splits the deposit by how much drilling stands behind it. "
@@ -2788,8 +2788,15 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   // globe translucent turns the surrounding landscape into a dark wash, which
   // costs the terrain context that made this worth georeferencing. A rectangle
   // leaves the mountain solid and cuts a window over the orebody instead.
-  const sw=proj4(PROJ,'WGS84',[EMIN-30,NMIN-30]);
-  const ne=proj4(PROJ,'WGS84',[EMIN+EX+30,NMIN+EY+30]);
+  // The window the ground is allowed to go see-through in. Thirty metres of
+  // margin drew its own edge right around the deposit — a hard dark rectangle
+  // framing the orebody, which at the new 10% default is in shot on every
+  // model chapter. Widened so the transition happens off-frame at the ranges
+  // these chapters actually use, while the far terrain and the horizon stay
+  // solid, which is what stops the world reading as glass.
+  const TRANS_PAD=2500;
+  const sw=proj4(PROJ,'WGS84',[EMIN-TRANS_PAD,NMIN-TRANS_PAD]);
+  const ne=proj4(PROJ,'WGS84',[EMIN+EX+TRANS_PAD,NMIN+EY+TRANS_PAD]);
   // Property extent for the colour-pop cutout — the claim ring if the site
   // layer supplies one, otherwise a margin around the deposit itself.
   const POP_RECT=(function(){
@@ -6913,7 +6920,21 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     // Held terrain wins over the chapter's. Refresh it anyway so the "held"
     // badge repaints on every chapter change — otherwise the presenter loses
     // track of the fact that the deck is no longer driving it.
-    const ga=groundHold?groundAlpha:((c.ground===undefined)?groundAlpha:c.ground);
+    // Terrain opacity, and the default that matters.
+    //
+    // An orebody drawn over solid ground is a coloured blob pasted on a
+    // hillside: you see its silhouette and nothing about where it sits. The
+    // whole reason this is georeferenced is that the body is INSIDE the
+    // mountain, and that only reads when the mountain is see-through.
+    //
+    // So the default is derived from what is on screen rather than inherited
+    // from whatever the last chapter left behind: if there is rock to look at —
+    // the block model, or drilling — the ground goes to 10%. A chapter about
+    // the surface still says `ground: 1.0` and gets it.
+    const showsRock = !assetOnly && (blocksOn || drills);
+    const ga = groundHold ? groundAlpha
+             : (c.ground!==undefined ? c.ground
+             : (showsRock ? 0.1 : groundAlpha));
     setGround(ga);
     apply(); frameFor(c,!initial); paintUI();
     if(narrating) speak(c);

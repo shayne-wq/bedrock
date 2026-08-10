@@ -380,6 +380,31 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
 
 ## Log
 
+- **2026-08-10** — **Terrain defaults to 10% whenever there is rock on screen.**
+  An orebody drawn over solid ground is a coloured blob pasted on a hillside:
+  you see its silhouette and nothing about where it sits. The entire reason
+  this is georeferenced is that the body is INSIDE the mountain, and that only
+  reads when the mountain is see-through.
+
+  So the default is now DERIVED from what is on screen rather than inherited
+  from whatever the last chapter left: block model or drilling on → 0.1. A
+  chapter about the surface still says `ground: 1.0` and gets it. Six baked
+  chapters that declared solid ground while drawing the model had the
+  declaration removed so the rule applies to them, and the headline "The
+  orebody" chapter went from 0.42 — at which the hillside still reads as a
+  surface the body sits on — to 0.1.
+
+  Two things fell out of doing it. The plan-view chapter's own copy says the
+  body tells you nothing from above, and it was drawing it anyway, as a blob
+  over the grade map it exists to show: `blocks: false` now. And the
+  translucency window had a **30 metre** margin, so at the new default its edge
+  drew a hard dark rectangle right around the deposit on every model chapter —
+  widened to 2.5 km so the transition happens off-frame at the ranges these
+  chapters use, while the far terrain stays solid.
+
+  Still visible and worth doing next: that window edge is only pushed out of
+  shot, not softened, and the underground colour it reveals is nearly black.
+
 - **2026-08-10** — **The open pit is an excavation now, not a scribble.** Five
   wireframe rings drawn BELOW the terrain, which then occluded them — so the
   one feature whose whole job is to read as a hole read as a faint contour

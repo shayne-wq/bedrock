@@ -144,7 +144,9 @@ export function zoneCandidates(zone, datasets, project) {
       body: `${Math.round(blocks.total.tonnes).toLocaleString()} t at ` +
             `${blocks.total.grade_gt} g/t, on the real terrain it sits inside.`,
       camera: { h: 52, p: -24, r: 2600 },
-      layers: { ground: 0.42, mode: "grade", cut: 0.5 },
+      // 0.1, not 0.42: at 0.42 the hillside still reads as a surface the body
+      // is sitting on rather than rock it is inside.
+      layers: { ground: 0.1, mode: "grade", cut: 0.5 },
       needs: ["blocks"],
     });
     push("core", {
