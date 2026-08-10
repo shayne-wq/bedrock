@@ -6619,12 +6619,12 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   // Served from a real host, the deck knows its own address. Served from
   // localhost it does not, and a snippet pointing at 127.0.0.1 is useless to
   // everyone but its author — so fall back to the published alias. That is
-  // orebody-fawn.vercel.app, not orebody.vercel.app: the bare name belongs to
+  // bedrock-fawn.vercel.app, not orebody.vercel.app: the bare name belongs to
   // an unrelated project, and defaulting to it would have handed users a
   // snippet that embedded a stranger's website. The host keeps its old name
   // until the deployment is renamed — a live embed URL is not a brand surface
   // to sweep, it is somebody's website.
-  const PUBLISHED='https://orebody-fawn.vercel.app/';
+  const PUBLISHED='https://bedrock-fawn.vercel.app/';
   function embBase(){
     const u=location.origin+location.pathname;
     return /^https?:\/\/(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(u)

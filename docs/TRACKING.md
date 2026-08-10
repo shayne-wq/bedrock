@@ -495,6 +495,71 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   untouched, and something that now looks this much like a mine plan needs them
   more than the old wireframe did.
 
+- **2026-08-10** — **Renamed to Bedrock, and the console rebuilt on the brand.**
+
+  **The rename.** GitHub repo → `shayne-wq/bedrock`, Supabase project → `bedrock`
+  (the ref `czuaqwtngduvlisxonkh` is immutable, so no Supabase URL moved),
+  Vercel project → `bedrock` with `bedrock-fawn.vercel.app` aliased to
+  production. `orebody-fawn.vercel.app` still answers 200 and is left alone —
+  every share link and website embed already issued points at it, and revoking
+  a host to tidy a name would break decks sitting on customers' sites. The
+  Supabase auth `uri_allow_list` gained the new host alongside the old.
+  `supabase/config.toml` keeps `project_id = "orebody"`; it is the local
+  docker stack's directory name, not a product name.
+
+  **The console.** Implemented the `Orebody Console.dc.html` design against the
+  real console rather than as a new page — every existing class kept its name,
+  so the studio, the ingest ledger, the embed tabs and the analytics panels
+  came across without markup churn. Light ground, per the brand guidelines'
+  "a light ground carries the whole system — no dark surfaces". Type is
+  Space Grotesk / Inter / JetBrains Mono, the same three faces as the marketing
+  page, which also drops the 344 KB base64 `assets/fonts.css` the console had
+  been loading for a different stack. The viewer stays dark: it is a 3D scene of
+  rock, and the slide thumbnails in the deck builder are miniatures of it, so
+  they stay dark too — they are previews, not swatches.
+
+  Three colours were moved off the design file's values, all to clear WCAG AA
+  on a light ground, and the first two on the brand guidelines' own instruction
+  that accent-coloured *text* takes Accent 700:
+  - `--accent` #0088b0 is 3.7:1 on the page. Kept for fills, borders and rules;
+    `--accent-700` #006786 (5.7:1) carries every accent-coloured word and the
+    primary button, where white on #0088b0 was 4.1:1.
+  - `--good` #1a8a5c was 3.5:1 on its own chip, and it carries the `LOADED` tag.
+    Darkened to #146c49 (5.7:1).
+  - `--ink-mute` #8d9490 was 2.8:1 and set every column header, breadcrumb, stat
+    caption and slot sub-label. Darkened to #6d7472 (4.6:1); #8d9490 survives as
+    `--ink-faint` for the logo's third seam and other things that are not read.
+
+  Two layout bugs found by screenshotting the result rather than by any test,
+  both pre-existing and both invisible in the dark theme:
+  - **`.row` was never given `display:flex`.** Only `header.page .row` and
+    `.zone > .row` were styled, so every panel header in the console —
+    Zones/Add zone, Build the deck/slide count, Neighbouring ground/Fetch —
+    had been stacking its button under its title the whole time.
+  - **The sticky rail is one viewport tall**, so on any page longer than the
+    fold its white background stopped mid-page and left a grey stripe. The grid
+    column carries the white now.
+
+  Also: register controls moved out of the Neighbouring ground heading and down
+  to the list they act on; a loaded slot's chip and buttons became a right-hand
+  column so it stays the same height as an empty one; the single nav item reads
+  active on every route, since every route is inside Projects; favicon added
+  (the symbol-only lockup the guidelines reserve for it), which also silenced a
+  404 on every console load.
+
+  **Not implemented from the design, deliberately:** the drag handles on the
+  dataset slots. In the design they reorder a layer list; here the slot order is
+  a code constant, deliberately exploration-first (property → geophysics →
+  geochem → drilling → block model), and `datasets` has no `ord` column. A
+  handle that reorders on screen and persists nothing is worse than no handle.
+  If layer order should drive anything in the viewer, that is a real feature and
+  wants its own issue.
+
+  Regression: 10 modules parse, and holeview 32 / capture 28 / labels 11 /
+  transition 11 / ui 37 / deposit 28 / slides 40 / formats 54 / extract 36 /
+  subblock 18 all green. `verify_console_flows` and `verify_console_inputs` need
+  the local Supabase stack and were not run.
+
 - **2026-08-10 (night)** — Real work landed on all six items from the
   comparables-driven P0 section above, same session: mobile turned out to be
   a pure layout bug, not a boot/WebGL failure (fixed, pending physical-device

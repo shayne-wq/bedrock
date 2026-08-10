@@ -94,7 +94,7 @@ carries their membership.
 ## 5. Allow the redirect
 
 In Authentication → URL Configuration, add your deployed console URL (e.g.
-`https://orebody-fawn.vercel.app/dashboard/`) to **Redirect URLs**, or the
+`https://bedrock-fawn.vercel.app/dashboard/`) to **Redirect URLs**, or the
 sign-in email will bounce users to the wrong place.
 
 ---

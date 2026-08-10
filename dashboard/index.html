@@ -6,17 +6,30 @@
 <title>Bedrock console</title>
 <meta name="description" content="Author, publish and measure interactive 3D geological presentations.">
 <meta name="robots" content="noindex">
-<link rel="stylesheet" href="/assets/fonts.css">
+<!-- Symbol-only lockup, the use the brand guidelines reserve for favicons. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 90'%3E%3Crect width='96' height='18' rx='2' fill='%230088b0'/%3E%3Crect y='24' width='120' height='18' rx='2' fill='%2314171a'/%3E%3Crect x='16' y='48' width='88' height='18' rx='2' fill='%238d9490'/%3E%3Crect y='72' width='104' height='18' rx='2' fill='%2314171a'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
 
 <div id="app">
   <aside id="rail">
+    <!-- The mark is a stratigraphic column: four seams of rock, one surfaced
+         for analysis in the accent. Per the brand guidelines it never appears
+         below 24px, and never without its clearspace. -->
     <div class="brand">
+      <svg width="20" height="15" viewBox="0 0 120 90" aria-hidden="true">
+        <rect x="0"  y="0"  width="96"  height="18" rx="2" fill="#0088b0"/>
+        <rect x="0"  y="24" width="120" height="18" rx="2" fill="#14171a"/>
+        <rect x="16" y="48" width="88"  height="18" rx="2" fill="#8d9490"/>
+        <rect x="0"  y="72" width="104" height="18" rx="2" fill="#14171a"/>
+      </svg>
       <b>Bedrock</b>
-      <span class="w">Console</span>
     </div>
+    <span class="w">Console</span>
     <nav id="nav"></nav>
     <div class="foot">
       <div class="who" id="who"></div>

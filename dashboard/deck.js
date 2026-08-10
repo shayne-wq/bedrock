@@ -92,11 +92,11 @@ export async function renderDeck(id, view) {
       burned into exported images and recordings.
     </div>` : ""}
 
-    ${blocks?.stats?.total ? `<div class="panel"><div class="grid three">
+    ${blocks?.stats?.total ? `<div class="stats3">
       <div class="stat"><span class="l">Tonnage</span><b>${fmtT(blocks.stats.total.tonnes)}</b></div>
       <div class="stat"><span class="l">Grade</span><b>${blocks.stats.total.grade_gt} g/t</b></div>
       <div class="stat"><span class="l">Contained</span><b>${fmtOz(blocks.stats.total.oz)}</b></div>
-    </div></div>` : ""}
+    </div>` : ""}
 
     <div class="panel">
       <div class="row"><h2 class="grow">Build the deck</h2>

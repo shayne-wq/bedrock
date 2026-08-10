@@ -128,8 +128,11 @@ async function route() {
   const raw = location.hash.startsWith("#/") ? location.hash.slice(2) : "";
   const h = raw.split("/");                        // "#/p/<id>" -> ["p", id]
   await loadOrgs();
+  // Every route in the console — a project, a deck, the studio — lives inside
+  // Projects, so the one nav item reads active throughout rather than only on
+  // the list, where the highlight would be telling you what the page already is.
   document.querySelector("#rail nav").innerHTML =
-    `<a href="#/" class="${!h[0] ? "on" : ""}">Projects</a>`;
+    `<a href="#/" class="on">Projects</a>`;
   try {
     if (h[0] === "p" && h[1]) return await renderProject(h[1]);
     if (h[0] === "s" && h[1]) return await renderStudio(h[1], view);
@@ -330,10 +333,12 @@ async function renderProject(id) {
     const ds = zoneKind(z, k.key);
     return `<div class="slot ${ds ? "on" : ""}">
       <span class="k">${k.label}${k.note ? ` <em class="opt">${k.note}</em>` : ""}</span>
+      <span class="acts">
       ${ds ? `<span class="chip ${ds.synthetic ? "warn" : "live"}">${ds.synthetic ? "Fabricated" : "Loaded"}</span>
         <button class="btn sm" data-load="${k.key}" data-zone="${z.id}">Replace</button>
         <button class="btn sm danger" data-del="${ds.id}">Remove</button>`
        : `<button class="btn sm" data-load="${k.key}" data-zone="${z.id}">Add</button>`}
+      </span>
     </div>`;
   };
 
@@ -358,14 +363,14 @@ async function renderProject(id) {
       Every deck built from it carries the warning on screen and in exports.
     </div>` : ""}
 
-    ${T ? `<div class="panel"><div class="grid three">
+    ${T ? `<div class="stats3">
       <div class="stat"><span class="l">Tonnage</span><b>${fmtT(T)}</b>
         <span class="sub">${fmtInt(B)} blocks · ${zonesWithBlocks.length} zone${zonesWithBlocks.length === 1 ? "" : "s"}</span></div>
       <div class="stat"><span class="l">Grade</span><b>${grade.toFixed(2)} g/t</b>
         <span class="sub">tonnage-weighted across zones</span></div>
       <div class="stat"><span class="l">Contained metal</span><b>${fmtOz(OZ)}</b>
         <span class="sub">summed over all zones</span></div>
-    </div></div>` : ""}
+    </div>` : ""}
 
     <div class="panel">
       <div class="row"><h2 class="grow">Zones</h2>
@@ -416,13 +421,17 @@ async function renderProject(id) {
     </div>
 
     <div class="panel" id="nbpanel" hidden>
-      <div class="row"><h2 class="grow">Neighbouring ground</h2>
+      <div class="row"><h2 class="grow">Neighbouring ground</h2></div>
+      <!-- The register controls sit with the list they act on rather than out
+           at the right edge of the heading, where they read as page chrome. -->
+      <div class="row" style="margin-bottom:14px">
         <select id="nbjur" class="nbjur" title="Which public register to ask">
           <option value="bc">British Columbia</option>
           <option value="sk">Saskatchewan</option>
         </select>
         <button class="btn sm" id="nbfetch">Fetch from the register</button>
-        <span class="hint" id="nbcount"></span></div>
+        <span class="hint" id="nbcount"></span>
+      </div>
       <p class="lead" style="margin:0 0 12px">Companies whose tenure surrounds
          this project, read from the register in your uploaded boundary file.
          A logo is the difference between a name a generalist has never heard
