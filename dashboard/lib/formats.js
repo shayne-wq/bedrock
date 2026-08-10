@@ -26,6 +26,13 @@ const BINARY_FORMATS = [
   { id: "omf", ext: [".omf"], magic: ["\x84\x83\x82\x81"], label: "Open Mining Format",
     advice: "OMF support is planned and is the right long-term answer. For now, " +
             "export the block model as CSV and surfaces as OBJ or DXF." },
+  // Geosoft's binary grid. No viable open decoder exists, and reverse
+  // engineering a proprietary geophysics format to save one export step is not
+  // a good trade. Named, with the two things Oasis montaj exports in one click.
+  { id: "geosoft-grd", ext: [".grd", ".gxf"], label: "Geosoft grid",
+    advice: "Export the grid from Oasis montaj as GeoTIFF (which carries its " +
+            "own georeferencing and is read directly), or as an ASCII grid " +
+            "with a world file." },
   { id: "datamine", ext: [".dm"], label: "Datamine",
     advice: "Export the model to CSV (File > Export > CSV) and wireframes to DXF." },
   { id: "vulcan", ext: [".bmf", ".bdf"], label: "Maptek Vulcan block model",
@@ -60,6 +67,11 @@ export function sniff(file) {
   if (/\.(obj)$/.test(n)) return { readable: true, format: "obj" };
   if (/\.(ts|gocad)$/.test(n)) return { readable: true, format: "gocad" };
   if (/\.(dxf)$/.test(n)) return { readable: true, format: "dxf" };
+  // Grids. A GeoTIFF carries its own georeferencing and needs nothing beside
+  // it; a PNG or JPEG needs its world file, which the geophysics step checks
+  // for by name rather than here.
+  if (/\.(tiff?)$/.test(n)) return { readable: true, format: "geotiff" };
+  if (/\.(png|jpe?g)$/.test(n)) return { readable: true, format: "image" };
   if (/\.(csv|txt)$/.test(n)) return { readable: true, format: "csv" };
   return { readable: false, format: "unknown", label: ext || "no extension",
            advice: "Supported: CSV for models and drilling, GeoJSON or KML for " +
@@ -445,10 +457,13 @@ export function pointAt(trace, depth) {
 // beside a .png — which every GIS and geophysics package writes and which is
 // six lines of plain text.
 //
-// GeoTIFF is deliberately not decoded. It would need a real TIFF reader for
-// the tag soup, tiling and compression variants, and a reader written against
-// a guess mis-georeferences silently: the survey lands in the wrong place and
-// looks perfectly fine. Image + world file covers the same ground honestly,
+// GeoTIFF IS decoded now — see readGeoTiff at the foot of this file. What
+// follows described the world-file path, which remains the answer for PNG and
+// JPEG grids.
+// The old reasoning was that a TIFF reader written against a guess
+// mis-georeferences silently — the survey lands in the wrong place and looks
+// perfectly fine. That risk is real and is why this uses geotiff.js, a
+// maintained reader, rather than a hand-rolled one. Image + world file remains
 // and an explicit extent typed by the user covers the rest.
 
 /** World file: six numbers, one per line — pixel size and rotation, then the
@@ -581,4 +596,114 @@ export function readGeochem(text, what = "geochem", element) {
              min: sorted[0], max: sorted[sorted.length - 1],
              p50: q(0.5), p90: q(0.9), p98: q(0.98) },
   };
+}
+
+// ------------------------------------------------------------- GeoTIFF ----
+/**
+ * Read a GeoTIFF: the pixels, and the georeferencing it carries in its own
+ * tags.
+ *
+ * This is the format a geophysical contractor actually hands over. Refusing it
+ * and asking for "a PNG with a .tfw" asked the customer to degrade their own
+ * deliverable and then re-supply, by hand, the six numbers the file already
+ * contained — a step that exists only for our convenience and that they can
+ * get wrong.
+ *
+ * Decoded in the browser, like everything else here: the raw grid never leaves
+ * the machine, and only the drawn image and its extent are uploaded.
+ *
+ * Returns null when the file is a plain TIFF with no georeferencing, so the
+ * caller can fall back to a world file rather than treat "not a GeoTIFF" as a
+ * failure.
+ */
+let _geotiffLib = null;
+async function geotiffLib() {
+  if (_geotiffLib) return _geotiffLib;
+  if (globalThis.GeoTIFF) return (_geotiffLib = globalThis.GeoTIFF);
+  await new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js";
+    s.crossOrigin = "anonymous";
+    s.onload = res;
+    s.onerror = () => rej(new Error(
+      "The GeoTIFF reader could not be loaded. Check the connection, or " +
+      "export the grid as PNG with its world file."));
+    document.head.appendChild(s);
+  });
+  if (!globalThis.GeoTIFF) throw new Error("The GeoTIFF reader failed to start.");
+  return (_geotiffLib = globalThis.GeoTIFF);
+}
+
+export async function readGeoTiff(file) {
+  const GT = await geotiffLib();
+  const buf = await file.arrayBuffer();
+  let img;
+  try {
+    img = await (await GT.fromArrayBuffer(buf)).getImage();
+  } catch (e) {
+    throw new Error(`${file.name} could not be read as a TIFF: ${e.message}`);
+  }
+  const [ox, oy] = img.getOrigin();
+  const [rx, ry] = img.getResolution();
+  // A TIFF with no tie point and no pixel scale is just a picture. Say so by
+  // returning null rather than by inventing an extent for it.
+  if (!Number.isFinite(ox) || !Number.isFinite(rx) || !rx) return null;
+
+  const w = img.getWidth(), h = img.getHeight();
+  // getResolution's y is negative for a north-up image, which is the normal
+  // case; the extent is written min/max so the sign cannot flip it upside down.
+  const x0 = ox, x1 = ox + rx * w;
+  const y0 = oy, y1 = oy + ry * h;
+  const extent = {
+    west: Math.min(x0, x1), east: Math.max(x0, x1),
+    south: Math.min(y0, y1), north: Math.max(y0, y1),
+  };
+
+  const keys = img.getGeoKeys ? (img.getGeoKeys() || {}) : {};
+  // The EPSG the grid was written in. Recorded, not converted: the deck places
+  // the survey in the project's own projection, and a silent reprojection here
+  // would be a second opinion about where the anomaly is.
+  const epsg = keys.ProjectedCSTypeGeoKey || keys.GeographicTypeGeoKey || null;
+
+  // Render to a bitmap the same way the PNG path does, so everything
+  // downstream sees one kind of thing. Single-band grids are the common case
+  // and get a linear grey ramp; 3-band files are already a picture.
+  const rasters = await img.readRasters({ interleave: false });
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext("2d");
+  const out = ctx.createImageData(w, h);
+  const nodata = Number(img.getGDALNoData ? img.getGDALNoData() : NaN);
+
+  if (rasters.length >= 3) {
+    const [R, G, B] = rasters;
+    for (let i = 0; i < w * h; i++) {
+      out.data[i * 4] = R[i]; out.data[i * 4 + 1] = G[i];
+      out.data[i * 4 + 2] = B[i]; out.data[i * 4 + 3] = 255;
+    }
+  } else {
+    const band = rasters[0];
+    // Percentile stretch, not min/max: one hot cell in a magnetics grid would
+    // otherwise flatten the whole survey to black.
+    const finite = [];
+    for (let i = 0; i < band.length; i++) {
+      const v = band[i];
+      if (Number.isFinite(v) && v !== nodata) finite.push(v);
+    }
+    finite.sort((a, b) => a - b);
+    const lo = finite[Math.floor(finite.length * 0.02)] ?? 0;
+    const hi = finite[Math.floor(finite.length * 0.98)] ?? 1;
+    const span = hi - lo || 1;
+    for (let i = 0; i < w * h; i++) {
+      const v = band[i];
+      const bad = !Number.isFinite(v) || v === nodata;
+      const t = bad ? 0 : Math.max(0, Math.min(1, (v - lo) / span));
+      const g = Math.round(t * 255);
+      out.data[i * 4] = g; out.data[i * 4 + 1] = g; out.data[i * 4 + 2] = g;
+      out.data[i * 4 + 3] = bad ? 0 : 255;
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+  const bitmap = await createImageBitmap(cv);
+  return { extent, bitmap, width: w, height: h, epsg, bands: rasters.length };
 }

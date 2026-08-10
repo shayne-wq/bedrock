@@ -15,7 +15,7 @@ import {
 import {
   sniff, readGeoJSON, readKML, readOBJ, readGOCAD, readDXF,
   readCollars, readSurveys, readAssays, desurvey,
-  readWorldFile, worldExtent, magProduct, readGeochem,
+  readWorldFile, worldExtent, magProduct, readGeochem,, readGeoTiff
 } from "./lib/formats.js";
 
 let worker = null;
@@ -870,10 +870,15 @@ async function parseAux(kind, chosen) {
   }
 
   if (kind === "geophysics") {
-    // An image plus the six numbers that say where it goes. GeoTIFF is not
-    // decoded — see formats.js — so a .tif needs its .tfw alongside, and a
-    // .png its .pgw. Without one the grid cannot be placed, and a survey
-    // floated at a guessed extent is worse than no survey.
+    // A grid, and the numbers that say where it goes.
+    //
+    // A GeoTIFF carries those numbers itself, in its own tags, which is why it
+    // is the format a geophysical contractor actually delivers. This used to
+    // refuse them and ask for a PNG plus a hand-written .tfw — asking the
+    // customer to degrade their own deliverable and then re-supply, by hand,
+    // the georeferencing the file already contained. Decoded in the browser
+    // now, same as everything else here: the raw file is read locally and only
+    // what the deck needs is uploaded.
     const imgs = [], worlds = {};
     for (const c of chosen) {
       const n = c.file.name.toLowerCase();
@@ -885,20 +890,33 @@ async function parseAux(kind, chosen) {
     const products = [];
     for (const f of imgs) {
       const stem = f.name.toLowerCase().replace(/\.[^.]+$/, "");
-      const wfFile = worlds[stem];
-      if (!wfFile) {
-        throw new Error(`${f.name} has no world file. Add ${stem}` +
-          (/\.tif/.test(f.name.toLowerCase()) ? ".tfw" : ".pgw") +
-          " — six numbers saying where the grid sits — or the survey cannot be placed.");
+      const isTiff = /\.(tiff?)$/.test(f.name.toLowerCase());
+      let wfFile = worlds[stem];
+      let ext = null, bmp = null;
+
+      // A GeoTIFF's own tags win over a world file sitting next to it. If both
+      // disagree the file is the authority — the .tfw is a copy somebody made,
+      // and the tags are what the grid was written with.
+      if (isTiff) {
+        const geo = await readGeoTiff(f).catch((e) => { throw e; });
+        if (geo) { ext = geo.extent; bmp = geo.bitmap; wfFile = null; }
       }
-      const wf = readWorldFile(await wfFile.text(), wfFile.name);
-      // Pixel dimensions come from the image itself; nothing else knows them.
-      const bmp = await createImageBitmap(f).catch(() => null);
-      if (!bmp) {
-        throw new Error(`${f.name} could not be decoded as an image. ` +
-          "GeoTIFF is not read directly — export the grid as PNG or JPEG with its world file.");
+
+      if (!ext) {
+        if (!wfFile) {
+          throw new Error(`${f.name} has no world file. Add ${stem}` +
+            (isTiff ? ".tfw" : ".pgw") +
+            " — six numbers saying where the grid sits — or the survey cannot be placed.");
+        }
+        const wf = readWorldFile(await wfFile.text(), wfFile.name);
+        // Pixel dimensions come from the image itself; nothing else knows them.
+        bmp = await createImageBitmap(f).catch(() => null);
+        if (!bmp) {
+          throw new Error(`${f.name} could not be decoded as an image. ` +
+            "Export the grid as GeoTIFF, or as PNG or JPEG with its world file.");
+        }
+        ext = worldExtent(wf, bmp.width, bmp.height);
       }
-      const ext = worldExtent(wf, bmp.width, bmp.height);
       const prod = magProduct(f.name);
       products.push({ ...prod, file: f.name, width: bmp.width, height: bmp.height, extent: ext });
       bmp.close?.();
