@@ -126,18 +126,18 @@ figure img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit
    No max — filling the width is the point, and a cap breaks it on a wide
    monitor. Percentage units mean this holds at every width without a query.
 
-   It also crosses the seam into the white footer, which means one word has to
-   be white on the photograph and dark on the white below it. Rather than draw
-   it twice and hope two copies stay registered, the fill is a single gradient
-   with a hard stop, clipped to the glyphs. Every figure below is measured, in
-   em, so the whole arrangement scales with the font size:
+   It stays white the whole way down, including the quarter of each letter that
+   crosses onto the footer. That part is white on white, so it does not read as
+   ink at all — the strokes run into the footer's white and stop being letters,
+   and what survives the seam is the gaps between them, a row of dark notches
+   punched out of one continuous white field. The wordmark and the footer read
+   as one surface rather than a mark sitting above a panel.
 
-     line box is 1em tall (line-height 1); the ink runs 0.134em to 0.846em
-     inside it, so the letterforms are 0.712em deep.
-     bottom: -0.332em puts the ink bottom 0.178em past the seam — a quarter of
-     the letter height sitting on the footer.
-     the seam is then 1 - 0.332 = 0.668em down from the element's top, which is
-     exactly where the gradient switches colour. */
+   The overhang is what makes that seamless: the strokes physically extend past
+   the boundary, so there is no hairline or antialiased edge where the letters
+   meet the footer. Measured, and in em, so it scales with the font size —
+   the line box is 1em (line-height 1), the ink runs 0.134em to 0.846em inside
+   it, and bottom: -0.332em puts a quarter of the letter height past the seam. */
 /* overflow:hidden here, not on the section, because the section now has to let
    the bleed through. It clips the K's trailing advance — whitespace inside the
    glyph's advance width, which is layout overflow and would put a horizontal
@@ -148,16 +148,18 @@ figure img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit
   overflow: hidden;
   font-family: var(--wordmark); font-weight: 400; white-space: nowrap;
   font-size: 18.744vw; margin-left: -1.387vw; line-height: 1; letter-spacing: -0.01em;
-  color: transparent; pointer-events: none;
-  background-image: linear-gradient(to bottom, #fff 0 0.668em, var(--bg) 0.668em);
-  -webkit-background-clip: text; background-clip: text; }
+  color: #fff; pointer-events: none; }
 
-/* White, and the only light surface on the page — which is what lets the
-   wordmark's overhang read as one letterform crossing a hard edge rather than
-   as two separate marks. No border-top: the colour change is the seam.
-   Top padding clears the overhang. The wordmark hangs 0.178em below the seam
-   at a font-size of 18.744vw, so the overhang is 3.34vw and the padding
-   tracks it rather than being a number that only works at one width. */
+/* White, and the only light surface on the page — which is the whole trick:
+   the wordmark is white too, so its overhang disappears into this and the two
+   read as one surface. No border-top; the colour change is the seam.
+
+   The top padding still has to clear that overhang, and now for a reason that
+   is easy to miss. The overhang is invisible but not absent: it is white ink
+   painting above the footer, so anything that slid under it would be silently
+   erased rather than merely overlapped. The wordmark hangs 0.178em below the
+   seam at a font-size of 18.744vw, so the overhang is 3.34vw, and the padding
+   tracks it instead of being a number that only holds at one width. */
 footer { position: relative; z-index: 1; background: #fff;
   padding: calc(3.34vw + 26px) 0 30px;
   font-family: var(--mono); font-size: 12px; color: #6d7472; }
