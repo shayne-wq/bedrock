@@ -1,11 +1,11 @@
--- Orebody — RLS policy tests.
+-- Bedrock — RLS policy tests.
 --
 -- Fixture ids live in the bbbb… space, NOT aaaa…, because supabase/seed.sql
 -- owns aaaa… and `db reset` loads it before this runs. When the seed was added
 -- these two suites started colliding on orgs_pkey and this file stopped being
 -- runnable at all — which is the worst outcome for the suite that proves
 -- tenants cannot read each other's data.
--- Orebody — RLS proof.
+-- Bedrock — RLS proof.
 --
 -- Every claim this schema makes about tenant isolation is asserted here, by
 -- impersonating real users through request.jwt.claims (which is exactly what

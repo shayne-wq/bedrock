@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Orebody — SYNTHETIC site-features generator.
+"""Bedrock — SYNTHETIC site-features generator.
 
 ============================ READ THIS FIRST ============================
 EVERYTHING THIS SCRIPT PRODUCES IS FABRICATED: the claim boundary, the pit

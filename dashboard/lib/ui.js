@@ -1,4 +1,4 @@
-// Orebody console — shared client, state and UI primitives.
+// Bedrock console — shared client, state and UI primitives.
 //
 // Kept separate from app.js so the feature modules (ingest, deck) depend on
 // this rather than on the entry point. Importing helpers back out of the entry

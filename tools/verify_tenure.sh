@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Orebody — the tenure lookup, against the live BC register.
+# Bedrock — the tenure lookup, against the live BC register.
 #
 #   tools/verify_tenure.sh <functions base url> <anon key> [user jwt]
 #

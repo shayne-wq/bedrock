@@ -1,4 +1,4 @@
-// Orebody — ingest worker.
+// Bedrock — ingest worker.
 //
 // A gigabyte-scale pass cannot run on the main thread: the tab would be frozen
 // for the whole extraction and the browser would offer to kill it. The File is

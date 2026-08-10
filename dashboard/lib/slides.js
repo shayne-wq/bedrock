@@ -1,4 +1,4 @@
-// Orebody — propose every slide the data can justify.
+// Bedrock — propose every slide the data can justify.
 //
 // TRACKING.md #9. Authoring a deck from a blank page asks a geologist to be a
 // presentation designer. This inverts it: the platform enumerates every view

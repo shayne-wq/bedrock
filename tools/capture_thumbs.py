@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Orebody — capture chapter thumbnails for the slide rail.
+"""Bedrock — capture chapter thumbnails for the slide rail.
 
 Two-pass by necessity: the thumbnails are pictures of the built page, so the
 page has to exist before they can be taken. Run it as:
@@ -19,8 +19,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "tools" / "assets" / "thumbs.json"
-PORT = int(os.environ.get("OREBODY_CDP_PORT", "9222"))
-SERVE_PORT = int(os.environ.get("OREBODY_SERVE_PORT", "8899"))
+PORT = int(os.environ.get("BEDROCK_CDP_PORT", "9222"))
+SERVE_PORT = int(os.environ.get("BEDROCK_SERVE_PORT", "8899"))
 THUMB_W = 320
 
 

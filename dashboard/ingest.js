@@ -1,4 +1,4 @@
-// Orebody console — loading a block model.
+// Bedrock console — loading a block model.
 //
 // Three steps: pick the file, confirm how its columns map, watch it run. The
 // third step is deliberately not a progress bar. An upload elsewhere tells you
@@ -86,7 +86,7 @@ async function step2(project, zone, file, onDone) {
   } catch (e) {
     modal(`<h2>Could not read that file</h2>
       <p class="sub">${esc(e.message)}</p>
-      <div class="note danger">Orebody expects a CSV with one row per block and
+      <div class="note danger">Bedrock expects a CSV with one row per block and
         a header row naming the columns. If this is a binary or proprietary
         export, re-export it as CSV from your modelling package.</div>
       <div class="row-actions" style="margin-top:16px">
@@ -173,7 +173,7 @@ async function step2(project, zone, file, onDone) {
     ${p.subBlocked ? `<div class="note bad">
       <b>This looks like a sub-blocked model.</b>
       ${esc(p.uniformity.reasons[0] || "the cells are not all the same size")} —
-      which means the cells are not all the same size. Orebody computes tonnage
+      which means the cells are not all the same size. Bedrock computes tonnage
       from a single block volume, so it would report a confident wrong number
       for a model like this rather than fail. Re-block it onto a regular grid,
       or export the parent cells only, and load that instead.

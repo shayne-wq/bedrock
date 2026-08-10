@@ -1,4 +1,4 @@
-// Orebody console — the deck: chapters, sharing, and who actually watched it.
+// Bedrock console — the deck: chapters, sharing, and who actually watched it.
 //
 // Three panels because they are three jobs: build the walkthrough, put it
 // somewhere, find out whether it landed. The analytics panel is the one that

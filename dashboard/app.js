@@ -1,4 +1,4 @@
-// Orebody console — shell, auth and routing.
+// Bedrock console — shell, auth and routing.
 //
 // Vanilla ES modules on purpose. The viewer is a single static file with no
 // build step; splitting the product across a bundled framework app and an
@@ -67,7 +67,7 @@ function renderSetup() {
   $("sv").onclick = () => {
     const u = $("su").value.trim(), k = $("sk").value.trim();
     if (!u || !k) return toast("Both fields are required.", true);
-    window.orebodyUse(u, k);
+    window.bedrockUse(u, k);
   };
 }
 
@@ -75,7 +75,7 @@ function renderAuth() {
   chromeOff();
   view.innerHTML = `
     <header class="page">
-      <span class="eyebrow">Orebody</span>
+      <span class="eyebrow">Bedrock</span>
       <h1>Sign in</h1>
       <p>We email you a link. There is no password to choose, forget or reuse.</p>
     </header>
@@ -150,7 +150,7 @@ async function loadOrgs() {
 
 // ------------------------------------------------------------------ home ---
 async function renderHome() {
-  view.innerHTML = `<header class="page"><span class="eyebrow">Orebody</span>
+  view.innerHTML = `<header class="page"><span class="eyebrow">Bedrock</span>
     <h1>Projects</h1></header>${skeleton(4)}`;
 
   if (!state.orgs.length) return renderFirstOrg();

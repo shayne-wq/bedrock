@@ -1,4 +1,4 @@
--- Orebody — core schema.
+-- Bedrock — core schema.
 --
 -- Multi-tenant: an org owns projects, a project owns datasets and decks, a deck
 -- owns chapters and share links, and a share link is what a viewer actually

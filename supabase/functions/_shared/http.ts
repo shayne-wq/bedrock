@@ -1,4 +1,4 @@
-// Shared HTTP helpers for the Orebody edge functions.
+// Shared HTTP helpers for the Bedrock edge functions.
 //
 // Both functions are called from arbitrary websites — the whole point of the
 // embed is that a deck runs inside someone else's WordPress page — so CORS is

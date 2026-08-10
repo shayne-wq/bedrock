@@ -1,4 +1,4 @@
-// Orebody — boot failure reports.
+// Bedrock — boot failure reports.
 //
 // POST /functions/v1/diag
 //

@@ -1,4 +1,4 @@
-// Orebody — fetch neighbouring mineral tenure from a public register.
+// Bedrock — fetch neighbouring mineral tenure from a public register.
 //
 // "Show the companies whose ground surrounds ours" is the most persuasive
 // thing on an early-stage deck, and it is the one claim an issuer cannot make

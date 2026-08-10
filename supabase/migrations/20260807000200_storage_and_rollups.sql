@@ -1,4 +1,4 @@
--- Orebody — storage buckets and the analytics rollups the dashboard reads.
+-- Bedrock — storage buckets and the analytics rollups the dashboard reads.
 
 -- --------------------------------------------------------------- storage ---
 -- Private. Customer block models are commercially sensitive pre-announcement,

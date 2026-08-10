@@ -1,4 +1,4 @@
-# Orebody
+# Bedrock
 
 Georeferenced 3D geological visualization + presentation for the mining sector —
 a lightweight, embeddable alternative to VRIFY Present. Puts block models and
@@ -123,8 +123,8 @@ WebM otherwise.
 a corporate website: a responsive iframe snippet sized to a chosen aspect ratio,
 optionally opening on the current view rather than chapter 1. It pastes into a
 WordPress Custom HTML block or an Elementor HTML widget with no build step. Also
-emits `orebody-embed.html` (a standalone page wrapping the same snippet) and
-`orebody-deck.json` (deck manifest — chapters, deposit figures, caveats).
+emits `bedrock-embed.html` (a standalone page wrapping the same snippet) and
+`bedrock-deck.json` (deck manifest — chapters, deposit figures, caveats).
 
 The caption carries the fabricated-data sentence, but a caption can be deleted,
 so it is not the disclosure — the embedded deck renders its own on-screen banner

@@ -7,18 +7,18 @@ window.LOG = [];
 const f = document.getElementById('f');
 addEventListener('message', e => {
   if (e.origin !== location.origin) return;
-  if (!e.data || e.data.source !== 'orebody-viewer') return;
+  if (!e.data || e.data.source !== 'bedrock-viewer') return;
   if (e.source !== f.contentWindow) { LOG.push({bad:'wrong source'}); return; }
   LOG.push(e.data);
   if (e.data.type === 'hello') {
-    f.contentWindow.postMessage({source:'orebody-console',type:'hello'}, location.origin);
+    f.contentWindow.postMessage({source:'bedrock-console',type:'hello'}, location.origin);
   }
   if (e.data.type === 'set') {
     // Pretend the write succeeded and hand back the row we would have stored.
     const cam = e.data.state.camera.orbit || e.data.state.camera.free;
     window.SAVED = {ord:e.data.state.ord, what:e.data.what, camera:cam,
                     layers:e.data.state.layers, areas:e.data.state.areas};
-    f.contentWindow.postMessage({source:'orebody-console', type:'saved', ok:true,
+    f.contentWindow.postMessage({source:'bedrock-console', type:'saved', ok:true,
       ord:e.data.state.ord,
       what:e.data.what,
       chapter:{camera:cam, layers:e.data.state.layers, areas:e.data.state.areas,
@@ -26,7 +26,7 @@ addEventListener('message', e => {
   }
 });
 window.tell = m => f.contentWindow.postMessage(
-  Object.assign({source:'orebody-console'}, m), location.origin);
+  Object.assign({source:'bedrock-console'}, m), location.origin);
 window.viewerApi = () => f.contentWindow.__api;
 window.titles = () => f.contentWindow.__api.titles();
 window.clickIn = id => f.contentWindow.document.getElementById(id).click();

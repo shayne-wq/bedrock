@@ -1,4 +1,4 @@
--- Orebody — zones.
+-- Bedrock — zones.
 --
 -- A project used to hold exactly one deposit: datasets attached straight to the
 -- project, keyed (project_id, kind), and the app deleted-then-inserted to keep

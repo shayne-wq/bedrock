@@ -1,6 +1,6 @@
 # Standing up the backend
 
-Orebody is two halves. The **viewer** (`/index.html`) is a static file that needs
+Bedrock is two halves. The **viewer** (`/index.html`) is a static file that needs
 no backend at all — the Elk Gold demo runs entirely on its own. The **console**
 (`/dashboard/`) is what turns it into a platform: accounts, uploads, deck
 editing, share links and audience analytics. That half needs Supabase.

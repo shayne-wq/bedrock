@@ -1,4 +1,4 @@
-// Orebody — readers for the file formats mining software actually exports.
+// Bedrock — readers for the file formats mining software actually exports.
 //
 // TRACKING.md #13. Until now the only parsed input was a block-model CSV;
 // everything else was stored as an opaque blob, so a customer could upload

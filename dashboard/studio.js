@@ -1,4 +1,4 @@
-// Orebody console — the studio.
+// Bedrock console — the studio.
 //
 // Authoring a camera used to mean opening the preview, flying, pressing C,
 // copying JSON, switching tab and pasting it into five number fields. Nobody
@@ -156,10 +156,10 @@ function onMessage(e) {
   if (e.origin !== location.origin) return;
   if (!frame || e.source !== frame.contentWindow) return;
   const d = e.data;
-  if (!d || d.source !== "orebody-viewer") return;
+  if (!d || d.source !== "bedrock-viewer") return;
 
   if (d.type === "hello") {
-    frame.contentWindow.postMessage({ source: "orebody-console", type: "hello" },
+    frame.contentWindow.postMessage({ source: "bedrock-console", type: "hello" },
                                     location.origin);
     return;
   }
@@ -171,7 +171,7 @@ function onMessage(e) {
 function tell(msg) {
   if (frame && frame.contentWindow) {
     frame.contentWindow.postMessage(
-      Object.assign({ source: "orebody-console" }, msg), location.origin);
+      Object.assign({ source: "bedrock-console" }, msg), location.origin);
   }
 }
 const poll = () => tell({ type: "poll" });

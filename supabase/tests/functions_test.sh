@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Orebody — edge function integration tests.
+# Bedrock — edge function integration tests.
 #
 # Exercises the two things an anonymous viewer can reach: reading a deck with a
 # share token, and reporting analytics. Every failure mode of the token is

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Orebody — block-model extractor (v2).
+"""Bedrock — block-model extractor (v2).
 
 Reads the native MineSight export and emits the two files the viewer needs:
 

@@ -1,4 +1,4 @@
--- Orebody — boot failure reports.
+-- Bedrock — boot failure reports.
 --
 -- Three rounds of mobile fixes produced no change in symptom, and no
 -- diagnostic ever reached me: reading a stack off a phone and retyping it is

@@ -1,4 +1,4 @@
-# Orebody vs VRIFY Present vs Terrahutton
+# Bedrock vs VRIFY Present vs Terrahutton
 
 Scope: **the presenting product only**. VRIFY also sells Predict/DORA — AI
 prospectivity mapping — and Terrahutton sells a data-integration service around
@@ -8,7 +8,7 @@ its visuals. Neither is compared here.
 
 Read this first, because it bounds everything below.
 
-- **Orebody** — assessed from the inside. Every claim about it is verifiable
+- **Bedrock** — assessed from the inside. Every claim about it is verifiable
   against this repository and its test suites.
 - **VRIFY Present** — assessed from vrify.com (product and pricing pages, and
   the pricing FAQ, read August 2026), plus seven product screenshots the user
@@ -39,12 +39,12 @@ data integration, platform development, continuous updates, presentation
 readiness — with the platform built for you. Both are demo-led with no public
 pricing and no self-serve entry.
 
-**Orebody is software the issuer operates.** Upload, generate, arrange, fly the
+**Bedrock is software the issuer operates.** Upload, generate, arrange, fly the
 camera, publish. No data team in the loop.
 
 That is a bet, not a victory. It cuts both ways:
 
-| | Service model (VRIFY, Terrahutton) | Software model (Orebody) |
+| | Service model (VRIFY, Terrahutton) | Software model (Bedrock) |
 |---|---|---|
 | Time to first deck | 10–15 business days | Minutes, if the data is clean |
 | Who does the work | Their geoscientists | The issuer |
@@ -55,7 +55,7 @@ That is a bet, not a victory. It cuts both ways:
 | Who it suits | A team with money and no time | A team with data and no budget |
 
 The service model's quality floor is the thing to respect. A junior IR manager
-with a messy CSV will produce a worse deck in Orebody than VRIFY's team would
+with a messy CSV will produce a worse deck in Bedrock than VRIFY's team would
 produce from the same file. **Most of what this repository does about honesty
 and slide generation exists to raise that floor** — because without a data team,
 the floor is the product.
@@ -68,7 +68,7 @@ the floor is the product.
 
 ### Getting data in
 
-| | Orebody | VRIFY Present | Terrahutton |
+| | Bedrock | VRIFY Present | Terrahutton |
 |---|---|---|---|
 | Self-serve upload | ✅ | ❌ — their team ingests | ❌ — their team ingests |
 | Block models | ✅ CSV, any column mapping | ✅ (via their team) | ? |
@@ -85,7 +85,7 @@ it directly.
 
 ### Building the deck
 
-| | Orebody | VRIFY Present | Terrahutton |
+| | Bedrock | VRIFY Present | Terrahutton |
 |---|---|---|---|
 | Slides proposed from your data | ✅ every view the data supports, gated on what exists | ❌ | ❌ |
 | Opinionated default running order | ✅ | n/a — a person decides | n/a |
@@ -98,7 +98,7 @@ it directly.
 
 ### Presenting
 
-| | Orebody | VRIFY Present | Terrahutton |
+| | Bedrock | VRIFY Present | Terrahutton |
 |---|---|---|---|
 | Real terrain, georeferenced | ✅ Cesium World Terrain, true UTM placement | ✅ | ✅ |
 | 360° photospheres | ❌ deliberate — real terrain instead | ✅ a headline feature | ? |
@@ -112,7 +112,7 @@ it directly.
 
 ### Getting it out
 
-| | Orebody | VRIFY Present | Terrahutton |
+| | Bedrock | VRIFY Present | Terrahutton |
 |---|---|---|---|
 | Share link, revocable | ✅ + passcode, expiry, domain limits | ✅ | ? |
 | Website embed | ✅ per-platform: WordPress, Wix, Notion, Squarespace | ✅ "on our website" | ? |
@@ -124,7 +124,7 @@ it directly.
 
 ---
 
-## Where Orebody is genuinely ahead
+## Where Bedrock is genuinely ahead
 
 Four things, and only the first is a feature.
 
@@ -147,16 +147,16 @@ figures. It is the one claim an issuer cannot make about itself, and neither
 competitor's public material shows it.
 
 **4. Format breadth at the door.** VRIFY names CSV, DXF, GeoTIFF and layered
-PDF as the efficient set — with a human to handle the rest. Orebody reads OBJ,
+PDF as the efficient set — with a human to handle the rest. Bedrock reads OBJ,
 GOCAD, DXF, GeoJSON, KML, collar/survey/assay tables, geochemistry and world
 files unattended, and names what it refuses.
 
 ---
 
-## Where Orebody is behind
+## Where Bedrock is behind
 
 **Track record.** VRIFY states 185+ clients and 35+ experts. Terrahutton shows
-20+ logos including Lundin Mining. Orebody has zero customers and one
+20+ logos including Lundin Mining. Bedrock has zero customers and one
 end-to-end run, done yesterday. In a conservative industry buying a document
 that goes to investors, that gap is larger than any feature difference in this
 report.
@@ -165,7 +165,7 @@ report.
 an easier purchase than "learn our tool" for a CEO with a conference next
 month. Self-serve is not automatically the winning side of this trade.
 
-**360° imagery.** VRIFY leads with it. Orebody deliberately chose real terrain
+**360° imagery.** VRIFY leads with it. Bedrock deliberately chose real terrain
 instead — defensible, and a real absence when a customer wants to stand people
 on their outcrop.
 
@@ -211,7 +211,7 @@ than one that does not.
 
 ## The honest summary
 
-Orebody is ahead on **what the software does without a human in the loop**, and
+Bedrock is ahead on **what the software does without a human in the loop**, and
 on **provenance**, which nobody else appears to be treating as a feature. It is
 behind on **evidence that it works** — no customers, one end-to-end run, a
 broken mobile path, and two flows never clicked in anger.

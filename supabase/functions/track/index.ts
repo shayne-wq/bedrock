@@ -1,4 +1,4 @@
-// Orebody — viewer analytics ingest.
+// Bedrock — viewer analytics ingest.
 //
 // Called from wherever the deck is running, including inside an iframe on a
 // customer's WordPress site, so CORS is open and no session cookie exists. The

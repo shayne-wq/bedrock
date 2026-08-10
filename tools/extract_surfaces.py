@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Orebody — vein-domain surface extraction.
+"""Bedrock — vein-domain surface extraction.
 
 Turns each vein domain's blocks into a watertight triangle shell so a domain can
 be shown as a geological SURFACE rather than a cloud of cubes. This is what makes

@@ -1,4 +1,4 @@
--- Orebody — fixtures for the edge function integration tests.
+-- Bedrock — fixtures for the edge function integration tests.
 --
 -- Loaded automatically by `supabase db reset` (config.toml db.seed.sql_paths).
 -- Everything here exists to satisfy `supabase/tests/functions_test.sh`, which

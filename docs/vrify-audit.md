@@ -1,7 +1,7 @@
 # VRIFY Present — competitive audit
 
 Three passes: the marketing site, the live decks, and who actually uses it.
-Purpose is feature parity and better craft for Orebody. We match capability and
+Purpose is feature parity and better craft for Bedrock. We match capability and
 UX; we do not copy their name, wordmark, marketing copy, or their customers'
 project data.
 
@@ -100,7 +100,7 @@ Positioning is investor engagement first, technical communication second.
 
 ---
 
-## Gap against Orebody
+## Gap against Bedrock
 
 **Matched:** colour-pop masking · discrete opaque grade shells · ground cut-away
 · depth grid labelled in metres · drill beads on thin traces · intercept

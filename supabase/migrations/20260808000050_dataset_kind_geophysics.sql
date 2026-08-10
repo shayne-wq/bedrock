@@ -1,4 +1,4 @@
--- Orebody — add 'geophysics' as a dataset kind.
+-- Bedrock — add 'geophysics' as a dataset kind.
 --
 -- Its own migration, deliberately. Postgres will not let a newly added enum
 -- value be USED in the same transaction it was added in, so this is kept apart

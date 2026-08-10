@@ -1,4 +1,4 @@
-# Orebody — development tracking
+# Bedrock — development tracking
 
 Living backlog of what the product needs next. Each item is also a GitHub issue
 in `shayne-wq/orebody`; this file is the at-a-glance index. Check items off here
@@ -380,6 +380,34 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
 
 ## Log
 
+- **2026-08-10** — **Renamed Orebody → Bedrock.** 44 files. Three categories
+  were deliberately left alone, and one mistake was worth the whole exercise.
+
+  **Not renamed:** the stored artifact format ids (`orebody-claims/1` and
+  friends) are a wire contract written into files already in storage — renaming
+  them breaks every existing artifact and nobody ever sees the string.
+  Infrastructure names stay too: the Vercel project, the git remote, the
+  Supabase local `project_id` (which names the docker containers and would
+  orphan the running stack), and the live embed host, because a published URL
+  is somebody's website, not a brand surface.
+
+  **Migrated rather than dropped:** presenter annotations were keyed
+  `orebody.areas.*` and the console's Supabase override `orebody.supabase`.
+  Both read the old key as a fallback. A rename is not a reason for somebody's
+  drawn annotations to disappear, and a silently lost console override points a
+  local console at production.
+
+  **THE MISTAKE, and it nearly shipped.** The sweep renamed the *geology*. An
+  orebody is a mineralised body; bedrock is the rock under the soil. A slide
+  went out titled **"The bedrock"**, `push("orebody")` became
+  `push("bedrock")`, and 105 lowercase occurrences of a geological noun had
+  been replaced with the company name — in front of the one audience that would
+  certainly notice. Caught by two slide-ordering assertions that looked up
+  candidates by id, not by anything about brand.
+
+  Lowercase is now the geological term and capitalised is the product,
+  everywhere.
+
 - **2026-08-10** — **The four platforms a geologist named, and topography.**
   Leapfrog, Micromine, Deswik, MinePlan.
 
@@ -588,7 +616,7 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   built to produce identical gap histograms come back with different verdicts.
 
 - **2026-08-10** — Reviewed `docs/COMPARISON.md` and both competitive audits;
-  synthesised the highest-value features per platform (Orebody / VRIFY
+  synthesised the highest-value features per platform (Bedrock / VRIFY
   Present / Terrahutton) and a "10 candidates, cut to 5" pass on what to
   build next. Decision: **no client-supplied imagery or footage of any
   kind** anywhere in the terrain/maps work — cuts the customer-orthophoto
@@ -601,7 +629,7 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   GitHub issues and are unrelated to GitHub's actual #9–#15.
 
 - **2026-08-09** — Competitive comparison written up in `docs/COMPARISON.md`,
-  scoped to the presenting product: Orebody vs VRIFY Present vs Terrahutton.
+  scoped to the presenting product: Bedrock vs VRIFY Present vs Terrahutton.
   Assessed from public material only — neither competitor product has been
   used, VRIFY offers no free trial, and the doc says so rather than implying a
   depth of assessment it does not have.

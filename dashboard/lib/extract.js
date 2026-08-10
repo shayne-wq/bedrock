@@ -1,4 +1,4 @@
-// Orebody — block-model extraction, in the browser.
+// Bedrock — block-model extraction, in the browser.
 //
 // This is the JS port of tools/extract_blocks.py, and it exists so a customer's
 // block model never has to be uploaded. A raw MineSight export is over a
@@ -346,7 +346,7 @@ export async function extract(lines, opts) {
       "This looks like a SUB-BLOCKED model: " + (opts.subBlockedWhy ||
         "the file carries per-block dimensions, or the block centres do not " +
         "sit on one regular grid") + ". " +
-      "Orebody computes tonnage from a single block volume, so it would " +
+      "Bedrock computes tonnage from a single block volume, so it would " +
       "report a confident wrong number for a model like this. Export on a " +
       "regular grid, or re-block it, before loading.");
   }

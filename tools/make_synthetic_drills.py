@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Orebody — SYNTHETIC drill-hole generator.
+"""Bedrock — SYNTHETIC drill-hole generator.
 
 ============================ READ THIS FIRST ============================
 EVERY HOLE THIS SCRIPT PRODUCES IS FABRICATED. No drilling happened. These

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Orebody Present — a VRIFY-Present-style guided 3D walkthrough.
+"""Bedrock Present — a VRIFY-Present-style guided 3D walkthrough.
 
 Builds a single self-contained index.html from the extracted block model.
 
@@ -629,7 +629,7 @@ HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Elk Gold — Siwash North · Orebody Present</title>
+<title>Elk Gold — Siwash North · Bedrock Present</title>
 <!-- Inline, not a file. Without it every load 404s on /favicon.ico — harmless
      but visible in the console of a deck embedded on a customer's site, and a
      separate .ico would break the promise that this page is one artifact you
@@ -1181,7 +1181,7 @@ HTML = r"""<!DOCTYPE html>
 <div id="prog"></div><div id="dwell"></div>
 <div id="toast"></div>
 
-<div id="brand"><div class="w">Orebody Present</div><div class="n">Elk Gold<br>Siwash North</div></div>
+<div id="brand"><div class="w">Bedrock Present</div><div class="n">Elk Gold<br>Siwash North</div></div>
 <div id="rail"></div>
 <div id="legend">
   <div id="gradeleg"></div>
@@ -1538,7 +1538,7 @@ HTML = r"""<!DOCTYPE html>
 </div></div>
 
 <div id="intro">
-  <div class="eyebrow">Orebody Present · Interactive 3D Story</div>
+  <div class="eyebrow">Bedrock Present · Interactive 3D Story</div>
   <h1 id="intro_t">Elk Gold<br>Siwash North</h1>
   <div class="sub" id="intro_s">A high-grade gold system in British Columbia's Nicola region — presented in three dimensions, on real terrain.</div>
   <button id="begin">Begin the walkthrough ▸</button>
@@ -1696,11 +1696,11 @@ const AUTHOR=QS.has('author');
 // occasional email address live. The session id lives in sessionStorage, so it
 // is per TAB, not per person: closing the tab ends it and nothing links two
 // visits together.
-const API=(QS.get('api')||window.OREBODY_API||'').replace(/\/$/,'');
+const API=(QS.get('api')||window.BEDROCK_API||'').replace(/\/$/,'');
 const TOKEN=QS.get('t')||'';
 const TRACKING=Boolean(API&&TOKEN)&&!AUTHOR;
 const TRK={s:null,watch:0,seen:new Set(),done:false,q:[],since:0,chapAt:0,chap:null};
-try{ TRK.s=sessionStorage.getItem('orebody.s.'+TOKEN)||null; }catch(e){}
+try{ TRK.s=sessionStorage.getItem('bedrock.s.'+TOKEN)||null; }catch(e){}
 
 // Watch time counts only while the deck is actually visible. Wall-clock since
 // the page opened would count a tab someone left open over lunch, which is the
@@ -1744,7 +1744,7 @@ function trkFlush(){
                       body:body,keepalive:true})
     .then(r=>r.json()).then(j=>{
       if(j&&j.s&&!TRK.s){ TRK.s=j.s;
-        try{ sessionStorage.setItem('orebody.s.'+TOKEN,j.s); }catch(e){} }
+        try{ sessionStorage.setItem('bedrock.s.'+TOKEN,j.s); }catch(e){} }
     }).catch(()=>{});
 }
 // The last flush must survive the page going away, so it goes out as a beacon.
@@ -1799,7 +1799,7 @@ let F=null, M=null;
 function unpackOreb(buf){
   const dv=new DataView(buf);
   if(dv.byteLength<16||dv.getUint32(0,false)!==0x4f524542)
-    throw new Error('that artifact is not an Orebody block model');
+    throw new Error('that artifact is not an Bedrock block model');
   if(dv.getUint32(4,true)!==1)
     throw new Error('block model format v'+dv.getUint32(4,true)+' is newer than this viewer');
   const hlen=dv.getUint32(8,true), base=dv.getUint32(12,true);
@@ -2169,7 +2169,7 @@ async function hydrate(token){
       body:'An exploration-stage project. There is no resource estimate, so no '+
            'tonnage, grade or contained metal is reported.'}];
     if(payload.deck&&payload.deck.title){
-      document.title=payload.deck.title+' · Orebody Present';
+      document.title=payload.deck.title+' · Bedrock Present';
       applyHolderLogos(payload.project);
       const bn2=document.querySelector('#brand .n');
       if(bn2){ bn2.textContent=payload.deck.title;
@@ -2244,7 +2244,7 @@ async function hydrate(token){
       const dy=Math.abs((dec.y[0]+dec.y[1])/2-(got.y[0]+got.y[1])/2);
       const span=Math.max(1,(got.x[1]-got.x[0])+(got.y[1]-got.y[0]));
       if(dx+dy>span*0.5)
-        console.warn('Orebody: the recorded bounds disagree with the blocks — '+
+        console.warn('Bedrock: the recorded bounds disagree with the blocks — '+
                      'using the blocks.', dec, got);
     }
     return got;
@@ -2320,7 +2320,7 @@ async function hydrate(token){
   const chs=(payload.chapters||[]).map(mapChapter);
   CHAPTERS=chs.length?chs:defaultChapters((payload.deck||{}).title);
   if(payload.deck&&payload.deck.title){
-    document.title=payload.deck.title+' · Orebody Present';
+    document.title=payload.deck.title+' · Bedrock Present';
     applyHolderLogos(payload.project);
     // Built as nodes, not innerHTML. Deck and project names are tenant-authored
     // strings arriving over the wire; the one place they must never land is a
@@ -2356,7 +2356,7 @@ async function loadSideArtifacts(assets){
       const j=await r.json();
       return {json:j, asset:a};
     }catch(e){
-      console.warn('Orebody: could not load the '+kind+' artifact',e);
+      console.warn('Bedrock: could not load the '+kind+' artifact',e);
       toast('The '+kind+' data for this deck could not be loaded',5000);
       return null;
     }
@@ -2583,7 +2583,7 @@ function reportFailure(message, stack){
 }
 
 function diagnostics(extra){
-  return ['Orebody diagnostics',
+  return ['Bedrock diagnostics',
     'phase: '+BOOT_PHASE,
     'url: '+location.href,
     'ua: '+navigator.userAgent,
@@ -2707,7 +2707,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     const t=$('datatoggle'); if(t) t.textContent='3D';
     const st=$('status'); if(st){ st.className=''; st.textContent=''; }
     toast(why+' — showing the text version of the deck',9000);
-    console.warn('Orebody: '+why+'; rendered as text instead.');
+    console.warn('Bedrock: '+why+'; rendered as text instead.');
     reportFailure(why,'');
   }
 
@@ -2718,10 +2718,10 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   // is reachable when the service simply never answers, which is what a
   // captive portal or a saturated mobile link actually does.
   try{ imagery=await withTimeout(Cesium.ArcGisMapServerImageryProvider.fromUrl('https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer'),12000,'satellite imagery'); }
-  catch(e){ console.warn('Orebody: falling back to OpenStreetMap tiles',e);
+  catch(e){ console.warn('Bedrock: falling back to OpenStreetMap tiles',e);
     imagery=new Cesium.UrlTemplateImageryProvider({url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',maximumLevel:19,credit:'© OpenStreetMap'}); }
   try{ terrain=await withTimeout(Cesium.ArcGISTiledElevationTerrainProvider.fromUrl('https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer'),12000,'terrain'); }
-  catch(e){ console.warn('Orebody: falling back to flat terrain',e);
+  catch(e){ console.warn('Bedrock: falling back to flat terrain',e);
     terrain=new Cesium.EllipsoidTerrainProvider(); }
 
   // Each attempt asks for less than the last. What costs memory in a WebGL
@@ -2752,10 +2752,10 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     try{
       viewer=mkViewer(a);
       if(a.noExport) noExport=true;
-      if(a.name!=='full') console.info('Orebody: got a context on the "'+a.name+'" attempt');
+      if(a.name!=='full') console.info('Bedrock: got a context on the "'+a.name+'" attempt');
       break;
     }catch(err){
-      console.warn('Orebody: no context on the "'+a.name+'" attempt',err);
+      console.warn('Bedrock: no context on the "'+a.name+'" attempt',err);
       // Cesium leaves its half-built widget in the container on failure, and
       // the next attempt would append a second one beside it.
       const host=$('cesiumContainer'); if(host) host.innerHTML='';
@@ -2777,7 +2777,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   const DPR=window.devicePixelRatio||1;
   if(DPR>1.5 && Math.min(screen.width,screen.height)<=500){
     viewer.resolutionScale=Math.max(0.5,1/DPR);
-    console.info('Orebody: reduced resolution scale to '+viewer.resolutionScale.toFixed(2)+
+    console.info('Bedrock: reduced resolution scale to '+viewer.resolutionScale.toFixed(2)+
                  ' for a '+DPR+'x display');
   }
   if(noExport){
@@ -2896,8 +2896,8 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   // edition is a better answer than a third identical attempt.
   viewer.scene.canvas.addEventListener('webglcontextlost',ev=>{
     ev.preventDefault();
-    let n=0; try{ n=+(sessionStorage.getItem('orebody.ctxlost')||0)+1;
-                  sessionStorage.setItem('orebody.ctxlost',String(n)); }catch(e){ n=1; }
+    let n=0; try{ n=+(sessionStorage.getItem('bedrock.ctxlost')||0)+1;
+                  sessionStorage.setItem('bedrock.ctxlost',String(n)); }catch(e){ n=1; }
     if(n>=2){ toTextMode('This device kept losing the 3D context'); return; }
     setStat('context lost — reloading');
     setTimeout(()=>location.reload(),1200);
@@ -3258,7 +3258,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     if(wrap.dataset.built) return;
     wrap.dataset.built='1';
     const h=document.createElement('header');
-    h.innerHTML='<p class="eyebrow">Orebody \u00b7 text edition</p>'+
+    h.innerHTML='<p class="eyebrow">Bedrock \u00b7 text edition</p>'+
       '<h1>Elk Gold \u2014 Siwash North</h1>';
     const lead=document.createElement('p'); lead.className='lead';
     lead.textContent='Every chapter of the presentation, with its figures, as text. '+
@@ -3367,7 +3367,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     try{
       pre.textContent=provText();
     }catch(err){
-      console.warn('Orebody: audit trail unavailable in text mode',err);
+      console.warn('Bedrock: audit trail unavailable in text mode',err);
       pre.textContent=
         'The audit trail is unavailable here because it describes the live 3D\n'+
         'view, and this device could not start WebGL.\n\n'+
@@ -3410,7 +3410,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   function provText(){
     const r=readout();
     const L=[];
-    L.push('OREBODY — AUDIT TRAIL');
+    L.push('BEDROCK — AUDIT TRAIL');
     L.push('');
     L.push('Source            '+(PROV.source||'—'));
     // Every line below describes a block model. An exploration deck has none,
@@ -4307,7 +4307,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       if(typeof polygonClipping==='undefined') return polys;
       try{ return polygonClipping.union(polys[0], ...polys.slice(1)); }
       catch(e){
-        console.warn('Orebody: could not dissolve tenure for one holder — '+
+        console.warn('Bedrock: could not dissolve tenure for one holder — '+
                      'drawing the claims individually.', e);
         return polys;
       }
@@ -4660,7 +4660,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     }catch(e){
       // Older Cesium, or a device that refuses the extra texture. The pit still
       // draws; it just sits behind the hillside as it used to.
-      console.warn('Orebody: terrain clipping unavailable — pits will not be cut in.',e);
+      console.warn('Bedrock: terrain clipping unavailable — pits will not be cut in.',e);
     }
   };
   // Logos decode asynchronously and the cards are drawn synchronously, so a
@@ -4999,7 +4999,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     try{ fn(); }
     catch(err){
       layerFailed[name]=true;
-      console.error('Orebody: the "'+name+'" layer failed and is disabled',err);
+      console.error('Bedrock: the "'+name+'" layer failed and is disabled',err);
       toast(name+' unavailable on this device',5000);
     }
   }
@@ -5899,7 +5899,12 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   // have to keep working for someone marking up a deck they cannot write to —
   // an audience member, or an author on a machine they are not signed in on —
   // so they still persist locally. In the studio, Save labels promotes them.
-  const AREA_KEY='orebody.areas.'+(document.title.split(' · ')[0]||'deck');
+  const AREA_KEY='bedrock.areas.'+(document.title.split(' · ')[0]||'deck');
+  // The product was called Orebody until 2026-08-10 and annotations were keyed
+  // on that name. They are the presenter's own marks on their own deck, so the
+  // old key is read once and migrated rather than left behind — a rename is
+  // not a reason for somebody's work to disappear.
+  const AREA_KEY_OLD=AREA_KEY.replace(/^orebody\./,'orebody.');
   let areasLocal={};                      // chapter ord -> drawn areas
   let areas=[], areasAuth=[];             // this chapter's drawn / authored
   let areaMode=false, areaPts=[], areaColor='#38BDF8', areaEnts=[], liveEnt=null;
@@ -6019,7 +6024,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     const all=areasAuth.concat(areas);
     if(!all.length){ toast('No areas to export',2400); return; }
     const fc={type:'FeatureCollection',
-      note:'Presenter annotations drawn in Orebody. Not surveyed boundaries.',
+      note:'Presenter annotations drawn in Bedrock. Not surveyed boundaries.',
       crs_note:'WGS84 (EPSG:4326)',
       features:all.map(a=>{
         const ring=[]; for(let i=0;i<a.ll.length;i+=2) ring.push([a.ll[i],a.ll[i+1]]);
@@ -6027,7 +6032,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
         return {type:'Feature',
           properties:{label:a.label||null, color:a.color, source:'presenter annotation'},
           geometry:{type:'Polygon',coordinates:[ring]}};})};
-    dlText('orebody-areas.geojson',JSON.stringify(fc,null,2),'application/geo+json');
+    dlText('bedrock-areas.geojson',JSON.stringify(fc,null,2),'application/geo+json');
     toast('GeoJSON saved');
   };
   // Areas survive a reload, unlike ink. A presenter who marked up a deck the
@@ -6038,7 +6043,8 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   // than discarded: it is somebody's work, and silently dropping it on upgrade
   // is worse than putting it somewhere they can find it.
   try{
-    const saved=JSON.parse(localStorage.getItem(AREA_KEY)||'{}');
+    const saved=JSON.parse(
+      localStorage.getItem(AREA_KEY) || localStorage.getItem(AREA_KEY_OLD) || '{}');
     const clean=v=>Array.isArray(v)
       ? v.filter(a=>a&&Array.isArray(a.ll)&&a.ll.length>=6) : [];
     if(Array.isArray(saved)){ const c=clean(saved); if(c.length) areasLocal={0:c}; }
@@ -6613,9 +6619,11 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   // Served from a real host, the deck knows its own address. Served from
   // localhost it does not, and a snippet pointing at 127.0.0.1 is useless to
   // everyone but its author — so fall back to the published alias. That is
-  // orebody-FAWN, not orebody.vercel.app: the bare name belongs to an unrelated
-  // project, and defaulting to it would have handed users a snippet that
-  // embedded a stranger's website.
+  // orebody-fawn.vercel.app, not orebody.vercel.app: the bare name belongs to
+  // an unrelated project, and defaulting to it would have handed users a
+  // snippet that embedded a stranger's website. The host keeps its old name
+  // until the deployment is renamed — a live embed URL is not a brand surface
+  // to sweep, it is somebody's website.
   const PUBLISHED='https://orebody-fawn.vercel.app/';
   function embBase(){
     const u=location.origin+location.pathname;
@@ -6693,7 +6701,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   }
   function embJson(){
     return JSON.stringify({
-      deck:DECK, generator:'Orebody', format:'orebody-embed/1',
+      deck:DECK, generator:'Bedrock', format:'orebody-embed/1',
       embed_url:embSrc(), caption:embCaption(),
       deposit:{tonnes:PROV.total.tonnes, grade_gt:PROV.total.grade_gt,
                oz:PROV.total.oz, blocks:PROV.mineralized_blocks,
@@ -6728,10 +6736,10 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   $('embcopy').onclick=()=>navigator.clipboard.writeText(embSnippet())
     .then(()=>toast('Snippet copied \u2014 paste it into an HTML block'),
           ()=>toast('Copy failed'));
-  $('embhtml').onclick=()=>{ dlText('orebody-embed.html',embDoc(),'text/html');
-    toast('orebody-embed.html saved'); };
-  $('embjson').onclick=()=>{ dlText('orebody-deck.json',embJson(),'application/json');
-    toast('orebody-deck.json saved'); };
+  $('embhtml').onclick=()=>{ dlText('bedrock-embed.html',embDoc(),'text/html');
+    toast('bedrock-embed.html saved'); };
+  $('embjson').onclick=()=>{ dlText('bedrock-deck.json',embJson(),'application/json');
+    toast('bedrock-deck.json saved'); };
 
   // ---- chapters ----
   const rail=$('rail');
@@ -7242,7 +7250,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   // investor.
   function deckName(){
     const t=(document.title||'').split(' · ')[0].trim();
-    return (t||'orebody-deck').replace(/[^\w\- ]+/g,'').replace(/\s+/g,'-').slice(0,60);
+    return (t||'bedrock-deck').replace(/[^\w\- ]+/g,'').replace(/\s+/g,'-').slice(0,60);
   }
   // Where the live deck lives, so a static slide is a doorway rather than a
   // dead end. A PowerPoint is forwarded, opened offline, printed — and the one
@@ -7359,7 +7367,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     // user staring at "Could not start".
     try{ go(0,true); }
     catch(err){
-      console.error('Orebody: the opening chapter failed to apply',err);
+      console.error('Bedrock: the opening chapter failed to apply',err);
       toast('The opening view failed — use the chapter list',7000);
     }
   }
@@ -7446,7 +7454,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   const authPeer=()=>(parent&&parent!==window)?parent:(window.opener||null);
   function authSend(m){
     const peer=authPeer();
-    if(authOrigin&&peer) peer.postMessage(Object.assign({source:'orebody-viewer'},m),authOrigin);
+    if(authOrigin&&peer) peer.postMessage(Object.assign({source:'bedrock-viewer'},m),authOrigin);
   }
   // Replay the flight INTO a chapter, from the one before it, and time what
   // actually happened. An authored deck's weak point is not any single shot,
@@ -7520,7 +7528,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     const sp=$('intro'); if(sp) sp.style.display='none';
     addEventListener('message',e=>{
       const d=e.data;
-      if(!d||d.source!=='orebody-console') return;
+      if(!d||d.source!=='bedrock-console') return;
       if(d.type==='hello'){
         authOrigin=e.origin;
         $('authbar').hidden=false;
@@ -7587,7 +7595,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     // Announce. No payload, so a page that frames this one without being the
     // console learns only that a viewer exists — which it already knew.
     const peer=authPeer();
-    if(peer) peer.postMessage({source:'orebody-viewer',type:'hello'},'*');
+    if(peer) peer.postMessage({source:'bedrock-viewer',type:'hello'},'*');
   }
 
   window.__viewer=viewer;
@@ -7656,7 +7664,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   // unfindable.
   s.textContent='Could not start during "'+BOOT_PHASE+'" — '+msg;
   try{
-    console.error('Orebody boot failed during "'+BOOT_PHASE+'"');
+    console.error('Bedrock boot failed during "'+BOOT_PHASE+'"');
     console.error(e);
     if(e&&e.stack) console.error(e.stack);
     reportFailure(msg, e&&e.stack);
@@ -7760,7 +7768,7 @@ for k, v in {
 # hotel wifi still runs with the aeroplane mode on. Cesium pulls its workers,
 # shaders and imagery lazily, so cache-on-first-sight beats trying to enumerate
 # a precache list that would rot on every Cesium bump.
-SW = """// Orebody offline cache. Generated by tools/build_present.py.
+SW = """// Bedrock offline cache. Generated by tools/build_present.py.
 const CACHE='orebody-v__SWVER__';
 self.addEventListener('install',e=>{self.skipWaiting();});
 self.addEventListener('activate',e=>{e.waitUntil(

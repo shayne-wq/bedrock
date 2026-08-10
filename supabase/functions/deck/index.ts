@@ -1,4 +1,4 @@
-// Orebody — token-gated deck read.
+// Bedrock — token-gated deck read.
 //
 // This is the only way an anonymous viewer obtains a deck. RLS denies the anon
 // key everything; this function runs on the service role and hands back exactly
