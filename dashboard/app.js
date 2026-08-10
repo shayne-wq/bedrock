@@ -324,6 +324,7 @@ async function renderProject(id) {
     { key: "drills", label: "Drill holes" },
     { key: "blocks", label: "Block model", note: "resource stage" },
     { key: "surfaces", label: "Surfaces" },
+    { key: "topography", label: "Topography", note: "DEM or LiDAR surface" },
   ];
   const slot = (z, k) => {
     const ds = zoneKind(z, k.key);

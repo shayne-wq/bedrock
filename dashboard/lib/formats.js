@@ -39,12 +39,33 @@ const BINARY_FORMATS = [
     advice: "Export the block model to CSV, and triangulations (.00t) to OBJ or DXF." },
   { id: "surpac", ext: [".mdl"], label: "Surpac model",
     advice: "Export the model to CSV and DTMs to DXF." },
-  { id: "deswik", ext: [".dwbm", ".dwcad"], label: "Deswik",
-    advice: "Export the block model to CSV and solids to DXF or OBJ." },
-  { id: "micromine", ext: [".dat"], label: "Micromine",
-    advice: "Export to CSV." },
-  { id: "leapfrog", ext: [".lfview", ".msr"], label: "Leapfrog",
-    advice: "Export the block model to CSV and meshes to OBJ." },
+  { id: "deswik", ext: [".dwbm", ".dwcad", ".dwsolids", ".dwstrings"],
+    label: "Deswik",
+    advice: "In Deswik.CAD: File > Export > DXF for solids and strings. Block " +
+            "models export to CSV from Deswik.BM." },
+  // Micromine's own wireframe database and string files. `.dat` is NOT in this
+  // list on purpose — see the note on ambiguity below.
+  { id: "micromine", ext: [".tridb", ".mmpro", ".micromine"], label: "Micromine",
+    advice: "Wireframes: Wireframe > Export > DXF or OBJ. Drilling and block " +
+            "models: File > Export > CSV." },
+  // `.msr` is MinePlan's, not Leapfrog's — it was listed under Leapfrog here
+  // and would have told a MinePlan user to look for menus their software does
+  // not have.
+  { id: "leapfrog", ext: [".msh", ".lfm", ".lfr", ".aproj", ".lfview"],
+    label: "Seequent Leapfrog",
+    advice: "Meshes: right-click the mesh > Export > OBJ or DXF. Drilling and " +
+            "block models: Export > CSV. Both load here directly." },
+  { id: "mineplan", ext: [".msr", ".srg", ".msv", ".pcf"],
+    label: "Hexagon MinePlan (formerly MineSight)",
+    advice: "Export the block model to CSV, and surfaces or pit designs to DXF." },
+  // A LiDAR point cloud is tens of millions of returns. Nothing useful here
+  // consumes raw returns — what a deck wants is the surface derived from them,
+  // which is the thing every LiDAR pipeline already produces on the way to
+  // delivering the cloud.
+  { id: "lidar", ext: [".las", ".laz", ".e57", ".ply"], label: "LiDAR point cloud",
+    advice: "Point clouds are not read directly. Export the derived surface " +
+            "instead — a DEM as GeoTIFF, or the triangulated surface as OBJ or " +
+            "DXF — which is what a deck actually draws." },
   { id: "shapefile", ext: [".shp"], label: "Esri shapefile",
     advice: "A .shp needs its .dbf and .shx siblings to mean anything. Export " +
             "to GeoJSON or KML instead — both are single files and both load here." },
@@ -55,9 +76,34 @@ const BINARY_FORMATS = [
  *
  * @returns {{readable:boolean, format:string, label?:string, advice?:string}}
  */
+// Extensions several vendors use for entirely different things. Naming one
+// vendor confidently is worse than naming none: a Datamine user told to look
+// for Micromine's menus concludes the tool does not know what it is talking
+// about, and they are right. These say what the file might be and give the
+// export that is the same answer whichever it is.
+const AMBIGUOUS = {
+  ".dat": {
+    label: "a binary model file — Micromine, Datamine and MinePlan all use .dat",
+    advice: "Whichever it is, the export is the same: block models to CSV, " +
+            "wireframes and surfaces to DXF or OBJ.",
+  },
+  ".str": {
+    label: "a string file — Surpac and Micromine both use .str",
+    advice: "Export the strings to DXF, which both write and this reads.",
+  },
+  ".00t": {
+    label: "a Maptek Vulcan triangulation",
+    advice: "Export the triangulation to OBJ or DXF.",
+  },
+};
+
 export function sniff(file) {
   const n = (file.name || "").toLowerCase();
   const ext = n.slice(n.lastIndexOf("."));
+  const amb = AMBIGUOUS[ext];
+  if (amb) {
+    return { readable: false, format: "ambiguous", label: amb.label, advice: amb.advice };
+  }
   const hit = BINARY_FORMATS.find((f) => f.ext.includes(ext));
   if (hit) {
     return { readable: false, format: hit.id, label: hit.label, advice: hit.advice };
@@ -673,7 +719,12 @@ export async function readGeoTiff(file) {
   cv.width = w; cv.height = h;
   const ctx = cv.getContext("2d");
   const out = ctx.createImageData(w, h);
-  const nodata = Number(img.getGDALNoData ? img.getGDALNoData() : NaN);
+  // Number(null) is 0, and a DEM at sea level has real zeros. Coercing a
+  // missing GDAL_NODATA tag to 0 would punch every genuine zero-metre cell out
+  // of the ground as though it were a survey void. Same trap as Number("").
+  const ndRaw = img.getGDALNoData ? img.getGDALNoData() : null;
+  const nodata = (ndRaw === null || ndRaw === undefined || ndRaw === "")
+    ? null : Number(ndRaw);
 
   if (rasters.length >= 3) {
     const [R, G, B] = rasters;
@@ -688,7 +739,7 @@ export async function readGeoTiff(file) {
     const finite = [];
     for (let i = 0; i < band.length; i++) {
       const v = band[i];
-      if (Number.isFinite(v) && v !== nodata) finite.push(v);
+      if (Number.isFinite(v) && !(nodata !== null && v === nodata)) finite.push(v);
     }
     finite.sort((a, b) => a - b);
     const lo = finite[Math.floor(finite.length * 0.02)] ?? 0;
@@ -696,7 +747,7 @@ export async function readGeoTiff(file) {
     const span = hi - lo || 1;
     for (let i = 0; i < w * h; i++) {
       const v = band[i];
-      const bad = !Number.isFinite(v) || v === nodata;
+      const bad = !Number.isFinite(v) || (nodata !== null && v === nodata);
       const t = bad ? 0 : Math.max(0, Math.min(1, (v - lo) / span));
       const g = Math.round(t * 255);
       out.data[i * 4] = g; out.data[i * 4 + 1] = g; out.data[i * 4 + 2] = g;
@@ -705,5 +756,61 @@ export async function readGeoTiff(file) {
   }
   ctx.putImageData(out, 0, 0);
   const bitmap = await createImageBitmap(cv);
-  return { extent, bitmap, width: w, height: h, epsg, bands: rasters.length };
+  // The raw first band as well as the picture. A magnetics grid wants the
+  // picture; a DEM wants the numbers, and the same file can be either.
+  return { extent, bitmap, width: w, height: h, epsg, bands: rasters.length,
+           band: rasters[0], nodata };
+}
+
+/**
+ * A digital elevation model, as a mesh.
+ *
+ * LiDAR is delivered as tens of millions of returns, and nothing in a deck
+ * consumes returns — what it draws is the surface derived from them, which is
+ * what every LiDAR pipeline already produces on the way to handing over the
+ * cloud. So the input here is the DEM, and the output is the same
+ * {verts, faces} the viewer already builds vein surfaces from.
+ *
+ * Downsampled hard and on purpose. A 4,000 x 4,000 DEM is sixteen million
+ * vertices; nobody can see that on a hillside, and a deck that takes a minute
+ * to open has spent its budget on detail the audience cannot perceive.
+ */
+export function demToMesh(dem, maxSide = 320) {
+  const { width: w, height: h, band, extent, nodata } = dem;
+  if (!band || !w || !h) throw new Error("That file has no elevation band to read.");
+  const step = Math.max(1, Math.ceil(Math.max(w, h) / maxSide));
+  const nx = Math.floor((w - 1) / step) + 1;
+  const ny = Math.floor((h - 1) / step) + 1;
+  const dx = (extent.east - extent.west) / (w - 1 || 1);
+  const dy = (extent.north - extent.south) / (h - 1 || 1);
+
+  const verts = new Array(nx * ny);
+  const good = new Uint8Array(nx * ny);
+  let lo = Infinity, hi = -Infinity;
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      const sx = i * step, sy = j * step;
+      const z = band[sy * w + sx];
+      const ok = Number.isFinite(z) && (nodata === null || z !== nodata);
+      // Row 0 of a north-up raster is the NORTH edge, so y runs down from it.
+      // Getting this backwards mirrors the topography and nothing complains.
+      verts[j * nx + i] = [extent.west + sx * dx, extent.north - sy * dy, ok ? z : 0];
+      good[j * nx + i] = ok ? 1 : 0;
+      if (ok) { if (z < lo) lo = z; if (z > hi) hi = z; }
+    }
+  }
+  if (!Number.isFinite(lo)) throw new Error("Every cell in that DEM is no-data.");
+
+  // Two triangles per cell, and a cell is skipped when any corner is no-data —
+  // a void in a survey is a hole in the ground, not a spike down to zero.
+  const faces = [];
+  for (let j = 0; j < ny - 1; j++) {
+    for (let i = 0; i < nx - 1; i++) {
+      const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
+      if (!(good[a] && good[b] && good[c] && good[d])) continue;
+      faces.push([a, c, b], [b, c, d]);
+    }
+  }
+  if (!faces.length) throw new Error("That DEM has no continuous ground in it.");
+  return { verts, faces, nx, ny, step, zMin: lo, zMax: hi };
 }

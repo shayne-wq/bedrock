@@ -380,6 +380,45 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
 
 ## Log
 
+- **2026-08-10** — **The four platforms a geologist named, and topography.**
+  Leapfrog, Micromine, Deswik, MinePlan.
+
+  The useful finding is that **all four are already readable**: every one of
+  them exports CSV for drilling and block models, and DXF/OBJ for wireframes,
+  which is exactly what this reads. The gap was never ingestion — it was that a
+  Leapfrog user dropping a `.msh` got "unsupported extension" and reasonably
+  concluded the tool did not know their software.
+
+  So the vendor table is corrected and extended. **`.msr` was listed under
+  Leapfrog and is MinePlan's** — it would have sent a MinePlan user hunting for
+  menus their software does not have. MinePlan was not named at all despite the
+  demo's own provenance citing MineSight class conventions. Leapfrog now covers
+  `.msh/.lfm/.lfr/.aproj`, Micromine `.tridb/.mmpro`, Deswik its four, each
+  naming the actual menu path.
+
+  **Ambiguous extensions get an honest answer.** `.dat` was mapped confidently
+  to Micromine; Datamine and MinePlan use it too. Naming one vendor wrongly is
+  worse than naming none, so `.dat`, `.str` and `.00t` now say what the file
+  might be and give the export that is the same answer whichever it is.
+
+  **Topography is a new dataset kind.** A GeoTIFF DEM becomes a mesh — the same
+  {verts, faces} the vein surfaces already render — downsampled to ~320 a side,
+  because a 4,000² DEM is sixteen million vertices nobody can perceive on a
+  hillside. Survey voids stay voids: a cell with any no-data corner is dropped
+  rather than spiked to zero. A triangulated DTM as OBJ/GOCAD/DXF loads the
+  same way, which is what Leapfrog, Deswik and MinePlan all export.
+
+  **LiDAR is named and refused**, pointing at the DEM or surface every LiDAR
+  pipeline already produces. Nothing in a deck draws raw returns.
+
+  One bug worth recording: `Number(null)` is `0`, and the GeoTIFF reader was
+  coercing a missing GDAL_NODATA tag to zero — so a DEM at sea level would have
+  had every genuine zero-metre cell punched out as a void. Same trap as
+  `Number("")`, found earlier this session in the geochem reader.
+
+  14 topography assertions against a hand-written float32 DEM with a deliberate
+  void.
+
 - **2026-08-10** — **Terrain defaults to 10% whenever there is rock on screen.**
   An orebody drawn over solid ground is a coloured blob pasted on a hillside:
   you see its silhouette and nothing about where it sits. The entire reason

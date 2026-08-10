@@ -15,7 +15,7 @@ import {
 import {
   sniff, readGeoJSON, readKML, readOBJ, readGOCAD, readDXF,
   readCollars, readSurveys, readAssays, desurvey,
-  readWorldFile, worldExtent, magProduct, readGeochem, readGeoTiff
+  readWorldFile, worldExtent, magProduct, readGeochem, readGeoTiff, demToMesh
 } from "./lib/formats.js";
 
 let worker = null;
@@ -793,6 +793,63 @@ async function parseAux(kind, chosen) {
                bbox: ringsBbox(rings) },
       provenance: { parsed: "claims", ring_count: rings.length,
                     holders: owners.length },
+    };
+  }
+
+  if (kind === "topography") {
+    // The customer's own ground, at their own resolution.
+    //
+    // Cesium's global terrain is ~30 m and smoothed; a project that has flown
+    // LiDAR or a photogrammetric survey has something far better, and it is the
+    // difference between a generic hillside and their hillside. This is
+    // structured survey data, not photography — the standing decision against
+    // client imagery (issue #10) is about pictures, and a DEM is measurement.
+    const c = chosen[0];
+    if (!c) throw new Error("No file chosen.");
+    const nm = c.file.name.toLowerCase();
+    if (/\.(las|laz|e57|ply)$/.test(nm)) {
+      throw new Error(
+        `${c.file.name} is a point cloud. Nothing in a deck draws raw returns — ` +
+        "export the derived surface instead: a DEM as GeoTIFF, or the " +
+        "triangulated ground as OBJ or DXF.");
+    }
+
+    let mesh, extent = null, epsg = null, note = "";
+    if (/\.(tiff?)$/.test(nm)) {
+      const dem = await readGeoTiff(c.file);
+      if (!dem) {
+        throw new Error(`${c.file.name} is a TIFF with no georeferencing, so ` +
+          "there is nothing to say where the ground is. Export it as a GeoTIFF.");
+      }
+      mesh = demToMesh(dem);
+      extent = dem.extent; epsg = dem.epsg;
+      note = `${dem.width} x ${dem.height} DEM, sampled every ${mesh.step} cell` +
+             `${mesh.step === 1 ? "" : "s"}`;
+    } else {
+      // Already a surface. The same readers the vein surfaces use, so a
+      // triangulated DTM out of Leapfrog, Micromine, Deswik or MinePlan loads
+      // with no extra work on either side.
+      const fmt = readable(c.file);
+      const text = await textOf(c.file);
+      const m = fmt === "obj" ? readOBJ(text, c.file.name)
+              : fmt === "gocad" ? readGOCAD(text, c.file.name)
+              : fmt === "dxf" ? readDXF(text, c.file.name)
+              : (() => { throw new Error(
+                  `${c.file.name}: topography must be a GeoTIFF DEM, or a ` +
+                  "triangulated surface as OBJ, GOCAD .ts or DXF."); })();
+      mesh = { verts: m.verts, faces: m.faces };
+      const zs = m.verts.map((v) => v[2]).filter(Number.isFinite);
+      mesh.zMin = Math.min(...zs); mesh.zMax = Math.max(...zs);
+      note = `${m.verts.length.toLocaleString()} vertices`;
+    }
+
+    return {
+      payload: { format: "orebody-topography/1", extent, epsg,
+                 mesh: { verts: mesh.verts, faces: mesh.faces } },
+      stats: { vertices: mesh.verts.length, faces: mesh.faces.length,
+               z_min: Math.round(mesh.zMin), z_max: Math.round(mesh.zMax),
+               source: note },
+      provenance: { parsed: "topography", note },
     };
   }
 
