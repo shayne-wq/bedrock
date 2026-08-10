@@ -278,6 +278,26 @@ them. Authoring becomes curation rather than construction.
 
 ## Log
 
+- **2026-08-09** — Competitive comparison written up in `docs/COMPARISON.md`,
+  scoped to the presenting product: Orebody vs VRIFY Present vs Terrahutton.
+  Assessed from public material only — neither competitor product has been
+  used, VRIFY offers no free trial, and the doc says so rather than implying a
+  depth of assessment it does not have.
+
+  The finding that matters is structural rather than featural: **both
+  competitors sell a done-for-you service.** VRIFY's own FAQ says their data
+  team builds the models and onboarding runs 10–15 business days; Terrahutton's
+  process is the same shape. Neither offers self-serve authoring. So the
+  competition is not feature-for-feature — it is a service with a high quality
+  floor against software with a faster update cycle, and most of what this
+  repository does about honesty and slide generation exists to raise the floor
+  that a data team would otherwise provide.
+
+  Recorded honestly on our side too: no customers against VRIFY's stated 185+,
+  one end-to-end run, mobile still broken, and two flows never clicked in
+  anger. The doc's closing line is that the next thing worth doing is not a
+  feature.
+
 - **2026-08-09** — **First real end-to-end run: console contract → viewer.**
   `tools/seed_demo_deck.mjs` builds a project, zone, artifacts in storage,
   datasets, a deck whose chapters come from the same generator the console
