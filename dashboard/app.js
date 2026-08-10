@@ -885,6 +885,8 @@ async function fetchNeighbours(project, site, zoneId) {
       return;
     }
     await mergeClaims(project, zoneId, site, cur, extra, body, added);
+    // mergeClaims re-renders the route deliberately: the boundary dataset
+    // itself changed, so the zone list and its dataset rows are stale too.
   } catch (e) {
     fail("Fetch neighbours", e);
   } finally {
