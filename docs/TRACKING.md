@@ -531,6 +531,51 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   global on all three paths, so nothing re-introduces a window. Re-run green:
   holeview 32, capture 28, ui 37, labels 11, transition 11, pit clean.
 
+- **2026-08-10** — **Yukon wired up as the third tenure jurisdiction, for Macpass.**
+
+  Chasing a real dataset to replace the fabricated drill holes. Fireweed
+  Metals' **Macpass** (Yukon, Zn-Pb-Ag + Ge/Ga) publishes a full drill database
+  — collars, surveys, sample-by-sample assays, bulk density, LiDAR DEMs — in
+  **EPSG:26909**, four deposits (Tom, Jason, End Zone, Boundary Zone), ~544
+  holes. That package sits behind a signed disclaimer form; submitted, and the
+  link is emailed to `shayne@lfgmanagement.ca`, which the Gmail connector cannot
+  read (it is on `admin@almondprotein.ca`). **Still waiting on the link.**
+
+  What did not need the link: the neighbouring-ground layer. GeoYukon qualifies
+  on the rule this function has always applied — one queryable layer carrying
+  both the boundary and the holder — so `yt` is now wired alongside `bc`
+  and `sk`, deployed and green.
+
+  Yukon broke two assumptions the first two jurisdictions shared, and both
+  would have failed silently:
+
+  - **A property spans two registry tables.** Quartz claims convert to quartz
+    leases once surveyed, and the surveyed ground is exactly the ground the
+    deposits sit on — 182 of Fireweed's parcels are leases, over Tom and Jason.
+    Querying claims alone punches a hole in the dissolved outline precisely
+    where the mine is.
+  - **A Yukon parcel is ~21 ha**, so a property that is dozens of tenures in BC
+    is thousands here; Fireweed's block is ~2,000 within one legal bbox. The
+    register caps a response at 2,500, and `MAX_FEATURES` was 1,200. Unpaged,
+    the dissolve would have drawn a property with its middle missing and
+    reported it as fact. Yukon has its own ceiling (4,000) and pages at 1,000,
+    and `truncated` is now judged against the source's own cap rather than a
+    global one — otherwise a complete Yukon property cries wolf at 1,200.
+
+  Also: the holder is stated as `"Fireweed Metals Corp. - 100%"`. Left attached,
+  the interest splits one company into several outlines the moment a parcel is
+  jointly held, because the dissolve groups on the name.
+
+  `tools/verify_yukon.mjs` (12 assertions) proves the adapter against the live
+  register without a deploy; `verify_tenure.sh` grew seven Yukon assertions and
+  runs 21 across all three jurisdictions. Two of my own assertions failed first
+  and were wrong rather than the code — a >2,500 threshold that a 0.5° bbox can
+  never reach, and a hard parcel count where a share was meant.
+
+  Verified live: 2,026 parcels, 0 without geometry, Fireweed 1,944 parcels /
+  34,114 ha as a single holder, with Rackla Metals, Senoa Gold and two named
+  individuals as neighbours. BC and SK re-run unchanged.
+
 - **2026-08-10** — **Renamed to Bedrock, and the console rebuilt on the brand.**
 
   **The rename.** GitHub repo → `shayne-wq/bedrock`, Supabase project → `bedrock`

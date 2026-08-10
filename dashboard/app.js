@@ -428,6 +428,7 @@ async function renderProject(id) {
         <select id="nbjur" class="nbjur" title="Which public register to ask">
           <option value="bc">British Columbia</option>
           <option value="sk">Saskatchewan</option>
+          <option value="yt">Yukon</option>
         </select>
         <button class="btn sm" id="nbfetch">Fetch from the register</button>
         <span class="hint" id="nbcount"></span>

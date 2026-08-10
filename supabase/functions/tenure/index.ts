@@ -31,6 +31,18 @@ const BC_LAYER = "pub:WHSE_MINERAL_TENURE.MTA_ACQUIRED_TENURE_SVW";
 const SK_LAYER =
   "https://gis.saskatchewan.ca/arcgis/rest/services/Economy/" +
   "Mineral_Tenure_Crown_Dispositions/MapServer/0";
+// GeoYukon. Two layers, not one: a Yukon property is held as quartz CLAIMS
+// (36) that convert to quartz LEASES (37) once surveyed, and a mature project
+// holds both. Querying only claims punches a hole in the dissolved outline
+// exactly where the mine is, because that is the ground that got surveyed
+// first — at Macpass, 182 of Fireweed's parcels are leases and they sit on Tom
+// and Jason.
+const YT_BASE =
+  "https://mapservices.gov.yk.ca/arcgis/rest/services/GeoYukon/GY_Mining/MapServer";
+const YT_LAYERS = [
+  { id: 36, kind: "Quartz claim" },
+  { id: 37, kind: "Quartz lease" },
+];
 
 // Checked and rejected, with the reason, so this is not re-litigated:
 //
@@ -54,6 +66,14 @@ const NOT_WIRED: Record<string, string> = {
 // a province, and the honest answer is to say so rather than to time out.
 const MAX_SPAN_DEG = 0.5;
 const MAX_FEATURES = 1200;
+// Yukon gets its own ceiling because a Yukon parcel is a different size of
+// thing. A quartz claim is ~21 ha, so a property that would be a few dozen
+// tenures in BC is a few thousand here — Fireweed's Macpass block alone is
+// ~2,300. Capping it at 1,200 would not return "most of the property", it
+// would return a shape with the middle missing, and the dissolve would draw
+// that as fact. The layers page at 2,500; we ask for 1,000 at a time.
+const YT_MAX_FEATURES = 4000;
+const YT_PAGE = 1000;
 
 Deno.serve(async (req) => {
   const pre = preflight(req);
@@ -69,17 +89,17 @@ Deno.serve(async (req) => {
 
   const url = new URL(req.url);
   const j = (url.searchParams.get("jurisdiction") || "bc").toLowerCase();
-  if (j !== "bc" && j !== "sk") {
+  if (j !== "bc" && j !== "sk" && j !== "yt") {
     const known = NOT_WIRED[j];
     return json({
       error: known
         ? `Not available for ${j.toUpperCase()}: ${known}. Export the ` +
           `boundaries from the registry and upload them as GeoJSON or KML.`
-        : `Automatic tenure lookup is wired up for British Columbia and ` +
-          `Saskatchewan. For ${j.toUpperCase()}, export the boundaries from ` +
-          `the registry and upload them as GeoJSON or KML.`,
+        : `Automatic tenure lookup is wired up for British Columbia, ` +
+          `Saskatchewan and Yukon. For ${j.toUpperCase()}, export the ` +
+          `boundaries from the registry and upload them as GeoJSON or KML.`,
       unsupported_jurisdiction: j,
-      supported: ["bc", "sk"],
+      supported: ["bc", "sk", "yt"],
     }, 400);
   }
 
@@ -99,6 +119,32 @@ Deno.serve(async (req) => {
   // console's rollup reads — OWNER_NAME, CLAIM_NAME, TENURE_NUMBER_ID,
   // AREA_IN_HECTARES. Translating here rather than downstream means adding a
   // jurisdiction never touches the console.
+  // One GET, or several. BC and SK answer in a single request; Yukon needs two
+  // layers and pages within each, so a source declares the requests it takes
+  // rather than a single url.
+  // Grouped by layer, one group per registry table, pages in order within a
+  // group. A short page ends its own group without abandoning the next one.
+  const ytUrls: string[][] = [];
+  for (const L of YT_LAYERS) {
+    const pages: string[] = [];
+    for (let off = 0; off < YT_MAX_FEATURES; off += YT_PAGE) {
+      pages.push(`${YT_BASE}/${L.id}/query?` + new URLSearchParams({
+        where: "1=1",
+        // ArcGIS envelope, longitude first — same axis order as SK, the
+        // opposite of the WFS above.
+        geometry: `${w},${s},${e},${n}`,
+        geometryType: "esriGeometryEnvelope",
+        inSR: "4326", outSR: "4326",
+        spatialRel: "esriSpatialRelIntersects",
+        outFields: "CLAIM_LABEL,CLAIM_NAME,CLAIM_NUMBER,GRANT_NUMBER," +
+                   "OWNER_NAME,TENURE_STATUS,SHAPE.AREA",
+        returnGeometry: "true", f: "geojson",
+        resultOffset: String(off), resultRecordCount: String(YT_PAGE),
+      }));
+    }
+    ytUrls.push(pages);
+  }
+
   const source = j === "bc"
     ? {
       name: "BC Mineral Titles Online",
@@ -110,16 +156,18 @@ Deno.serve(async (req) => {
       // WFS 2.0 with an EPSG:4326 bbox is LATITUDE FIRST. Getting this
       // backwards does not error — it returns an empty collection from the
       // ocean off Somalia, which reads as "no neighbours".
-      url: `${BC_WFS}?` + new URLSearchParams({
+      urls: [[`${BC_WFS}?` + new URLSearchParams({
         service: "WFS", version: "2.0.0", request: "GetFeature",
         typeNames: BC_LAYER, outputFormat: "application/json",
         srsName: "EPSG:4326", count: String(MAX_FEATURES),
         bbox: `${s},${w},${n},${e},urn:ogc:def:crs:EPSG::4326`,
-      }),
+      })]],
+      cap: MAX_FEATURES, page: MAX_FEATURES,
       // Already in the shape we want.
       normalise: (f: Record<string, unknown>) => f,
     }
-    : {
+    : j === "sk"
+    ? {
       name: "Saskatchewan Mineral Tenure — Crown Dispositions",
       endpoint: SK_LAYER,
       dataset: "Mineral Dispositions",
@@ -128,7 +176,7 @@ Deno.serve(async (req) => {
       // ArcGIS takes the envelope as west,south,east,north — LONGITUDE first,
       // the opposite of the WFS above. Two registers, two axis orders, and
       // neither errors when you get it wrong.
-      url: `${SK_LAYER}/query?` + new URLSearchParams({
+      urls: [[`${SK_LAYER}/query?` + new URLSearchParams({
         where: "1=1",
         geometry: `${w},${s},${e},${n}`,
         geometryType: "esriGeometryEnvelope",
@@ -137,7 +185,8 @@ Deno.serve(async (req) => {
         outFields: "DISPOSIT_1,OWNERS,DISPOSIT_3,SHAPE.AREA",
         returnGeometry: "true", f: "geojson",
         resultRecordCount: String(MAX_FEATURES),
-      }),
+      })]],
+      cap: MAX_FEATURES, page: MAX_FEATURES,
       normalise: (f: Record<string, unknown>) => {
         const p = (f.properties || {}) as Record<string, unknown>;
         // "URACAN RESOURCES LTD.: 100.000%" — and on jointly held ground,
@@ -167,18 +216,76 @@ Deno.serve(async (req) => {
           },
         };
       },
+    }
+    : {
+      name: "GeoYukon — Quartz Claims and Leases",
+      endpoint: YT_BASE,
+      dataset: "Quartz Claims - 50k; Quartz Leases - 50k",
+      licence: "Open Government Licence – Yukon",
+      attribution:
+        "Contains information licensed under the Open Government Licence – Yukon.",
+      urls: ytUrls,
+      cap: YT_MAX_FEATURES, page: YT_PAGE,
+      normalise: (f: Record<string, unknown>) => {
+        const p = (f.properties || {}) as Record<string, unknown>;
+        // "Fireweed Metals Corp. - 100%". The interest is a separate fact from
+        // the name, and leaving it attached would make one holder look like
+        // several the moment a parcel is jointly held at 60/40 — the dissolve
+        // groups on the name, so it would draw two outlines for one company.
+        const rawOwner = String(p.OWNER_NAME || "").trim();
+        const m = rawOwner.match(/^(.*?)\s*-\s*([\d.]+)\s*%$/);
+        const who = (m ? m[1] : rawOwner).trim();
+        const share = m ? parseFloat(m[2]) : 100;
+        // CLAIM_LABEL is the surveyed label where one exists; otherwise the
+        // label a geologist would say out loud is name + number ("Mac 98").
+        const label = String(p.CLAIM_LABEL || "").trim() ||
+          [p.CLAIM_NAME, p.CLAIM_NUMBER].filter((x) =>
+            x !== null && x !== undefined && String(x).trim() !== ""
+          ).join(" ").trim();
+        return {
+          ...f,
+          properties: {
+            OWNER_NAME: who,
+            CLAIM_NAME: label,
+            TENURE_NUMBER_ID: String(p.GRANT_NUMBER || label),
+            // SHAPE.AREA is square metres in the layer's own projection
+            // (EPSG:3578, Yukon Albers). A standard quartz claim comes back
+            // near 209,000 — about 21 ha — which is the check that this is
+            // metres and not something else.
+            AREA_IN_HECTARES: Number(p["SHAPE.AREA"] || 0) / 10000,
+            TENURE_TYPE_DESCRIPTION: String(p.GRANT_NUMBER || "").startsWith("YD")
+              ? "Quartz claim"
+              : "Quartz claim or lease",
+            TENURE_STATUS: String(p.TENURE_STATUS || ""),
+            OWNER_PARTIES: share !== 100 ? rawOwner : undefined,
+          },
+        };
+      },
     };
 
-  let body: { type?: string; features?: unknown[] };
+  const raw0: unknown[] = [];
+  let hitCap = false;
   try {
-    const r = await fetch(source.url, {
-      signal: AbortSignal.timeout(45000),
-      headers: { Accept: "application/json" },
-    });
-    if (!r.ok) {
-      return json({ error: `The ${j.toUpperCase()} registry returned ${r.status}.` }, 502);
+    for (const group of source.urls) {
+      for (const u of group) {
+        const r = await fetch(u, {
+          signal: AbortSignal.timeout(45000),
+          headers: { Accept: "application/json" },
+        });
+        if (!r.ok) {
+          return json({ error: `The ${j.toUpperCase()} registry returned ${r.status}.` }, 502);
+        }
+        const body = await r.json() as { features?: unknown[] };
+        const page = Array.isArray(body?.features) ? body.features : [];
+        raw0.push(...page);
+        // Pages are generated up front, so a short one means this layer is
+        // exhausted and its remaining pages would be empty round-trips. Break
+        // the group, not the loop — the next layer still has to be asked.
+        if (page.length < source.page) break;
+        if (raw0.length >= source.cap) { hitCap = true; break; }
+      }
+      if (hitCap) break;
     }
-    body = await r.json();
   } catch (err) {
     // Their outage, not ours, and the message should say which.
     return json({
@@ -188,14 +295,17 @@ Deno.serve(async (req) => {
     }, 502);
   }
 
-  const raw = Array.isArray(body?.features) ? body.features : [];
+  const raw = raw0;
   // A feature with no geometry is not a boundary. Finland's register returns
   // nothing but these, and dropping them here means a half-working register
   // surfaces as "no holders found" rather than as claims that draw nowhere.
   const feats = raw
     .map((f) => source.normalise(f as Record<string, unknown>))
     .filter((f) => (f as { geometry?: unknown }).geometry);
-  const truncated = raw.length >= MAX_FEATURES;
+  // Against the source's own ceiling, not a global one — Yukon's is higher
+  // because its parcels are smaller, and comparing it to MAX_FEATURES would
+  // stamp "truncated" on a complete Yukon property at 1,200 parcels.
+  const truncated = hitCap || raw.length >= source.cap;
 
   return json({
     type: "FeatureCollection",

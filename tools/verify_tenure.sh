@@ -41,7 +41,7 @@ INV=$(curl -s --max-time 45 -H "apikey: $ANON" -H "Authorization: Bearer $JWT" \
 ok "rejects a malformed bbox" "$([ "$INV" -ge 1 ] && echo 1 || echo 0)"
 
 OTH=$(curl -s --max-time 45 -H "apikey: $ANON" -H "Authorization: Bearer $JWT" \
-  "$BASE/tenure?bbox=$BBOX&jurisdiction=on" | grep -c "wired up for British Columbia and" || true)
+  "$BASE/tenure?bbox=$BBOX&jurisdiction=on" | grep -c "wired up for British Columbia, Saskatchewan and Yukon" || true)
 ok "says plainly that other jurisdictions are not wired up" "$([ "$OTH" -ge 1 ] && echo 1 || echo 0)"
 
 # A register we checked and rejected must say WHY, so the next person does not
@@ -81,6 +81,56 @@ print(1 if ha and all(isinstance(h,(int,float)) and h>0 for h in ha) else 0)" 2>
 ok "area comes through in hectares" "$SKH"
 SKA=$(printf '%s' "$SK" | grep -c "Government of Saskatchewan" || true)
 ok "carries the Saskatchewan attribution, not BC's" "$([ "$SKA" -ge 1 ] && echo 1 || echo 0)"
+
+
+# ---- Yukon -----------------------------------------------------------------
+# Macpass, eastern Yukon. This is the jurisdiction that breaks the assumptions
+# the other two share: the property is held across TWO registry tables, and it
+# is thousands of small parcels rather than dozens of large ones, so a single
+# unpaged request returns a property with its middle missing.
+YTBOX="-130.35,63.02,-129.85,63.35"
+YT=$(curl -s --max-time 180 -H "apikey: $ANON" -H "Authorization: Bearer $JWT" \
+  "$BASE/tenure?bbox=$YTBOX&jurisdiction=yt")
+YTN=$(printf '%s' "$YT" | python3 -c "import sys,json;print(len(json.load(sys.stdin).get('features',[])))" 2>/dev/null || echo 0)
+ok "Yukon returns tenure" "$([ "${YTN:-0}" -gt 500 ] && echo 1 || echo 0)" "got $YTN"
+# The single most important assertion here: GeoYukon caps a response at 2,500
+# and pages at our request size, so this proves we went back for more.
+ok "paged past a single request" "$([ "${YTN:-0}" -gt 1000 ] && echo 1 || echo 0)" "got $YTN"
+YTL=$(printf '%s' "$YT" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+# Leases are a separate table from claims; if only one was queried the surveyed
+# ground the deposits sit on is missing from the outline.
+ids=[(x.get('properties') or {}).get('TENURE_NUMBER_ID','') for x in d.get('features',[])]
+print(1 if any(i.startswith('YD') for i in ids) and any(not i.startswith('YD') for i in ids) else 0)" 2>/dev/null || echo 0)
+ok "both the claims and the leases tables were read" "$YTL"
+YTO=$(printf '%s' "$YT" | python3 -c "
+import sys,json,collections
+d=json.load(sys.stdin)
+own=[(x.get('properties') or {}).get('OWNER_NAME','') for x in d.get('features',[])]
+# Yukon states the holder as 'Fireweed Metals Corp. - 100%'. Left attached, one
+# company splits into several the moment a parcel is jointly held.
+if not own or any(('%' in o or not o) for o in own): print(0); raise SystemExit
+fw=[o for o in set(own) if o.lower().startswith('fireweed')]
+print(1 if len(fw)==1 else 0)" 2>/dev/null || echo 0)
+ok "the holder reads as one company, not one per interest" "$YTO"
+YTH=$(printf '%s' "$YT" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+ha=sorted((x.get('properties') or {}).get('AREA_IN_HECTARES',0) for x in d.get('features',[]))
+m=ha[len(ha)//2] if ha else 0
+# A Yukon quartz claim is ~21 ha. Catches SHAPE.AREA changing units under us.
+print(1 if 5 < m < 60 else 0)" 2>/dev/null || echo 0)
+ok "a parcel is about 21 ha, so the area units are right" "$YTH"
+YTT=$(printf '%s' "$YT" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+# A complete Yukon property is thousands of parcels; if 'truncated' were judged
+# against BC's ceiling it would cry wolf on every one of them.
+print(1 if d.get('truncated') is False else 0)" 2>/dev/null || echo 0)
+ok "a complete property is not reported as truncated" "$YTT"
+YTA=$(printf '%s' "$YT" | grep -c "Open Government Licence – Yukon" || true)
+ok "carries the Yukon attribution" "$([ "$YTA" -ge 1 ] && echo 1 || echo 0)"
 
 NOAUTH=$(curl -s --max-time 45 -o /dev/null -w "%{http_code}" "$BASE/tenure?bbox=$BBOX")
 ok "not an open proxy" "$([ "$NOAUTH" = "401" ] && echo 1 || echo 0)" "got $NOAUTH"
