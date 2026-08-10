@@ -263,6 +263,83 @@ them. Authoring becomes curation rather than construction.
 
 ---
 
+## P0 — protect the differentiator (comparables-driven, 2026-08-10)
+
+From `docs/COMPARISON.md` and the two competitive audits (`vrify-audit.md`,
+`terrahutton-audit.md`), not from the exploration/magnetics work above. Five
+items, chosen over five other candidates (better public-basemap terrain via
+Cesium ion, a district/M&A narrative chapter, a custom/white-label domain)
+because they **protect or extend the core differentiator** — self-serve is
+safe, provenance is exact, the neighbour-registry advantage is real — rather
+than adding new surface area on top of an unverified floor.
+
+**A numbering note, so this doesn't read as contradicting the sections
+above**: #9–#13 in the P1/P2 sections above are this file's own local task
+numbers — they were never filed as GitHub issues (only #1–#8 have a real
+`/issues/N` link). The items below **are** real, filed GitHub issues, and
+their numbers (#10–#15) collide with those local ones by coincidence. #9 in
+GitHub is a different, already-closed issue — neighbour-company logos on the
+surrounding-claims map, shipped in `0369229`, well beyond what the issue
+asked for (per-holder upload, private-holder handling, dissolved outlines,
+16 test assertions in `tools/verify_holders.mjs`).
+
+- [ ] 🔴 **Issue #11 — Fix the mobile boot failure.** `COMPARISON.md`'s own
+  words: "the most serious open defect." Everything else here is moot if the
+  deck doesn't open on the device it's most often opened on. The real
+  blocker is access to real-device testing, not code — this repo's own boot
+  diagnostics (`#bootstack`) have been unreadable because nobody working the
+  bug has had the failing device in hand.
+  <https://github.com/shayne-wq/orebody/issues/11>
+- [ ] 🔴 **Issue #12 — Harden sub-blocked model detection.** Protects the
+  single stated differentiator over both competitors: "the deck cannot state
+  a number the model does not support." The detector in
+  `dashboard/lib/extract.js` already documents its own limit; a wrong
+  tonnage with no symptom is a crack in the provenance guarantee, not a
+  feature gap.
+  <https://github.com/shayne-wq/orebody/issues/12>
+- [ ] 🔴 **Issue #13 — GeoTIFF ingestion.** Named VRIFY advantage
+  ("VRIFY takes it directly"); currently refused by name in
+  `dashboard/lib/formats.js`. Fix already verified: `geotiff.js` (npm, MIT,
+  actively maintained) decodes GeoTIFF including georeferencing tags
+  client-side, matching the existing read-locally pattern. Geosoft `.grd`
+  stays a named refusal — no viable open decoder — pointing at GeoTIFF or an
+  ASCII grid instead.
+  <https://github.com/shayne-wq/orebody/issues/13>
+- [ ] 🔴 **Issue #14 — Registry lookup beyond BC.** The flagship
+  differentiator (neighbours from a public register, not self-asserted —
+  shipped for BC as local-#12 above) only covers one Canadian province.
+  Every confirmed Terrahutton customer (`terrahutton-audit.md`) sits outside
+  it: Colombia, Argentina, Peru, Finland. Scope as N bounded per-jurisdiction
+  integrations, not one generic abstraction; upload stays the fallback
+  everywhere a registry isn't wired up.
+  <https://github.com/shayne-wq/orebody/issues/14>
+- [ ] 🔴 **Issue #15 — QA the two never-clicked flows.** `COMPARISON.md`,
+  verbatim: "everything behind them is tested; the buttons are not" —
+  neighbour-logo upload and the registry-fetch button. Do this **before**
+  #14 extends the same flows to more jurisdictions.
+  <https://github.com/shayne-wq/orebody/issues/15>
+
+Cesium/terrain-realism work is tracked separately as **Issue #10**, deferred
+by design (Phase 2) — see the issue for the current scope. **Decision,
+2026-08-10: no client-supplied imagery or footage of any kind** — a
+customer-uploaded orthophoto drape and a drone-photogrammetry reality mesh
+were both in its original scope and both are cut. Reasoning: photography/
+footage carries no backing number, unlike every other input this product
+handles, and it's closer to VRIFY's art-directed, done-for-you model than to
+Orebody's "nothing on screen the data doesn't support" thesis — it also only
+helps the small slice of customers who've flown a drone, and introduces a
+licensing/consent friction the rest of the pipeline doesn't have. What
+remains in scope, both public-data-only: sun-synced lighting/shadows/fog on
+the existing basemap (needs real visual QA before shipping — Cesium changes
+can't be render-tested in every environment), and a Cesium ion evaluation
+for better public terrain/imagery/buildings (pricing researched 2026-08-09,
+see the issue). The existing 360° ground-level vantage points are
+unaffected by this — they already stand a virtual camera on real terrain
+under the public basemap, no client imagery involved.
+<https://github.com/shayne-wq/orebody/issues/10>
+
+---
+
 ## Data the deck can consume (per zone)
 
 | Dataset | Required (resource) | Required (exploration) | Format | Notes |
@@ -277,6 +354,19 @@ them. Authoring becomes curation rather than construction.
 ---
 
 ## Log
+
+- **2026-08-10** — Reviewed `docs/COMPARISON.md` and both competitive audits;
+  synthesised the highest-value features per platform (Orebody / VRIFY
+  Present / Terrahutton) and a "10 candidates, cut to 5" pass on what to
+  build next. Decision: **no client-supplied imagery or footage of any
+  kind** anywhere in the terrain/maps work — cuts the customer-orthophoto
+  and reality-mesh ideas from issue #10's original scope (full reasoning on
+  the issue and in the new P0 section above). Filed 5 new issues (#11–#15)
+  for the items that survived the cut — all protect or extend the core
+  differentiator rather than add new surface area. Closed issue #9
+  (neighbour logos) as already shipped in `0369229`. Flagged a numbering
+  collision: this file's own local #9–#13 (below) were never filed as real
+  GitHub issues and are unrelated to GitHub's actual #9–#15.
 
 - **2026-08-09** — Competitive comparison written up in `docs/COMPARISON.md`,
   scoped to the presenting product: Orebody vs VRIFY Present vs Terrahutton.
