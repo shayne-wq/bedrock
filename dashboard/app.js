@@ -411,7 +411,11 @@ async function renderProject(id) {
 
     <div class="panel" id="nbpanel" hidden>
       <div class="row"><h2 class="grow">Neighbouring ground</h2>
-        <button class="btn sm" id="nbfetch">Fetch from the BC register</button>
+        <select id="nbjur" class="nbjur" title="Which public register to ask">
+          <option value="bc">British Columbia</option>
+          <option value="sk">Saskatchewan</option>
+        </select>
+        <button class="btn sm" id="nbfetch">Fetch from the register</button>
         <span class="hint" id="nbcount"></span></div>
       <p class="lead" style="margin:0 0 12px">Companies whose tenure surrounds
          this project, read from the register in your uploaded boundary file.
@@ -650,7 +654,8 @@ async function renderHolders(project, datasets) {
   const panel = $("nbpanel");
   if (!panel || !site) return;
   panel.hidden = false;
-  $("nbfetch").onclick = () => fetchNeighbours(project, site, site.zone_id);
+  $("nbfetch").onclick = () =>
+    fetchNeighbours(project, site, site.zone_id, $("nbjur").value);
   $("nbfetch").disabled = !site.stats?.bbox;
   if (!Array.isArray(owners) || !owners.length) {
     $("nblist").innerHTML = `<div class="empty sm"><p>No holders read from the
@@ -831,7 +836,7 @@ async function saveBrand(project, patch) {
 // British Columbia only, and the console says so rather than offering a button
 // that silently returns nothing elsewhere. Every jurisdiction publishes tenure
 // differently and there is no endpoint to generalise to.
-async function fetchNeighbours(project, site, zoneId) {
+async function fetchNeighbours(project, site, zoneId, jurisdiction = "bc") {
   const box = site?.stats?.bbox;
   if (!box) {
     return fail("Fetch", new Error(
@@ -839,6 +844,7 @@ async function fetchNeighbours(project, site, zoneId) {
   }
   const btn = $("nbfetch");
   btn.disabled = true; btn.textContent = "Fetching…";
+  const jname = { bc: "British Columbia", sk: "Saskatchewan" }[jurisdiction] || jurisdiction;
   try {
     // Widen to a neighbourhood. A property's own bbox returns its own claims
     // and nothing else, which is not what anybody pressed this for.
@@ -847,7 +853,8 @@ async function fetchNeighbours(project, site, zoneId) {
     const q = [w - pad, s - pad, e + pad, n + pad].join(",");
     const { data: sess } = await db.auth.getSession();
     const r = await fetch(
-      `${CONFIG.url.replace(/\/$/, "")}/functions/v1/tenure?bbox=${encodeURIComponent(q)}`,
+      `${CONFIG.url.replace(/\/$/, "")}/functions/v1/tenure?bbox=${encodeURIComponent(q)}` +
+      `&jurisdiction=${encodeURIComponent(jurisdiction)}`,
       { headers: { apikey: CONFIG.anonKey,
                    Authorization: `Bearer ${sess.session.access_token}` } });
     const body = await r.json();
@@ -881,7 +888,7 @@ async function fetchNeighbours(project, site, zoneId) {
       }));
     });
     if (!added) {
-      toast("The register shows no other holders around this property");
+      toast(`The ${jname} register shows no other holders around this property`);
       return;
     }
     await mergeClaims(project, zoneId, site, cur, extra, body, added);
@@ -890,7 +897,7 @@ async function fetchNeighbours(project, site, zoneId) {
   } catch (e) {
     fail("Fetch neighbours", e);
   } finally {
-    btn.disabled = false; btn.textContent = "Fetch from the BC register";
+    btn.disabled = false; btn.textContent = "Fetch from the register";
   }
 }
 
