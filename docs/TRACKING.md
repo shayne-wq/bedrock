@@ -8,6 +8,45 @@ Status: 🔴 not started · 🟡 in progress · 🟢 done
 
 ---
 
+## Comparables-driven priorities (2026-08-10) — read this section first
+
+Ranked from `docs/COMPARISON.md` and both competitive audits, not from the
+exploration/magnetics backlog below (that predates this and may now overlap
+with work already shipped on `main` — see the branch-reconciliation note at
+the end of this file). These 5 were chosen over 5 other candidates (better
+public-basemap terrain, a district/M&A narrative chapter, a custom/white-
+label domain) because they **protect or extend the core differentiator**
+`COMPARISON.md` identifies — self-serve is safe, provenance is exact, the
+neighbour-registry advantage is real — rather than adding new surface area
+on top of an unverified floor. Cesium/terrain-realism work stays exactly
+where it was: Phase 2, issue #10, unchanged by this pass.
+
+- [ ] 🔴 **#11 — Fix the mobile boot failure.** `COMPARISON.md`'s own words:
+  "the most serious open defect." Everything else is moot if the deck
+  doesn't open on the device it's most often opened on. Real blocker is
+  access to real-device testing, not code — see the issue.
+  <https://github.com/shayne-wq/orebody/issues/11>
+- [ ] 🔴 **#12 — Harden sub-blocked model detection.** Protects the single
+  stated differentiator over both competitors: "the deck cannot state a
+  number the model does not support." A known gap here is a crack in that
+  guarantee, not a feature gap.
+  <https://github.com/shayne-wq/orebody/issues/12>
+- [ ] 🔴 **#13 — GeoTIFF ingestion.** Named VRIFY advantage, fix already
+  verified (`geotiff.js`, free, actively maintained, decodes client-side).
+  Highest ROI item on the list.
+  <https://github.com/shayne-wq/orebody/issues/13>
+- [ ] 🔴 **#14 — Registry-lookup beyond BC.** The flagship differentiator
+  (neighbours from a register, not self-asserted) only works in one
+  Canadian province today; every confirmed Terrahutton customer sits
+  outside it (Colombia, Argentina, Peru, Finland).
+  <https://github.com/shayne-wq/orebody/issues/14>
+- [ ] 🔴 **#15 — QA the two never-clicked flows.** Neighbour logo upload and
+  the registry fetch button — "everything behind them is tested; the
+  buttons are not." Do this before #14 extends the same flows further.
+  <https://github.com/shayne-wq/orebody/issues/15>
+
+---
+
 ## Context driving this backlog
 
 Two facts reshape the roadmap:
