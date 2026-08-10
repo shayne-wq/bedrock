@@ -531,6 +531,58 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   global on all three paths, so nothing re-introduces a window. Re-run green:
   holeview 32, capture 28, ui 37, labels 11, transition 11, pit clean.
 
+- **2026-08-10** — **A reviewable Macpass deck, and three bugs it exposed.**
+
+  `tools/seed_macpass.mjs` builds the Macpass land package as a real deck —
+  through the deployed tenure function, the console's own claims artifact, the
+  same candidate generator, a share link. Land package only: the drill database
+  is still behind the disclaimer, so this runs in exploration mode and says so,
+  and there is one zone rather than four because a zone with no data in it is a
+  promise rather than a fact.
+
+  Token `macpass0000000000000000000000000`. Four chapters, 1,844 parcels,
+  Fireweed 1,762 tenures / 31,257 ha, five holders. It renders on real Yukon
+  terrain with no fabricated anything.
+
+  **Three real bugs, none of which any test would have caught, because all three
+  needed a non-BC exploration project to exist:**
+
+  1. **The exploration path never applied the project's EPSG.** `PROJ` was set
+     only in the block-model branch, several hundred lines below the exploration
+     branch's early return, so an exploration deck was placed with the baked
+     demo's UTM zone 10N. Macpass is 9N — one zone, ~300 km of easting. It would
+     have drawn confidently on the wrong mountains and said nothing. Moved above
+     both branches.
+  2. **The console and the viewer disagreed about where a property is.** Claims
+     ingest writes `stats.bbox` — `[w,s,e,n]` in degrees, because a boundary file
+     arrives as lon/lat. The viewer read only `stats.bounds` — `{x,y,z}` in the
+     project grid. So a project whose only dataset was its property outline — the
+     commonest exploration project there is — found no extent and refused to
+     open. The viewer now accepts either, converting the degree box through the
+     project's own projection. Fixed in the viewer rather than the writer so
+     artifacts already in storage work without a re-upload.
+  3. **A private individual was rendered as a company, named, on a slide about
+     who surrounds the property.** `isCorporate()` read any comma-less name as a
+     company — which held in BC, where the register writes people as
+     "BILLINGSLEY, RICHARD JOHN", and fails in Yukon, which writes "Patrick
+     Etzel". The comment justifying the old default argued, in the same
+     sentence, that "a named individual is a decision nobody made" — the
+     implementation was on the wrong side of its own argument. Now it requires
+     positive evidence of a company (suffix, ampersand, bracketed year,
+     registered number) and defaults to person. Checked against 17 real owner
+     strings from all three registers: all 17 classify correctly.
+
+  Also corrected from the entry below: **leases do not add ground.** All 182 of
+  Fireweed's lease grant numbers also appear in the claims layer, so layer 37
+  returned 182 duplicate polygons rather than the surveyed ground I claimed it
+  contributed. Both layers are still read — a lease with no claim record cannot
+  be ruled out from one property — but the response now dedupes by tenure and
+  reports `duplicate_tenures_dropped`, which is also what proves the second
+  layer ran. Without that dedupe, "both layers" was double-counting hectares on
+  the one slide whose whole subject is who owns how much.
+
+  Re-run: tenure 22, ui 37, holeview 32, labels 11, pit clean.
+
 - **2026-08-10** — **Yukon wired up as the third tenure jurisdiction, for Macpass.**
 
   Chasing a real dataset to replace the fabricated drill holes. Fireweed
@@ -549,11 +601,11 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   Yukon broke two assumptions the first two jurisdictions shared, and both
   would have failed silently:
 
-  - **A property spans two registry tables.** Quartz claims convert to quartz
-    leases once surveyed, and the surveyed ground is exactly the ground the
-    deposits sit on — 182 of Fireweed's parcels are leases, over Tom and Jason.
-    Querying claims alone punches a hole in the dissolved outline precisely
-    where the mine is.
+  - **A property spans two registry tables** — claims and leases. ~~Querying
+    claims alone punches a hole in the outline where the mine is.~~ **Wrong, and
+    corrected the same day in the entry above:** every lease grant also appears
+    in the claims layer, so the second layer adds no ground and returns
+    duplicates. Both are still read, and deduped.
   - **A Yukon parcel is ~21 ha**, so a property that is dozens of tenures in BC
     is thousands here; Fireweed's block is ~2,000 within one legal bbox. The
     register caps a response at 2,500, and `MAX_FEATURES` was 1,200. Unpaged,

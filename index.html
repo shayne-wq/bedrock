@@ -1358,17 +1358,36 @@ function holesFromArtifact(a, floor){
 // deliberately or not at all. Companies get a colour, a mark and their name.
 // People get a quiet outline and a line in an aggregate.
 //
-// A corporate suffix decides it; failing that, the register's own "SURNAME,
-// FIRST MIDDLE" comma says person. An unrecognised name with no comma is read
-// as a company, which is the safer error: a real company shown quietly is a
-// missed opportunity, a named individual is a decision nobody made.
-const CORP_RE=/\b(CORP|CORPORATION|INC|INCORPORATED|LTD|LIMITED|LLC|LLP|PLC|COMPANY|RESOURCES|MINERALS|METALS|MINING|EXPLORATION|VENTURES|HOLDINGS|GROUP|PARTNERSHIP|TRUST|SOCIETY|NATION|BAND|MUNICIPALITY|PROVINCE|CROWN)\b/i;
+// Company or person. It decides whether a holder gets a coloured parcel with
+// its name across it, or a grey outline and no name — so it decides whether a
+// private citizen's name goes on an investor deck.
+//
+// This asked for POSITIVE evidence of a company, and defaults to person
+// otherwise. It used to be the other way around — an unrecognised name with no
+// comma was read as a company — and the comment justifying that said, in the
+// same breath, that "a named individual is a decision nobody made". Those two
+// do not agree, and the implementation was on the wrong side of its own
+// argument. It survived because BC's register writes people as
+// "BILLINGSLEY, RICHARD JOHN", so in BC comma-less really did mean company.
+// Yukon writes "Patrick Etzel", and he was rendered as a company, named, on a
+// slide about who surrounds the property.
+//
+// The error this now makes instead is a suffix-less company shown quietly as
+// though it were a person. That is recoverable — the author can feature it in
+// the console — and it is the error the original comment said it wanted.
+const CORP_RE=/\b(CORP|CORPORATION|INC|INCORPORATED|LTD|LIMITED|LLC|LLP|PLC|CO|COMPANY|ASSOCIATES|PARTNERS|RESOURCES|MINERALS|METALS|MINING|MINES|EXPLORATION|DEVELOPMENT|VENTURES|HOLDINGS|GROUP|PARTNERSHIP|TRUST|SOCIETY|NATION|BAND|MUNICIPALITY|PROVINCE|CROWN|GOLD|SILVER|COPPER|ZINC|URANIUM|LITHIUM|NICKEL|ENERGY|CAPITAL)\b/i;
+// A registered number ("1260042 BC LTD"), an ampersand, or a bracketed year of
+// incorporation ("ARCHER, CATHRO & ASSOCIATES (1981) LIMITED") — all things a
+// register writes about a company and never about a person.
+const CORP_SHAPE=/[&(]|\d/;
 const normOwner=x=>(x||'').trim().toUpperCase().replace(/\s+/g,' ');
 function isCorporate(name){
   const n=(name||'').trim();
   if(!n) return false;
-  if(CORP_RE.test(n)) return true;
-  return n.indexOf(',')<0;
+  if(CORP_RE.test(n)||CORP_SHAPE.test(n)) return true;
+  // No corporate signal at all. "SURNAME, FIRST" is explicitly a person, and so
+  // now is a bare "Firstname Lastname".
+  return false;
 }
 
 // One holder per registered owner, from whatever claims we have — baked or
