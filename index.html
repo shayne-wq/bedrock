@@ -2227,19 +2227,25 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   // show through, so the model is unmistakably beneath the ground.
   viewer.scene.globe.translucency.enabled=true;
   viewer.scene.globe.translucency.frontFaceAlpha=0.0;
-  // Confine the transparency to the deposit's own footprint. Making the whole
-  // globe translucent turns the surrounding landscape into a dark wash, which
-  // costs the terrain context that made this worth georeferencing. A rectangle
-  // leaves the mountain solid and cuts a window over the orebody instead.
-  // The window the ground is allowed to go see-through in. Thirty metres of
-  // margin drew its own edge right around the deposit — a hard dark rectangle
-  // framing the orebody, which at the new 10% default is in shot on every
-  // model chapter. Widened so the transition happens off-frame at the ranges
-  // these chapters actually use, while the far terrain and the horizon stay
-  // solid, which is what stops the world reading as glass.
-  const TRANS_PAD=2500;
-  const sw=proj4(PROJ,'WGS84',[EMIN-TRANS_PAD,NMIN-TRANS_PAD]);
-  const ne=proj4(PROJ,'WGS84',[EMIN+EX+TRANS_PAD,NMIN+EY+TRANS_PAD]);
+  // Terrain opacity applies to ALL terrain. It used to be confined to a
+  // rectangle around the deposit, on the theory that a wholly translucent globe
+  // would cost the terrain context that made this worth georeferencing. What it
+  // actually produced was a hard-edged black tarp lying on a fully lit
+  // hillside — the transparency stopped dead at the deposit's own footprint, so
+  // the control labelled TERRAIN 10% left 99% of the terrain at 100%, and the
+  // window's dark fill covered the shallow part of the orebody it was supposed
+  // to be revealing.
+  //
+  // (The window was nominally widened to 2.5 km for exactly that reason, and
+  // the widening never took effect: reframeModel() ran afterwards and reset it
+  // to a 30 m margin. The rectangle is gone from both now.)
+  //
+  // The trade the old comment feared is real — at a low alpha the whole
+  // landscape does go dark, because what is behind transparent ground is the
+  // inside of the earth. That is the honest rendering of the request, it is
+  // uniform rather than a hole cut in the map, and the slider is right there.
+  // enterHoleView() had already reached the same conclusion independently and
+  // dropped the window for its own duration.
   // Property extent for the colour-pop cutout — the claim ring if the site
   // layer supplies one, otherwise a margin around the deposit itself.
   const POP_RECT=(function(){
@@ -2266,7 +2272,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     const b=proj4(PROJ,'WGS84',[EMIN+EX+700,NMIN+EY+700]);
     return Cesium.Rectangle.fromDegrees(a[0],a[1],b[0],b[1]);
   })();
-  viewer.scene.globe.translucency.rectangle=Cesium.Rectangle.fromDegrees(sw[0],sw[1],ne[0],ne[1]);
+  viewer.scene.globe.translucency.rectangle=undefined;   // the whole globe
   viewer.scene.globe.undergroundColor=Cesium.Color.fromCssColorString('#141a1f');
   // Colour-pop masking. Two copies of the same imagery: the base stays in full
   // colour, and a desaturated near-black copy sits on top with a hole cut out
@@ -2349,10 +2355,10 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     const c=proj4(PROJ,'WGS84',[CE,CN]);
     center=Cesium.Cartesian3.fromDegrees(c[0],c[1],CZ+GEOID);
     RADIUS=Math.max(EX,EY)*0.62;
-    const a=proj4(PROJ,'WGS84',[EMIN-30,NMIN-30]);
-    const b=proj4(PROJ,'WGS84',[EMIN+EX+30,NMIN+EY+30]);
-    viewer.scene.globe.translucency.rectangle=
-      Cesium.Rectangle.fromDegrees(a[0],a[1],b[0],b[1]);
+    // No translucency rectangle. This function used to set one 30 m outside the
+    // deposit, and because it runs after the setup above it was the assignment
+    // that actually took effect — the black tarp on the hillside. Terrain
+    // opacity is global now, so a deposit change has nothing to reframe here.
   }
   bootPhase('placing the model on the globe');
   reframeModel();
@@ -7054,9 +7060,10 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       holeView:!!holeView, hole:ledgerHole?ledgerHole.id:null,
       graph:!$('holegraph').hidden, rows:$('ledglist').children.length,
       ents:viewer.entities.values.length, focus:focusEnts?focusEnts.length:0,
-      tRectDeg:Math.round(Cesium.Math.toDegrees(
-        viewer.scene.globe.translucency.rectangle.east -
-        viewer.scene.globe.translucency.rectangle.west)*1000)/1000,
+      // Cesium answers an unset rectangle with Rectangle.MAX_VALUE, so 360 here
+      // means "all terrain" rather than a window — which is now the normal case.
+      tRectDeg:(function(r){ return r?Math.round(Cesium.Math.toDegrees(
+        r.east-r.west)*1000)/1000:360; })(viewer.scene.globe.translucency.rectangle),
       sun:!!(viewer.scene.sun&&viewer.scene.sun.show),
       ledgt:$('ledgt').textContent, cam:camProbe()}),
     titles:()=>CHAPTERS.map(c=>c.title),

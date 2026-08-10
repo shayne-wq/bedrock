@@ -55,9 +55,13 @@ ok('the focused hole gets its own rendering', c1.focus>4, 'ents '+c1.focus);
 ok('re-focusing does not leak entities', c4.ents===c2.ents, c4.ents+' vs '+c2.ents);
 ok('exit removes the focus rendering', e1.focus===0, 'ents '+e1.focus);
 ok('exit returns every entity it added', e1.ents===a.ents, e1.ents+' vs '+a.ents);
-ok('hole view opens translucency to the whole globe', c1.tRectDeg===360, String(c1.tRectDeg));
-ok('the deposit window is narrow to begin with', a.tRectDeg>0 && a.tRectDeg<5, String(a.tRectDeg));
-ok('exit restores the deposit window', e1.tRectDeg===a.tRectDeg, e1.tRectDeg+' vs '+a.tRectDeg);
+// Terrain opacity used to be windowed to the deposit's footprint, and hole view
+// was the one place that dropped the window. It is global everywhere now — the
+// window was a black tarp on a lit hillside — so these three assert that no
+// path re-introduces one, on the way in, inside, or on the way out.
+ok('terrain translucency is global before hole view', a.tRectDeg===360, String(a.tRectDeg));
+ok('hole view keeps translucency on the whole globe', c1.tRectDeg===360, String(c1.tRectDeg));
+ok('exit leaves translucency global', e1.tRectDeg===360, String(e1.tRectDeg));
 ok('hole view hides the sun', c1.sun===false);
 ok('exit restores the sun', e1.sun===a.sun, e1.sun+' vs '+a.sun);
 console.log('\nerrors:', errs.length?errs:'none');

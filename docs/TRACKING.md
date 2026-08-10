@@ -495,6 +495,42 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   untouched, and something that now looks this much like a mine plan needs them
   more than the old wireframe did.
 
+- **2026-08-10** — **Terrain opacity now applies to all terrain.**
+
+  Reported from a screenshot: a hard-edged black rectangle lying on a fully lit
+  hillside, covering the shallow part of the orebody it was meant to reveal.
+
+  Translucency was confined to a rectangle around the deposit, so the control
+  labelled TERRAIN 10% left about 99% of the terrain at 100% and cut a window in
+  the map instead. Inside the window the ground went transparent onto
+  `undergroundColor` #141a1f — the black tarp.
+
+  The window had already been diagnosed once and nominally widened to 2.5 km.
+  **That widening never took effect**: `reframeModel()` runs after the setup
+  block and reset it to a 30 m margin, which is the assignment that was live the
+  whole time. Two writers, last one wins, and the fix was written into the
+  loser. Both are gone; `translucency.rectangle` is `undefined`, so the slider
+  fades the whole globe uniformly.
+
+  `enterHoleView()` had reached the same conclusion independently and dropped
+  the window for its own duration, with a comment about looking out of it at a
+  bright hillside. That is now the default rather than a special case.
+
+  The trade the original comment feared is real and is now visible at low alpha:
+  what is behind transparent ground is the inside of the earth, so at 10% the
+  landscape goes dark rather than staying a lit backdrop. At 35% it reads as an
+  x-ray of the mountain with the deposit inside it, which is the look the
+  windowed version was reaching for. **Open question for Shayne:** the derived
+  default for rock chapters is 10%, set when the surrounding terrain stayed
+  lit — on "On real ground", whose caption is "this is the actual mountain the
+  deposit sits inside", 35% now serves that sentence better. Not changed
+  unasked.
+
+  Three assertions in `verify_holeview` asserted the old shape (narrow window
+  before, global inside, restored after). Rewritten to assert translucency is
+  global on all three paths, so nothing re-introduces a window. Re-run green:
+  holeview 32, capture 28, ui 37, labels 11, transition 11, pit clean.
+
 - **2026-08-10** — **Renamed to Bedrock, and the console rebuilt on the brand.**
 
   **The rename.** GitHub repo → `shayne-wq/bedrock`, Supabase project → `bedrock`
