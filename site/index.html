@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bedrock — Subsurface Visualization Suite</title>
+<meta name="description" content="Bedrock turns asset estimates, project economics and development milestones into interactive 3D visuals investors can explore — every figure traced back to the model it came from.">
+<meta property="og:title" content="Bedrock — Subsurface Visualization Suite">
+<meta property="og:description" content="Your asset, decision-ready. Interactive 3D built from the block model, not redrawn for effect.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="img/hero.jpg">
+<meta name="theme-color" content="#191a15">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 90'><rect width='120' height='90' fill='%23191a15'/><rect x='0' y='6' width='96' height='16' rx='2' fill='%2333b6d8'/><rect x='0' y='28' width='120' height='16' rx='2' fill='%23edf0e4'/><rect x='16' y='50' width='88' height='16' rx='2' fill='%237d8172'/><rect x='0' y='72' width='104' height='16' rx='2' fill='%23edf0e4'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&family=Archivo+Black&display=swap" rel="stylesheet">
+<style>
+/* The design's own tokens, carried over unchanged. */
+:root {
+  --bg: #191a15; --bg-2: #21231c; --border: #34362c;
+  --ink: #edf0e4; --ink-dim: #b7bcac; --ink-mute: #7d8172;
+  --accent: #33b6d8; --accent-ink: #06232a;
+  --heading: 'Space Grotesk', sans-serif; --mono: 'JetBrains Mono', monospace; --body: 'Inter', sans-serif; --wordmark: 'Archivo Black', sans-serif;
+  --leading: 28px; --half: 14px; --edge: clamp(20px, 5vw, 72px);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); text-wrap: pretty; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: color-mix(in srgb, var(--accent) 75%, white); }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 0 var(--edge); }
+::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.nav { display: flex; align-items: center; justify-content: space-between; padding: 22px max(var(--edge), calc((100% - 1240px) / 2 + var(--edge)));
+  border-bottom: 1px solid var(--border); }
+.nav-mark { display: inline-flex; align-items: center; gap: 10px; }
+.nav-brand { font-family: var(--heading); font-weight: 700; font-size: 19px; letter-spacing: -0.02em; }
+.nav-links { display: flex; gap: 8px; align-items: center; }
+.nav-links a { font-family: var(--mono); font-size: 12px; letter-spacing: 0.03em; color: var(--ink-dim); border: 1px solid var(--border); border-radius: 4px; padding: 9px 14px; white-space: nowrap; }
+.nav-links a:hover { color: var(--ink); border-color: var(--ink-mute); }
+.nav-cta { font-family: var(--mono); font-size: 12px; letter-spacing: 0.03em; background: var(--accent); color: var(--accent-ink); border-radius: 4px; padding: 9px 16px; border: 1px solid transparent; cursor: pointer; white-space: nowrap; }
+.nav-cta:hover { background: color-mix(in srgb, var(--accent) 85%, white); }
+@media (max-width: 760px) { .nav-links a:not(.nav-cta) { display: none; } }
+
+.tick { font-family: var(--mono); color: var(--ink-mute); font-size: 13px; letter-spacing: 0.05em; }
+.kicker { display: flex; align-items: center; gap: 9px; font-family: var(--mono); font-size: 12.5px; font-weight: 500; letter-spacing: 0.06em;
+  color: var(--ink); margin: 0 0 18px; }
+.kicker::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+.hero { padding: 8px 0 76px; }
+.hero-head { padding: 40px 0 0; }
+.display { font-family: var(--heading); font-weight: 600; font-size: clamp(38px, 4.6vw, 60px); line-height: 1.06; letter-spacing: -0.02em; margin: 0; max-width: 16ch; }
+.hero .sub { font-size: 17px; line-height: var(--leading); color: var(--ink-dim); max-width: 62ch; margin: 22px 0 0; }
+.hero .row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 30px; }
+.btn { font-family: var(--mono); font-size: 13px; letter-spacing: 0.03em; border-radius: 4px; padding: 12px 20px; cursor: pointer; white-space: nowrap; border: 1px solid transparent; display: inline-block; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
+.btn-primary:hover { background: color-mix(in srgb, var(--accent) 85%, white); color: var(--accent-ink); }
+.btn-ghost { background: transparent; color: var(--ink); border-color: var(--border); }
+.btn-ghost:hover { border-color: var(--ink-mute); color: var(--ink); }
+.hero-figure { position: relative; margin: 44px 0 0; aspect-ratio: 21/10; border: 1px solid var(--border); background: var(--bg-2); overflow: hidden; }
+.coord { position: absolute; z-index: 2; font-family: var(--mono); font-size: 11px; color: var(--ink-dim); letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--bg) 72%, transparent); padding: 3px 7px; border-radius: 3px; }
+.coord.n { top: 12px; left: 12px; } .coord.s { bottom: 12px; right: 12px; }
+
+/* Every figure is a real screenshot, so they all share one fitting rule.
+   `cover` rather than `contain`: these are wide captures and letterboxing them
+   inside an already-wide frame reads as a broken image. */
+figure img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.stat { padding: 26px 28px; }
+.stat + .stat { border-left: 1px solid var(--border); }
+.stat b { display: block; font-family: var(--mono); font-weight: 500; font-size: 28px; color: var(--ink); }
+.stat span { display: block; font-family: var(--mono); font-size: 11px; letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-mute); margin-top: 8px; }
+
+.features { padding: 80px 0 0; }
+.section-title { font-family: var(--heading); font-weight: 600; font-size: clamp(28px, 3.2vw, 40px); line-height: 1.1; letter-spacing: -0.02em; margin: 0; max-width: 20ch; }
+.section-sub { font-size: 16px; line-height: var(--leading); color: var(--ink-dim); max-width: 64ch; margin: 18px 0 0; }
+.cols { display: grid; grid-template-columns: repeat(2, 1fr); margin-top: 48px; border-top: 1px solid var(--border); }
+.col { padding: 40px 36px 40px 0; border-bottom: 1px solid var(--border); }
+.col:nth-child(odd) { border-right: 1px solid var(--border); padding-left: 0; }
+.col:nth-child(even) { padding-left: 36px; }
+.col .mark { width: 30px; height: 30px; border: 1px dashed var(--ink-mute); border-radius: 4px; margin-bottom: 22px; display: flex; align-items: center; justify-content: center; }
+.col .mark svg { width: 14px; height: 14px; }
+.col h3 { font-family: var(--heading); font-weight: 600; font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+.col p { font-size: 15px; line-height: 24px; color: var(--ink-dim); margin: 12px 0 0; max-width: 46ch; }
+
+.split { padding: 76px 0; border-top: 1px solid var(--border); }
+.split-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 28px clamp(24px, 5vw, 96px); align-items: center; }
+.split.rev .split-figure { order: -1; }
+.split-title { font-family: var(--heading); font-weight: 600; font-size: 28px; line-height: 1.2; letter-spacing: -0.02em; margin: 0; }
+.split-copy .note { font-size: 15.5px; line-height: var(--leading); color: var(--ink-dim); margin: 16px 0 0; max-width: 44ch; }
+.specs { list-style: none; margin: 22px 0 0; padding: 0; display: flex; flex-direction: column; gap: 0; font-family: var(--mono); font-size: 12.5px; max-width: 42ch; }
+.specs li { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); color: var(--ink-mute); }
+.specs li:last-child { border-bottom: 1px solid var(--border); }
+.specs b { color: var(--ink); font-weight: 500; }
+.split-figure { position: relative; margin: 0; aspect-ratio: 16/10; border: 1px solid var(--border); background: var(--bg-2); overflow: hidden; }
+.fig-tag { position: absolute; z-index: 2; top: 12px; left: 12px; font-family: var(--mono); font-size: 11px; color: var(--ink-dim); border: 1px solid var(--border); border-radius: 3px; padding: 4px 8px; background: color-mix(in srgb, var(--bg) 80%, transparent); white-space: nowrap; }
+
+.showcase { padding: 76px 0; border-top: 1px solid var(--border); }
+.showcase-figure { position: relative; margin: 44px 0 0; aspect-ratio: 21/9; border: 1px solid var(--border); background: var(--bg-2); overflow: hidden; }
+
+.disclosure { font-family: var(--mono); font-size: 11.5px; line-height: 19px; color: var(--ink-mute);
+  margin: 20px 0 0; max-width: 74ch; }
+.quote { padding: 84px 0; border-top: 1px solid var(--border); }
+.quote blockquote { font-family: var(--heading); font-style: normal; font-weight: 500; font-size: clamp(22px, 2.6vw, 32px);
+  line-height: 1.4; letter-spacing: -0.015em; max-width: 46ch; margin: 0; color: var(--ink); }
+.quote figcaption { font-family: var(--mono); font-size: 12px; color: var(--ink-mute); margin: 26px 0 0; }
+
+.wordmark-close { position: relative; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-2); }
+.wc-copy { position: relative; z-index: 2; padding: 8px var(--edge) 40px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+.wc-copy h3 { font-family: var(--heading); font-weight: 600; font-size: clamp(24px, 3vw, 34px); letter-spacing: -0.02em; color: var(--ink); margin: 0; }
+.wc-figure { position: relative; margin: 0; aspect-ratio: 16/7; overflow: hidden; }
+.wc-figure img { filter: saturate(0.9) contrast(1.05); }
+.wc-wordmark { position: absolute; z-index: 2; left: var(--edge); right: var(--edge); bottom: -0.1em; font-family: var(--wordmark); font-weight: 400;
+  font-size: clamp(80px, 15vw, 220px); line-height: 1; letter-spacing: -0.01em; color: var(--bg-2); mix-blend-mode: screen;
+  filter: invert(1) brightness(2); pointer-events: none; }
+@media (max-width: 720px) { .wc-wordmark { font-size: clamp(56px, 22vw, 140px); } }
+
+footer { padding: 28px 0; border-top: 1px solid var(--border); font-family: var(--mono); font-size: 12px; color: var(--ink-mute); }
+.foot-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
+.foot-links { display: flex; gap: 24px; }
+.foot-links a { color: inherit; }
+.foot-links a:hover { color: var(--ink); }
+
+@media (max-width: 900px) { .cols { grid-template-columns: 1fr; } .col:nth-child(odd) { border-right: none; padding-left: 0; } .col:nth-child(even) { padding-left: 0; } .stats { grid-template-columns: 1fr; } .stat + .stat { border-left: none; border-top: 1px solid var(--border); } }
+@media (max-width: 720px) { .split-grid { grid-template-columns: 1fr; } .split-figure, .split.rev .split-figure { order: -1; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <span class="nav-mark">
+    <svg width="20" height="15" viewBox="0 0 120 90" aria-hidden="true"><rect x="0" y="0" width="96" height="18" rx="2" fill="#33b6d8"/><rect x="0" y="24" width="120" height="18" rx="2" fill="#edf0e4"/><rect x="16" y="48" width="88" height="18" rx="2" fill="#7d8172"/><rect x="0" y="72" width="104" height="18" rx="2" fill="#edf0e4"/></svg>
+    <span class="nav-brand">Bedrock</span>
+  </span>
+  <div class="nav-links">
+    <a href="#product">PRODUCT</a>
+    <a href="#how-it-works">ASSET</a>
+    <a href="#company">COMPANY</a>
+    <a href="/dashboard/" style="border:none">LOG IN</a>
+    <a class="nav-cta" href="#demo">BOOK A DEMO</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+  <section class="hero">
+    <div class="hero-head">
+      <span class="tick">++</span>
+      <h1 class="display" style="margin-top: 14px">Your asset, decision-ready</h1>
+      <p class="sub">Bedrock turns asset estimates, project economics, and development milestones into clean, interactive visuals — so investors can explore the asset and follow the growth story from exploration to production, without wading through a technical report.</p>
+      <div class="row">
+        <a class="btn btn-primary" href="#demo">BOOK A DEMO</a>
+        <!-- A live deck, not a video. The claim on this page is that the thing
+             is interactive, and the cheapest way to prove it is to let them
+             open one. -->
+        <a class="btn btn-ghost" href="/index.html?t=demoseed000000000000000000000000&amp;api=https%3A%2F%2Fczuaqwtngduvlisxonkh.supabase.co%2Ffunctions%2Fv1">SEE A SAMPLE PROJECT</a>
+      </div>
+    </div>
+    <figure class="hero-figure">
+      <img src="img/hero.jpg" alt="A mineral property in three dimensions on real terrain, with the surrounding claim holders named on their own ground." width="1600" height="900" fetchpriority="high" decoding="async">
+      <span class="coord n">N 49.8412° / W 120.3487°</span>
+      <span class="coord s">RL 1420m</span>
+    </figure>
+  </section>
+
+  <section class="stats">
+    <div class="stat"><b>3D</b><span>Interactive asset models</span></div>
+    <div class="stat"><b>0</b><span>Installs required for viewers</span></div>
+    <div class="stat"><b>1</b><span>Model, every stakeholder</span></div>
+  </section>
+
+  <section class="features" id="product">
+    <span class="kicker">WHY BEDROCK</span>
+    <h2 class="section-title">Present the asset the way it deserves to be understood</h2>
+    <p class="section-sub">One model carries the whole story, from a first pitch to a production decision, updated as fast as the work itself moves.</p>
+    <div class="cols">
+      <div class="col">
+        <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#33b6d8" stroke-width="1.6" aria-hidden="true"><path d="M4 12h16M4 6h16M4 18h16"/></svg></div>
+        <h3>Cut through the technical report</h3>
+        <p>Asset estimates and project economics render as visuals anyone can read in seconds — no geology background, no spreadsheet required.</p>
+      </div>
+      <div class="col">
+        <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#33b6d8" stroke-width="1.6" aria-hidden="true"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg></div>
+        <h3>Never simplify past the number</h3>
+        <p>Every visual traces back to the underlying estimate. Nothing is simplified past the point of accuracy — the story and the data are the same document.</p>
+      </div>
+      <div class="col">
+        <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#33b6d8" stroke-width="1.6" aria-hidden="true"><path d="M3 21l6-14 4 8 3-5 5 11"/></svg></div>
+        <h3>Present it anywhere, unchanged</h3>
+        <p>The same model holds up on a conference stage, in a boardroom, or shared one-to-one with an analyst.</p>
+      </div>
+      <div class="col">
+        <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#33b6d8" stroke-width="1.6" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16"/></svg></div>
+        <h3>Keep pace with the project</h3>
+        <p>As drilling, engineering, and permitting move forward, update the model instead of rebuilding the deck from scratch.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="split" id="how-it-works">
+    <div class="split-grid">
+      <div class="split-copy">
+        <span class="kicker">INVESTOR MEETINGS</span>
+        <h2 class="split-title">Lead with the asset, not the report</h2>
+        <p class="note">Move between project economics and an interactive 3D view of the asset in the same conversation.</p>
+        <ul class="specs">
+          <li><span>Rotate / section / drill into the block model</span><b>LIVE</b></li>
+          <li><span>Asset categories &amp; cut-off grade</span><b>TOGGLE</b></li>
+          <li><span>Source of every figure shown</span><b>TRACED</b></li>
+        </ul>
+      </div>
+      <figure class="split-figure">
+        <img src="img/model.jpg" alt="The orebody rendered inside the mountain, terrain made translucent so the modelled grade shells are visible in place." width="1400" height="800" loading="lazy" decoding="async">
+        <span class="fig-tag">FIG. 01 — ASSET MODEL</span>
+      </figure>
+    </div>
+  </section>
+
+  <section class="split rev">
+    <div class="split-grid">
+      <div class="split-copy">
+        <span class="kicker">BOARD &amp; CAPITAL MARKETS</span>
+        <h2 class="split-title">One model, every stakeholder</h2>
+        <p class="note">The board, your analysts, and your shareholders work from the same up-to-date view of the project, so a milestone update means the same thing in every room it's shown in.</p>
+        <ul class="specs">
+          <li><span>Source of truth</span><b>SINGLE</b></li>
+          <li><span>Viewer install</span><b>NONE — SHARED LINK</b></li>
+          <li><span>Story continuity</span><b>EXPLORATION → PRODUCTION</b></li>
+        </ul>
+      </div>
+      <figure class="split-figure">
+        <img src="img/neighbours.jpg" alt="The land package with each surrounding company's tenure dissolved into a single outline and named on its own ground." width="1600" height="900" loading="lazy" decoding="async">
+        <span class="fig-tag">FIG. 02 — LAND PACKAGE &amp; NEIGHBOURS</span>
+      </figure>
+    </div>
+  </section>
+
+  <section class="split" id="company">
+    <div class="split-grid">
+      <div class="split-copy">
+        <span class="kicker">CONFERENCES &amp; SITE TOURS</span>
+        <h2 class="split-title">Bring the asset to the room</h2>
+        <p class="note">Not every investor can visit the site. Bedrock brings the project's geology and layout to a conference stage or a boardroom, at the scale and detail a static image can't carry.</p>
+      </div>
+      <figure class="split-figure">
+        <img src="img/pit.jpg" alt="A terraced open pit cut into the real hillside, benched from rim to floor." width="1500" height="850" loading="lazy" decoding="async">
+        <span class="fig-tag">FIG. 03 — SITE LAYOUT</span>
+      </figure>
+    </div>
+  </section>
+
+  <section class="showcase">
+    <span class="kicker">GROUNDED IN REAL DATA</span>
+    <h2 class="split-title">Every visual starts with the core</h2>
+    <p class="note" style="margin-top: 16px; max-width: 60ch">Drill core, assay results, and block models feed the same visuals investors see — nothing is redrawn or approximated for effect.</p>
+    <figure class="showcase-figure">
+      <img src="img/drillhole.jpg" alt="A single drill hole read underground and broadside, assay intervals thickened on the trace with a depth ladder beside it." width="1600" height="900" loading="lazy" decoding="async">
+      <span class="fig-tag">FIG. 04 — DOWNHOLE ASSAYS</span>
+    </figure>
+    <!-- The red banner visible in these captures is the product's own, and it
+         is there on purpose: fabricated layers are labelled on screen and in
+         every export, and the presenter cannot remove them. A page whose
+         headline claim is "never simplify past the number" cannot then show
+         screenshots of invented data without saying so. -->
+    <p class="disclosure">Screenshots show the Elk Gold demo project. Its block
+      model is real; the drill holes and site features in it are synthetic, and
+      Bedrock labels them on screen — which is the red banner you can see in
+      the figures above.</p>
+  </section>
+
+  <section class="quote">
+    <figure>
+      <blockquote>"By making complex geology and data easy to grasp, Bedrock helps mining companies communicate their potential, build investor confidence, and stand out in a competitive market for capital."</blockquote>
+      <figcaption>— BEDROCK</figcaption>
+    </figure>
+  </section>
+
+</div>
+
+<section class="wordmark-close" id="demo">
+  <span class="kicker" style="margin: 0 0 0 var(--edge); padding-top: 40px">START DISCOVERING</span>
+  <div class="wc-copy">
+    <h3>Put your project in front of the room</h3>
+    <a class="btn btn-primary" href="mailto:hello@bedrock.example?subject=Bedrock%20demo">BOOK A DEMO</a>
+  </div>
+  <figure class="wc-figure">
+    <img src="img/hero.jpg" alt="" width="1600" height="900" loading="lazy" decoding="async">
+    <span class="wc-wordmark">BEDROCK</span>
+  </figure>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-row">
+      <span>© 2026 BEDROCK</span>
+      <div class="foot-links">
+        <a href="#product">PRODUCT</a>
+        <a href="#how-it-works">HOW IT WORKS</a>
+        <a href="#company">COMPANY</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
