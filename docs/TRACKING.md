@@ -266,76 +266,101 @@ them. Authoring becomes curation rather than construction.
 ## P0 — protect the differentiator (comparables-driven, 2026-08-10)
 
 From `docs/COMPARISON.md` and the two competitive audits (`vrify-audit.md`,
-`terrahutton-audit.md`), not from the exploration/magnetics work above. Five
-items, chosen over five other candidates (better public-basemap terrain via
-Cesium ion, a district/M&A narrative chapter, a custom/white-label domain)
-because they **protect or extend the core differentiator** — self-serve is
-safe, provenance is exact, the neighbour-registry advantage is real — rather
-than adding new surface area on top of an unverified floor.
+`terrahutton-audit.md`), not from the exploration/magnetics work above.
+**Updated 2026-08-10 night** — real work landed on all six items below in
+one session; status per item reflects what actually shipped, not what was
+originally asked for. Where a commit found a genuine floor (not everything
+is fixable) that is recorded rather than smoothed over.
 
 **A numbering note, so this doesn't read as contradicting the sections
 above**: #9–#13 in the P1/P2 sections above are this file's own local task
 numbers — they were never filed as GitHub issues (only #1–#8 have a real
 `/issues/N` link). The items below **are** real, filed GitHub issues, and
-their numbers (#10–#15) collide with those local ones by coincidence. #9 in
-GitHub is a different, already-closed issue — neighbour-company logos on the
-surrounding-claims map, shipped in `0369229`, well beyond what the issue
-asked for (per-holder upload, private-holder handling, dissolved outlines,
-16 test assertions in `tools/verify_holders.mjs`).
+their numbers (#10–#15) collide with those local ones by coincidence.
 
-- [ ] 🔴 **Issue #11 — Fix the mobile boot failure.** `COMPARISON.md`'s own
-  words: "the most serious open defect." Everything else here is moot if the
-  deck doesn't open on the device it's most often opened on. The real
-  blocker is access to real-device testing, not code — this repo's own boot
-  diagnostics (`#bootstack`) have been unreadable because nobody working the
-  bug has had the failing device in hand.
+- [x] 🟡 **Issue #11 — Fix the mobile boot failure.** **It was never a boot
+  failure.** Booted a real iPhone 17 Pro simulator and looked at the screen:
+  WebGL renders fine, nothing throws — six rounds of boot diagnostics never
+  caught it because there was nothing to report. It was pure layout: a
+  desktop sidebar took over the entire phone screen, `#tools`/`#nav` ran off
+  both edges with no wrap, and the splash gradient piled the title into
+  chapter one's. Real ≤760px layout shipped (safe-area insets, 44px targets,
+  a landscape rule, authoring buttons hidden on a phone). Verified on
+  simulator: 37/37 UI, 24/24 holders, desktop untouched.
+  **Still open, correctly**: not yet confirmed on the specific *physical*
+  device that was failing — a simulator shares WebKit but not the memory
+  ceiling. That confirmation is what closes this.
   <https://github.com/shayne-wq/orebody/issues/11>
-- [ ] 🔴 **Issue #12 — Harden sub-blocked model detection.** Protects the
-  single stated differentiator over both competitors: "the deck cannot state
-  a number the model does not support." The detector in
-  `dashboard/lib/extract.js` already documents its own limit; a wrong
-  tonnage with no symptom is a crack in the provenance guarantee, not a
-  feature gap.
+- [x] 🟡 **Issue #12 — Harden sub-blocked model detection.** New signal
+  found: sub-block a 10 m parent into 2.5 m children and the surviving
+  centres land in a different residual class modulo the cell pitch — the
+  gap-histogram method couldn't see this, coordinate residuals can. The case
+  the code previously documented as undetectable is now detected.
+  **A real, permanent floor is documented, not fixed**: odd-factor
+  sub-blocking (2.5 m inside 7.5 m) puts every child and surviving-parent
+  centre on the same fine lattice — mathematically indistinguishable from a
+  patchy grid, no coordinate test can ever separate them. Answer: an
+  explicit human cell-size confirmation is now asked on **every** model, not
+  just suspicious ones, since the undetectable case looks identical to the
+  clean one. Turns a silent wrong tonnage into a recorded assumption — the
+  issue's own stated fallback. 18 new assertions, 36/36 extract.
   <https://github.com/shayne-wq/orebody/issues/12>
-- [ ] 🔴 **Issue #13 — GeoTIFF ingestion.** Named VRIFY advantage
-  ("VRIFY takes it directly"); currently refused by name in
-  `dashboard/lib/formats.js`. Fix already verified: `geotiff.js` (npm, MIT,
-  actively maintained) decodes GeoTIFF including georeferencing tags
-  client-side, matching the existing read-locally pattern. Geosoft `.grd`
-  stays a named refusal — no viable open decoder — pointing at GeoTIFF or an
-  ASCII grid instead.
+- [x] 🟢 **Issue #13 — GeoTIFF ingestion.** Shipped. `geotiff.js` decodes
+  client-side, raw grid never leaves the machine. 2–98 percentile stretch
+  (not min/max — one hot cell in a magnetics survey would otherwise flatten
+  everything to black). The file's own EPSG tags win over a `.tfw` sitting
+  beside it — a world file is a copy somebody made, the tags are what the
+  grid was written with. `.grd`/`.gxf` refused by name, pointing at what
+  Oasis montaj exports in one click — same call already made for OMF,
+  Datamine, Vulcan. A byte-written fixture (`data/fixture_geotiff.tif`)
+  keeps the georeferencing assertions honest. 12 assertions + 54/54 formats.
   <https://github.com/shayne-wq/orebody/issues/13>
-- [ ] 🔴 **Issue #14 — Registry lookup beyond BC.** The flagship
-  differentiator (neighbours from a public register, not self-asserted —
-  shipped for BC as local-#12 above) only covers one Canadian province.
-  Every confirmed Terrahutton customer (`terrahutton-audit.md`) sits outside
-  it: Colombia, Argentina, Peru, Finland. Scope as N bounded per-jurisdiction
-  integrations, not one generic abstraction; upload stays the fallback
-  everywhere a registry isn't wired up.
+- [x] 🟡 **Issue #14 — Registry lookup beyond BC.** Saskatchewan added as a
+  second jurisdiction, correctly built as its own bounded adapter rather
+  than a generic abstraction — BC's WFS takes bbox latitude-first,
+  Saskatchewan's ArcGIS takes it longitude-first, and neither errors on the
+  mistake. Real negative-result work too: Finland's registry advertises a
+  polygon query and returns every attribute with null geometry (boundaries
+  exist, won't hand them over); BLM's is clean geometry with no holder
+  joined to it. Both rejected and the reason recorded so nobody re-checks
+  them. 14 assertions against both live registers.
+  **Still open relative to the original ask**: the issue was scoped to
+  where Terrahutton's actual customers are (Colombia, Argentina, Peru,
+  Finland) — Finland was checked and correctly rejected; the LatAm
+  jurisdictions aren't covered yet. The adapter pattern is proven, not the
+  coverage.
   <https://github.com/shayne-wq/orebody/issues/14>
-- [ ] 🔴 **Issue #15 — QA the two never-clicked flows.** `COMPARISON.md`,
-  verbatim: "everything behind them is tested; the buttons are not" —
-  neighbour-logo upload and the registry-fetch button. Do this **before**
-  #14 extends the same flows to more jurisdictions.
+- [x] 🟡 **Issue #15 — QA the two never-clicked flows.** Both driven for
+  real, signed in through the app's actual auth path against live systems.
+  **Registry fetch confirmed working**: 234 boundaries added against the
+  live BC register, holder list 15→67, and pressed a second time it
+  correctly reports no new holders rather than duplicating — idempotency
+  nobody had checked. **Logo upload confirmed at the database**, catching
+  the test's own first mistake: reading it back with the bare anon key
+  returns nothing (RLS doing its job), not a failed write.
+  **One real bug found and left open**: every save in this panel triggers a
+  full `route()` page rebuild, so uploading a logo flashes a slow full-page
+  skeleton. A targeted repaint was tried and reverted rather than shipped
+  half-understood — cosmetic, the writes are correct. 13/14 assertions (the
+  one failure is that same flash).
   <https://github.com/shayne-wq/orebody/issues/15>
 
 Cesium/terrain-realism work is tracked separately as **Issue #10**, deferred
-by design (Phase 2) — see the issue for the current scope. **Decision,
-2026-08-10: no client-supplied imagery or footage of any kind** — a
-customer-uploaded orthophoto drape and a drone-photogrammetry reality mesh
-were both in its original scope and both are cut. Reasoning: photography/
-footage carries no backing number, unlike every other input this product
-handles, and it's closer to VRIFY's art-directed, done-for-you model than to
-Orebody's "nothing on screen the data doesn't support" thesis — it also only
-helps the small slice of customers who've flown a drone, and introduces a
-licensing/consent friction the rest of the pipeline doesn't have. What
-remains in scope, both public-data-only: sun-synced lighting/shadows/fog on
-the existing basemap (needs real visual QA before shipping — Cesium changes
-can't be render-tested in every environment), and a Cesium ion evaluation
-for better public terrain/imagery/buildings (pricing researched 2026-08-09,
-see the issue). The existing 360° ground-level vantage points are
-unaffected by this — they already stand a virtual camera on real terrain
-under the public basemap, no client imagery involved.
+by design (Phase 2). **Decision, 2026-08-10: no client-supplied imagery or
+footage of any kind** — a customer-uploaded orthophoto drape and a
+drone-photogrammetry reality mesh were both in its original scope and both
+are cut (reasoning: photography carries no backing number, unlike every
+other input this product handles). **Tier 1 partially shipped the same
+night**: fog (additive, low density — atmosphere, not weather) and a
+tightened screen-space error, checked on screen. **Lighting/shadows tried
+and deliberately reverted** — `globe.enableLighting` does make terrain
+relief read, but the ore blocks already render lit (`MaterialAppearance`
+`flat:false`), tuned against the current flat illumination; a real sun
+re-shades every grade shell by facing, desyncing it from its own legend.
+Exactly the risk flagged when this was first deferred. Needs a shader-level
+fix (light the terrain without lighting the blocks), not a flag — left for
+whoever reaches for it next, with the reasoning in the code. 37/37 UI,
+24/24 holders, 32/32 hole view.
 <https://github.com/shayne-wq/orebody/issues/10>
 
 ---
@@ -354,6 +379,26 @@ under the public basemap, no client imagery involved.
 ---
 
 ## Log
+
+- **2026-08-10 (night)** — Real work landed on all six items from the
+  comparables-driven P0 section above, same session: mobile turned out to be
+  a pure layout bug, not a boot/WebGL failure (fixed, pending physical-device
+  confirmation); sub-blocked detection gained a real new signal and an
+  honestly-documented permanent floor; GeoTIFF ingestion shipped complete;
+  registry lookup proved out on a second jurisdiction (Saskatchewan) plus
+  useful negative results (Finland, BLM rejected and why); both never-clicked
+  console flows were driven for real and one real cosmetic bug found; Cesium
+  terrain Tier 1 (fog, tile sharpness) shipped, lighting tried and correctly
+  reverted after being checked on screen. Full detail per item is in the P0
+  section, sourced from each commit rather than summarised from memory.
+  Also, unprompted by any filed issue: a stray double-comma from the GeoTIFF
+  patch had been silently shipping the console as a **blank page** in
+  production — caught because the syntax check that should have caught it
+  was itself broken (it stripped `import` lines before parsing, deleting the
+  exact construct that was wrong). Replaced with a real ES-module parse.
+  Project settings, zone names and deck subtitle also made editable
+  post-creation while fixing this, since the audit that found the blank page
+  was originally about that.
 
 - **2026-08-10** — **Console input audit, and a syntax error that had taken the
   whole console down.**
