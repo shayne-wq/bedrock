@@ -901,7 +901,10 @@ async function fetchNeighbours(project, site, zoneId, jurisdiction = "bc") {
   }
   const btn = $("nbfetch");
   btn.disabled = true; btn.textContent = "Fetching…";
-  const jname = { bc: "British Columbia", sk: "Saskatchewan" }[jurisdiction] || jurisdiction;
+  // Falls back to the raw code, so a jurisdiction added to the function and not
+  // to this map tells the user "the yt register shows no other holders".
+  const jname = { bc: "British Columbia", sk: "Saskatchewan", yt: "Yukon" }[jurisdiction] ||
+                jurisdiction.toUpperCase();
   try {
     // Widen to a neighbourhood. A property's own bbox returns its own claims
     // and nothing else, which is not what anybody pressed this for.

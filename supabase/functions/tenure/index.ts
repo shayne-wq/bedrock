@@ -31,12 +31,20 @@ const BC_LAYER = "pub:WHSE_MINERAL_TENURE.MTA_ACQUIRED_TENURE_SVW";
 const SK_LAYER =
   "https://gis.saskatchewan.ca/arcgis/rest/services/Economy/" +
   "Mineral_Tenure_Crown_Dispositions/MapServer/0";
-// GeoYukon. Two layers, not one: a Yukon property is held as quartz CLAIMS
-// (36) that convert to quartz LEASES (37) once surveyed, and a mature project
-// holds both. Querying only claims punches a hole in the dissolved outline
-// exactly where the mine is, because that is the ground that got surveyed
-// first — at Macpass, 182 of Fireweed's parcels are leases and they sit on Tom
-// and Jason.
+// GeoYukon. Two layers: quartz CLAIMS (36) and quartz LEASES (37), a lease
+// being a claim that has been surveyed and converted.
+//
+// I first wired both on the assumption that a lease leaves the claims table,
+// so querying claims alone would punch a hole in the outline exactly where the
+// mine is. **That is wrong.** Checked against Macpass: all 182 of Fireweed's
+// lease grant numbers also appear in the claims layer, so layer 37 returned no
+// ground layer 36 had not already given us — it returned 182 duplicate
+// polygons, which the artifact then stored twice.
+//
+// It is still queried, for one reason: a lease whose claim record is absent
+// cannot be ruled out from one property, and missing ground is a worse failure
+// than a redundant request. What makes that free is the dedupe below — without
+// it, "both layers" is not thoroughness, it is double-counting.
 const YT_BASE =
   "https://mapservices.gov.yk.ca/arcgis/rest/services/GeoYukon/GY_Mining/MapServer";
 const YT_LAYERS = [
@@ -299,9 +307,27 @@ Deno.serve(async (req) => {
   // A feature with no geometry is not a boundary. Finland's register returns
   // nothing but these, and dropping them here means a half-working register
   // surfaces as "no holders found" rather than as claims that draw nowhere.
-  const feats = raw
+  const normed = raw
     .map((f) => source.normalise(f as Record<string, unknown>))
     .filter((f) => (f as { geometry?: unknown }).geometry);
+  // One parcel, one feature. Yukon returns the same ground from two layers when
+  // a claim has been converted to a lease, and shipping both would draw the
+  // parcel twice and — worse — count its hectares twice on the one slide whose
+  // whole subject is who owns how much. Keyed on the registry's own identifier,
+  // so this only ever collapses records the register itself calls the same
+  // tenure; a jurisdiction that does not repeat itself loses nothing.
+  const byTenure = new Set<string>();
+  const feats: unknown[] = [];
+  for (const f of normed) {
+    const p = ((f as { properties?: Record<string, unknown> }).properties) || {};
+    const id = String(p.TENURE_NUMBER_ID || "");
+    if (id) {
+      if (byTenure.has(id)) continue;
+      byTenure.add(id);
+    }
+    feats.push(f);
+  }
+  const duplicates = normed.length - feats.length;
   // Against the source's own ceiling, not a global one — Yukon's is higher
   // because its parcels are smaller, and comparing it to MAX_FEATURES would
   // stamp "truncated" on a complete Yukon property at 1,200 parcels.
@@ -321,7 +347,13 @@ Deno.serve(async (req) => {
     // Features the register returned without a boundary. Worth reporting: it
     // is the difference between "there is nobody there" and "we were not given
     // the shapes".
-    without_geometry: raw.length - feats.length,
+    without_geometry: raw.length - normed.length,
+    // The same tenure returned by more than one layer of the same register.
+    // Reported rather than swallowed: it is the evidence that the second layer
+    // was actually read, and if it ever drops to zero on Yukon that means the
+    // claims/lease relationship changed and the assumption above needs
+    // re-checking.
+    duplicate_tenures_dropped: duplicates,
     fetched_bbox: [w, s, e, n],
     // A silent cap would read as "these are all the holders", which on a slide
     // about who surrounds you is the wrong thing to imply.

@@ -2127,6 +2127,16 @@ async function hydrate(token){
   // counts to N, so an empty model makes all of them no-ops without a single
   // conditional in the render path. What remains is to say the right thing
   // instead of reporting a deposit of zero tonnes, and to find a camera.
+  // The grid the project is in, applied BEFORE either branch.
+  //
+  // This used to live only in the block-model path, several hundred lines
+  // below, so an exploration deck never applied its own EPSG at all and was
+  // placed with the baked demo's UTM zone 10N. For Macpass — zone 9N — that is
+  // one zone out, about 300 km of easting, and the deck draws confidently on
+  // the wrong mountains. Nothing downstream would have said so.
+  const proj0=payload.project||{};
+  if(proj0.epsg) PROJ=useProjection(proj0.epsg);
+
   if(!blocks||!blocks.url){
     EXPLORATION=true;
     N=0; F=new Float32Array(0); M=new Uint8Array(0);
@@ -2137,8 +2147,28 @@ async function hydrate(token){
     // extent will do; a deck may also declare one. Guessing is not an option —
     // an exploration deck pointed at the wrong hemisphere is worse than one
     // that says it cannot place itself.
+    //
+    // Two shapes are accepted, because the console writes the second one and
+    // this only ever read the first. `stats.bounds` is {x,y,z} in the project's
+    // own grid — what a block model and a survey grid record. `stats.bbox` is
+    // [west,south,east,north] in DEGREES — what the claims ingest writes, since
+    // a boundary file arrives as lon/lat and is stored that way. Reading only
+    // `bounds` meant a project whose sole dataset was its property outline —
+    // the commonest exploration project there is — found no extent and refused
+    // to open, which is how this was found.
+    const degExt=(payload.assets||[])
+      .map(a=>a.stats&&a.stats.bbox)
+      .filter(b=>Array.isArray(b)&&b.length===4&&b.every(Number.isFinite))[0];
+    const fromDeg=degExt?(function(b){
+      // Corners into the project grid. Both corners, not one plus a width: a
+      // degree of longitude is not a fixed distance and the box would skew.
+      const sw=proj4('WGS84',PROJ,[b[0],b[1]]), ne=proj4('WGS84',PROJ,[b[2],b[3]]);
+      return {x:[Math.min(sw[0],ne[0]),Math.max(sw[0],ne[0])],
+              y:[Math.min(sw[1],ne[1]),Math.max(sw[1],ne[1])], z:[0,0]};
+    })(degExt):null;
     const ext=(payload.deck&&payload.deck.settings&&payload.deck.settings.extent)||
-      ((payload.assets||[]).map(a=>a.stats&&a.stats.bounds).filter(Boolean)[0])||null;
+      ((payload.assets||[]).map(a=>a.stats&&a.stats.bounds).filter(Boolean)[0])||
+      fromDeg||null;
     if(!ext||!ext.x||!ext.y)
       throw new Error('this deck has no block model and nothing that declares '+
                       'where it is — add a property outline, a survey grid, or '+

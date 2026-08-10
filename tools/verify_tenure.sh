@@ -96,14 +96,21 @@ ok "Yukon returns tenure" "$([ "${YTN:-0}" -gt 500 ] && echo 1 || echo 0)" "got 
 # The single most important assertion here: GeoYukon caps a response at 2,500
 # and pages at our request size, so this proves we went back for more.
 ok "paged past a single request" "$([ "${YTN:-0}" -gt 1000 ] && echo 1 || echo 0)" "got $YTN"
+# Both layers are read, and every lease at Macpass turns out to be ground the
+# claims layer already gave us — so the proof that layer 37 ran is the count of
+# duplicates it produced, not extra features. If this ever hits zero the
+# claims/lease relationship has changed and the adapter's assumption is stale.
 YTL=$(printf '%s' "$YT" | python3 -c "
 import sys,json
-d=json.load(sys.stdin)
-# Leases are a separate table from claims; if only one was queried the surveyed
-# ground the deposits sit on is missing from the outline.
-ids=[(x.get('properties') or {}).get('TENURE_NUMBER_ID','') for x in d.get('features',[])]
-print(1 if any(i.startswith('YD') for i in ids) and any(not i.startswith('YD') for i in ids) else 0)" 2>/dev/null || echo 0)
-ok "both the claims and the leases tables were read" "$YTL"
+print(1 if json.load(sys.stdin).get('duplicate_tenures_dropped',0) > 0 else 0)" 2>/dev/null || echo 0)
+ok "the second layer was read, and its overlap collapsed" "$YTL"
+# One parcel, one feature — or the hectares on the ownership slide are wrong.
+YTD=$(printf '%s' "$YT" | python3 -c "
+import sys,json
+ids=[(x.get('properties') or {}).get('TENURE_NUMBER_ID','') for x in json.load(sys.stdin).get('features',[])]
+ids=[i for i in ids if i]
+print(1 if len(ids)==len(set(ids)) else 0)" 2>/dev/null || echo 0)
+ok "no tenure is returned twice" "$YTD"
 YTO=$(printf '%s' "$YT" | python3 -c "
 import sys,json,collections
 d=json.load(sys.stdin)
