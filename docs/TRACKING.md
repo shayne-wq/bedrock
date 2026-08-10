@@ -531,6 +531,52 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   global on all three paths, so nothing re-introduces a window. Re-run green:
   holeview 32, capture 28, ui 37, labels 11, transition 11, pit clean.
 
+- **2026-08-10** — **Vulcan .bmf reader: attempted, and abandoned on evidence.**
+
+  Asked to read Lisheen's block model so one demo could carry both real drilling
+  and real resource geometry. Probed it properly before building. **It cannot be
+  done honestly, and the reason is not difficulty.**
+
+  What was checked, against the real file (streamed out of the 578 MB zip over
+  HTTP range requests, no full download):
+
+  - **No independent reader exists.** MiningPy's `bmf_to_csv` wraps Maptek's
+    licensed Vulcan Python SDK; it is not a format implementation.
+  - **The records are partly legible.** `lismre2015_v45_cla.bmf` is a fixed
+    222-byte stride, and the first field of each record decodes as a sensible
+    double (93.07, 93.06, 89.06). Subsequent fields decode as garbage under a
+    plain-doubles assumption, so the layout is mixed-width and would need real
+    reversing — hard, but only hard.
+  - **The schema is not in the file.** Inflated all **576,081,390 bytes** and
+    scanned for text: 167,576 distinct string-runs, **every one of them three
+    characters of float noise**. Not one word of four characters or more. No
+    ZN, PB, AG, SG, DENSITY, CLASS. Nothing.
+
+  So even a perfect binary parse ends with unlabelled columns, and somebody
+  would have to **guess** which number is zinc and which is density. That is the
+  precise thing this product exists to refuse: the guess would be invisible in
+  the output, and would produce a confident, plausible, wrong deck — the same
+  class of failure as the sub-blocking trap and the vein share-weighting bug,
+  both of which reconciled at the deposit total while being wrong underneath.
+  A reader here is not a feature, it is a fabrication with a parser in front.
+
+  The obvious fallback also fails: the `Ore.TRI/*.00t` triangulated ore solids
+  open with magic `ea fb a7 8a` + `"vulZ"` — a **compressed** Vulcan container —
+  and no vertex coordinates are recoverable as raw float32 or float64 anywhere
+  in the first 200 KB. A triangulation would have needed no schema, which is why
+  it was worth checking; it is just as closed.
+
+  **What Lisheen still gives, free and ungated:** `SAMPLE_DDH_V45.csv` (15 MB) —
+  real drillhole assays with per-interval XYZ, zn, pb, fe, zneq, sulph and SG —
+  plus readable ISIS `.dsf` schemas and a 1 GB Access sample database. Real
+  drilling, no orebody geometry. The Z carries a mine-datum offset of roughly
+  800 m and would put the deposit in the air if ingested naively.
+
+  **Standing conclusion, so this is not re-litigated:** no public source found
+  to date supplies block-model geometry in a format that can be read without
+  guessing what its numbers mean. Real 3D orebody geometry has to come from an
+  issuer who exports it — CSV, OBJ or DXF — not from reversing a vendor format.
+
 - **2026-08-10** — **A reviewable Macpass deck, and three bugs it exposed.**
 
   `tools/seed_macpass.mjs` builds the Macpass land package as a real deck —
