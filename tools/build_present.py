@@ -1067,6 +1067,109 @@ HTML = r"""<!DOCTYPE html>
     .isw.on{transform:none}
     #dwell{display:none}
   }
+  /* ---- phones ------------------------------------------------------------
+     There was no phone layout. Not a broken one — none.
+
+     The deck booted on iOS, rendered the terrain and the orebody, and was
+     unusable. `#cap` is a desktop sidebar, so on a 402pt screen it became the
+     whole page with the 3D as a dim wash behind the text. `#tools` and `#nav`
+     are flex rows sized for 1600px, so they ran off BOTH edges with no wrap
+     and no scroll — Next and Play were simply not on the screen.
+
+     Six rounds went into hunting a WebGL boot failure that was never
+     happening. Nothing threw, which is exactly why the boot diagnostics never
+     caught it: there was nothing to report. The failure was visual, and it
+     took an actual screen to see. */
+  @media(max-width:760px){
+    /* The scene is the product. Cap the caption at a third of the viewport and
+       let a long body scroll inside itself rather than push the controls off
+       the bottom of the phone. */
+    #bar{padding:26px 14px calc(12px + env(safe-area-inset-bottom));gap:10px;
+         flex-direction:column;align-items:stretch}
+    #cap{max-width:none;max-height:31vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+    #cap h2{font-size:21px;margin:7px 0 8px}
+    #cap p{font-size:15px;line-height:1.5}
+    #cap .ey{font-size:10px}
+
+    /* Back, the counter, Next, Play — always reachable, never off the edge.
+       44px because that is the smallest target a thumb hits reliably. */
+    #nav{width:100%;justify-content:space-between;gap:6px;padding-bottom:0}
+    #nav .btn{padding:12px 10px;font-size:10px;min-height:44px;flex:0 1 auto}
+
+    /* Fourteen buttons of authoring chrome, unreachable on a phone and beside
+       the point for an audience. Leaving them to overflow is how they ended up
+       bleeding off both edges. Text, Holes and Explore stay; the strip scrolls
+       if even those do not fit. */
+    /* Under the legend, not at the bottom: the bottom belongs to the nav, and
+       putting the tool strip there laid Text/Holes/Explore directly on top of
+       Back/Next/Play. */
+    #tools{right:8px;left:8px;top:calc(58px + env(safe-area-inset-top));
+           gap:6px;overflow-x:auto;overflow-y:hidden;padding-bottom:2px;
+           -webkit-overflow-scrolling:touch;scrollbar-width:none;justify-content:flex-end}
+    #tools::-webkit-scrollbar{display:none}
+    #tools .btn{flex:0 0 auto;padding:10px 11px;font-size:10px}
+    #recbtn,#assetbtn,#provbtn,#sitebtn,#drawbtn,#areabtn,#cobtn,
+    #blackbtn,#propbtn,#sharebtn,#embedbtn{display:none}
+
+    /* Two colour ramps and their labels, sized for a desktop gutter. Full
+       width along the top, scrollable, clear of the scene. */
+    #legend{left:8px;right:8px;top:calc(8px + env(safe-area-inset-top));
+            gap:6px;padding:6px 8px;overflow-x:auto;
+            -webkit-overflow-scrolling:touch;scrollbar-width:none}
+    #legend::-webkit-scrollbar{display:none}
+    #legend span{font-size:9px}
+    #ramp{width:84px;height:7px}
+
+    /* Panels written against a desktop gutter. A phone has no gutter. */
+    #ledger,#holegraph{left:8px;right:8px;width:auto}
+    #ledger{top:auto;bottom:calc(66px + env(safe-area-inset-bottom));max-height:36vh}
+    #holegraph{bottom:calc(66px + env(safe-area-inset-bottom))}
+    #compass,#scalebar{display:none}
+    /* The brand block is a fixed top-left title. On a phone it lands on the
+       caption's own eyebrow and title, and the deck already says its name in
+       the caption and on the splash. */
+    #brand{display:none}
+    /* The tile-loading readout sits bottom-right, which is now Narrate. */
+    #status{bottom:auto;top:calc(30px + env(safe-area-inset-top));right:10px;
+            font-size:9px;opacity:.6}
+
+    /* The splash is a radial gradient over the live scene: at desktop widths
+       the deck's own text sits in the margins and the effect reads. On a phone
+       everything is centred, so the title of chapter one lands directly under
+       the splash title and the two interleave — which is precisely what "it
+       does not work on my phone" looked like. Opaque here.
+       (`.sub`, not `p` — the subtitle is not a paragraph.) */
+    #intro{padding:22px;background:#07090A}
+    #intro h1{font-size:31px;line-height:1.05}
+    #intro .sub{font-size:15px;margin-top:16px}
+    #intro .eyebrow{font-size:10px;letter-spacing:.24em;margin-bottom:14px}
+    #begin{margin-top:26px;padding:15px 24px;font-size:11.5px;min-height:44px}
+
+    /* Slide chapters are a full-bleed text layout with 60px gutters and a 34px
+       floor on the headline — which on a phone is the whole screen, with the
+       terrain a rumour behind it. Tighter gutters, a real floor on the
+       headline, and the figures two-up instead of strung across a row. */
+    #slide{align-items:flex-start;overflow-y:auto;-webkit-overflow-scrolling:touch;
+           background:linear-gradient(180deg,rgba(7,9,10,.96) 0%,rgba(7,9,10,.92) 62%,rgba(7,9,10,.55) 100%)}
+    #slide .sinner{max-width:none;padding:calc(70px + env(safe-area-inset-top)) 18px
+                   calc(96px + env(safe-area-inset-bottom))}
+    #slide .sey{font-size:10px;letter-spacing:.2em;margin-bottom:12px}
+    #slide h2{font-size:26px;line-height:1.08}
+    #slide p{font-size:15.5px;line-height:1.5;margin-top:14px}
+    .sstats{gap:14px 22px;margin-top:20px}
+    .sstats>div{flex:1 1 40%}
+    .sstats .v{font-size:21px}
+    .stab td{font-size:12px;padding:7px 10px 7px 0}
+    .stab th{padding:0 10px 7px 0}
+  }
+  /* Landscape on a phone is shorter than it is narrow, so a vh cap on the
+     caption is a fraction of the wrong axis. */
+  @media(max-height:460px) and (orientation:landscape){
+    #cap{max-height:26vh}
+    #cap h2{font-size:18px;margin:4px 0 6px}
+    #cap p{font-size:13.5px}
+    #bar{padding-top:12px}
+  }
   @media(max-width:900px){#rail{display:none}#panel{width:auto;left:16px;right:16px}#cap h2{font-size:23px}#cap p{font-size:16px}}
 </style>
 </head>
