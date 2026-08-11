@@ -43,22 +43,32 @@ const BINARY_FORMATS = [
     advice: "Export the block model to CSV, and triangulations (.00t) to OBJ or DXF." },
   { id: "surpac", ext: [".mdl"], label: "Surpac model",
     advice: "Export the model to CSV and DTMs to DXF." },
+  // Deswik is one of the four vendors that publicly committed to OMF and built
+  // an OMF-compliant block model export, so OMF is offered first — one file
+  // carrying the solids and the model, with every attribute named. DXF and CSV
+  // remain the fallback for versions that do not write it.
   { id: "deswik", ext: [".dwbm", ".dwcad", ".dwsolids", ".dwstrings"],
     label: "Deswik",
-    advice: "In Deswik.CAD: File > Export > DXF for solids and strings. Block " +
-            "models export to CSV from Deswik.BM." },
+    advice: "Best: export OMF — one file with the solids and the block model, " +
+            "read here directly. Otherwise, Deswik.CAD: File > Export > DXF " +
+            "for solids and strings (polyface meshes load fine), and CSV from " +
+            "Deswik.BM for the block model." },
   // Micromine's own wireframe database and string files. `.dat` is NOT in this
   // list on purpose — see the note on ambiguity below.
   { id: "micromine", ext: [".tridb", ".mmpro", ".micromine"], label: "Micromine",
-    advice: "Wireframes: Wireframe > Export > DXF or OBJ. Drilling and block " +
-            "models: File > Export > CSV." },
+    advice: "Best: File > Export > OMF, which carries wireframes and the block " +
+            "model together and is read here directly. Otherwise: Wireframe > " +
+            "Export > DXF or OBJ, and File > Export > CSV for drilling and " +
+            "block models." },
   // `.msr` is MinePlan's, not Leapfrog's — it was listed under Leapfrog here
   // and would have told a MinePlan user to look for menus their software does
   // not have.
   { id: "leapfrog", ext: [".msh", ".lfm", ".lfr", ".aproj", ".lfview"],
     label: "Seequent Leapfrog",
-    advice: "Meshes: right-click the mesh > Export > OBJ or DXF. Drilling and " +
-            "block models: Export > CSV. Both load here directly." },
+    advice: "Best: Export > Open Mining Format (OMF) — one file with the " +
+            "meshes and the block model, read here directly. Otherwise: " +
+            "right-click a mesh > Export > OBJ or DXF, and Export > CSV for " +
+            "drilling and block models." },
   { id: "mineplan", ext: [".msr", ".srg", ".msv", ".pcf"],
     label: "Hexagon MinePlan (formerly MineSight)",
     advice: "Export the block model to CSV, and surfaces or pit designs to DXF." },
@@ -309,45 +319,157 @@ export function readGOCAD(text, what = "GOCAD") {
   return { verts, faces };
 }
 
-/** DXF, ASCII, 3DFACE entities only.
+/** DXF, ASCII: 3DFACE, polyface meshes and polygon meshes.
  *
- *  DXF is a large format and this reads one corner of it deliberately: 3DFACE
- *  is what every package emits when asked for a triangulated surface, and
- *  attempting POLYLINE meshes and blocks as well would be a lot of code that
- *  is wrong in ways nobody notices. Anything else in the file is skipped, and
- *  the count of what was read is reported so a silent partial parse is visible. */
+ *  This read 3DFACE only, on the reasoning that it is what every package emits
+ *  for a triangulated surface and that POLYLINE meshes "would be a lot of code
+ *  that is wrong in ways nobody notices". Half right. 3DFACE is the common
+ *  case, but the CAD-lineage tools — Deswik above all — write solids and
+ *  surfaces as POLYFACE MESHES, so "File > Export > DXF" out of Deswik.CAD
+ *  produced a file this refused and told the user to re-export as something
+ *  their software may not offer.
+ *
+ *  The caution was about scope, not about the format being unknowable: a
+ *  polyface mesh is precisely specified, so it can be read and — the part that
+ *  matters — tested. Anything still unread is counted and named in the error,
+ *  so a partial parse stays visible rather than silently producing a hole. */
 export function readDXF(text, what = "DXF") {
-  const lines = text.split(/\r?\n/).map((l) => l.trim());
+  const L = text.split(/\r?\n/).map((l) => l.trim());
+  // ASCII DXF is strictly (group code, value) line pairs.
+  const P = [];
+  for (let k = 0; k + 1 < L.length; k += 2) P.push([L[k], L[k + 1]]);
+
   const verts = [], faces = [];
-  let skipped = 0;
-  for (let i = 0; i < lines.length - 1; i += 2) {
-    if (lines[i] !== "0") continue;
-    const entity = lines[i + 1];
-    if (entity !== "3DFACE") { if (entity === "POLYLINE" || entity === "MESH") skipped++; continue; }
-    // Group codes 10/20/30 .. 13/23/33 are the four corners.
-    const pt = [[NaN, NaN, NaN], [NaN, NaN, NaN], [NaN, NaN, NaN], [NaN, NaN, NaN]];
-    for (let j = i + 2; j < lines.length - 1; j += 2) {
-      const code = parseInt(lines[j], 10);
-      if (lines[j] === "0") break;
-      const v = num(lines[j + 1]);
-      if (code >= 10 && code <= 13) pt[code - 10][0] = v;
-      else if (code >= 20 && code <= 23) pt[code - 20][1] = v;
-      else if (code >= 30 && code <= 33) pt[code - 30][2] = v;
+  const unread = new Map();
+  const note = (t) => unread.set(t, (unread.get(t) || 0) + 1);
+
+  /** Read one entity's group codes, stopping at the next entity. */
+  const body = (start) => {
+    const codes = [];
+    let j = start;
+    for (; j < P.length && P[j][0] !== "0"; j++) codes.push([parseInt(P[j][0], 10), P[j][1]]);
+    return { codes, next: j };
+  };
+  const first = (codes, code) => {
+    for (const [c, v] of codes) if (c === code) return v;
+    return undefined;
+  };
+
+  let i = 0;
+  while (i < P.length) {
+    if (P[i][0] !== "0") { i++; continue; }
+    const entity = P[i][1];
+    const { codes, next } = body(i + 1);
+
+    if (entity === "3DFACE") {
+      // 10/20/30 .. 13/23/33 are the four corners.
+      const pt = [[NaN, NaN, NaN], [NaN, NaN, NaN], [NaN, NaN, NaN], [NaN, NaN, NaN]];
+      for (const [code, raw] of codes) {
+        const v = num(raw);
+        if (code >= 10 && code <= 13) pt[code - 10][0] = v;
+        else if (code >= 20 && code <= 23) pt[code - 20][1] = v;
+        else if (code >= 30 && code <= 33) pt[code - 30][2] = v;
+      }
+      const good = pt.filter((p) => p.every(Number.isFinite));
+      if (good.length >= 3) {
+        const base = verts.length;
+        good.forEach((p) => verts.push(p));
+        faces.push([base, base + 1, base + 2]);
+        // Four distinct corners is a quad; split it.
+        if (good.length === 4) faces.push([base, base + 2, base + 3]);
+      }
+      i = next; continue;
     }
-    const good = pt.filter((p) => p.every(Number.isFinite));
-    if (good.length < 3) continue;
-    const base = verts.length;
-    good.forEach((p) => verts.push(p));
-    faces.push([base, base + 1, base + 2]);
-    // A 3DFACE with four distinct corners is a quad; split it.
-    if (good.length === 4) faces.push([base, base + 2, base + 3]);
+
+    if (entity === "POLYLINE") {
+      const flags = parseInt(first(codes, 70) || "0", 10) || 0;
+      const isPolyface = (flags & 64) !== 0;
+      const isPolygonMesh = (flags & 16) !== 0;
+      const mCount = parseInt(first(codes, 71) || "0", 10) || 0;
+      const nCount = parseInt(first(codes, 72) || "0", 10) || 0;
+
+      // Consume the VERTEX run that follows, up to SEQEND.
+      const meshVerts = [], faceDefs = [];
+      let j = next;
+      while (j < P.length && P[j][0] === "0" && P[j][1] === "VERTEX") {
+        const vb = body(j + 1);
+        const vflags = parseInt(first(vb.codes, 70) || "0", 10) || 0;
+        // Bit 128 marks a polyface member. Of those, bit 64 is a COORDINATE
+        // vertex and its absence means the record is a FACE, carrying indices
+        // in 71..74 instead of a position. Reading a face record as a point
+        // is how a mesh acquires a stray vertex at (0,0,0).
+        const isFaceRec = (vflags & 128) !== 0 && (vflags & 64) === 0;
+        if (isFaceRec) {
+          const idx = [];
+          for (const [c, raw] of vb.codes) {
+            if (c >= 71 && c <= 74) {
+              // 1-based, and negative marks an invisible edge, not a missing one.
+              const n = Math.abs(parseInt(raw, 10) || 0);
+              if (n) idx.push(n - 1);
+            }
+          }
+          if (idx.length >= 3) faceDefs.push(idx);
+        } else {
+          let x = NaN, y = NaN, z = NaN;
+          for (const [c, raw] of vb.codes) {
+            if (c === 10) x = num(raw); else if (c === 20) y = num(raw);
+            else if (c === 30) z = num(raw);
+          }
+          meshVerts.push([x, y, z]);
+        }
+        j = vb.next;
+      }
+      if (j < P.length && P[j][0] === "0" && P[j][1] === "SEQEND") j = body(j + 1).next;
+
+      const base = verts.length;
+      const usable = meshVerts.filter((p) => p.every(Number.isFinite));
+      if (!meshVerts.length || usable.length !== meshVerts.length) {
+        // A POLYLINE that carried no usable points at all. Counted so that a
+        // file made entirely of them still says what it was made of, rather
+        // than "no surface geometry found" with nothing to act on.
+        note(isPolyface ? "POLYLINE (polyface with no vertices)"
+                        : "POLYLINE (no usable vertices)");
+      } else {
+        if (isPolyface && faceDefs.length) {
+          meshVerts.forEach((p) => verts.push(p));
+          for (const f of faceDefs) {
+            // A quad face is two triangles; anything larger is a fan.
+            for (let k = 1; k + 1 < f.length; k++) {
+              faces.push([base + f[0], base + f[k], base + f[k + 1]]);
+            }
+          }
+        } else if (isPolygonMesh && mCount > 1 && nCount > 1 &&
+                   meshVerts.length >= mCount * nCount) {
+          // An M x N grid of vertices, row-major, with the faces implied.
+          meshVerts.forEach((p) => verts.push(p));
+          for (let r = 0; r + 1 < mCount; r++) {
+            for (let c = 0; c + 1 < nCount; c++) {
+              const a = base + r * nCount + c, b = a + 1;
+              const d = base + (r + 1) * nCount + c, e = d + 1;
+              faces.push([a, b, e], [a, e, d]);
+            }
+          }
+        } else {
+          // A plain 2D/3D polyline. Not a surface, and nothing here draws it.
+          note("POLYLINE (open, not a mesh)");
+        }
+      }
+      i = j; continue;
+    }
+
+    // AutoCAD 2010+ subdivision MESH, ACIS solids, and everything else.
+    if (entity === "MESH" || entity === "3DSOLID" || entity === "BODY") note(entity);
+    i = next;
   }
+
   if (!faces.length) {
-    throw new Error(`${what}: no 3DFACE entities found` +
-      (skipped ? `, though ${skipped} POLYLINE/MESH entities were skipped — ` +
-                 "re-export as triangulated 3DFACEs." : "."));
+    const extra = [...unread.entries()].map(([t, n]) => `${n} ${t}`).join(", ");
+    throw new Error(`${what}: no surface geometry found` +
+      (extra ? `. Skipped: ${extra}. 3DSOLID and MESH are not triangulated — ` +
+               "re-export the surface as a triangulation (3DFACE or polyface mesh)."
+             : "."));
   }
-  return { verts, faces, skipped };
+  return { verts, faces, skipped: [...unread.values()].reduce((a, b) => a + b, 0) };
 }
 
 // ------------------------------------------------------------- drilling ----

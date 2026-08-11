@@ -95,8 +95,11 @@ const dxf = ["0","SECTION","2","ENTITIES",
 const d1 = F.readDXF(dxf);
 ok("DXF: quad -> 2 triangles, tri -> 1", d1.faces.length === 3, `got ${d1.faces.length}`);
 ok("DXF: z survives", d1.verts.some((v) => v[2] === 5));
-ok("DXF: POLYLINE-only file throws and says so",
-   threw(() => F.readDXF(["0","SECTION","0","POLYLINE","0","ENDSEC"].join("\n")), /POLYLINE\/MESH entities were skipped/));
+// Polyface and polygon meshes ARE read now (see tools/verify_dxf.mjs) — Deswik
+// writes them and this used to refuse them. A POLYLINE that is neither still
+// throws, and still names what it found.
+ok("DXF: a POLYLINE that is not a mesh throws and says so",
+   threw(() => F.readDXF(["0","SECTION","0","POLYLINE","0","ENDSEC"].join("\n")), /POLYLINE/));
 
 console.log("\n== drilling");
 const collars = `HOLE_ID,EAST,NORTH,RL,TD

@@ -531,6 +531,45 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   global on all three paths, so nothing re-introduces a window. Re-run green:
   holeview 32, capture 28, ui 37, labels 11, transition 11, pit clean.
 
+- **2026-08-10** — **Deswik. Covered twice, and the second way was a real gap.**
+
+  Applied the same test as OMF: does the format say what its own numbers mean?
+
+  **Route one — OMF, already done.** Deswik is one of four vendors that publicly
+  committed to OMF (with Seequent, Dassault and Micromine) and built an
+  OMF-compliant block model export. `readOMF` shipped this morning, so a Deswik
+  OMF export already loads — solids and block model in one file, every attribute
+  named. Advice for Deswik, Leapfrog and Micromine now offers OMF first, worded
+  conditionally because their version may not write it.
+
+  **Route two — DXF, and this was broken for Deswik specifically.** `readDXF`
+  read **3DFACE only**. Its comment defended that: POLYLINE meshes "would be a
+  lot of code that is wrong in ways nobody notices". Half right — 3DFACE is the
+  common case, but the CAD-lineage tools, Deswik above all, write solids and
+  surfaces as **POLYFACE MESHES**. So "File > Export > DXF" out of Deswik.CAD
+  produced a file this refused, with advice to re-export as 3DFACEs — something
+  their software may not offer. The caution was about scope, not about the
+  format being unknowable: a polyface mesh is precisely specified, so it can be
+  read *and tested*. `tools/verify_dxf.mjs` is new, 12 assertions, fixtures
+  hand-written to the group-code spec rather than dumped from the reader.
+
+  Now read: **POLYFACE MESH** (POLYLINE flag 64, VERTEX runs, SEQEND) and **3D
+  POLYGON MESH** (flag 16, an M x N grid with faces implied) alongside 3DFACE.
+  Three traps the tests pin:
+
+  - A polyface VERTEX is either a COORDINATE (flags 128|64) or a **FACE record**
+    (flags 128 alone) carrying 1-based indices in 71..74. Reading a face record
+    as a point puts a stray vertex at (0,0,0) and drags the surface to the
+    origin — it looks like a modelling error, not a parser error.
+  - A **negative index means an invisible edge**, not a missing corner.
+    Dropping it silently deletes a vertex from the face.
+  - Indices are per-entity, so a file with two meshes needs the second rebased.
+    Overlaid, its triangles point at the first mesh's vertices.
+
+  What is still refused is now named in the error — 3DSOLID, BODY, MESH and
+  non-mesh POLYLINEs are counted by type, so a partial parse stays visible
+  instead of producing a hole.
+
 - **2026-08-10** — **OMF is read now. Leapfrog and MinePlan, answered properly.**
 
   Shayne asked what happens with the two packages he named. The honest audit:
