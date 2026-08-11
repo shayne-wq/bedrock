@@ -131,7 +131,13 @@ ok("cards carry the fabricated label", co.syn === co.cards);
 
 console.log("\n== blackout");
 const black = await page.evaluate(async () => {
-  document.getElementById("blackbtn").click();
+  const btn = document.getElementById("blackbtn");
+  // A CHAPTER can turn blackout on by itself — the drilling chapter does, since
+  // an underground shot wants nothing behind it. So start from a known state
+  // instead of assuming the button begins off, or this asserts that a toggle
+  // turned something on when it actually turned it off.
+  if (btn.classList.contains("on")) { btn.click(); await new Promise((r) => setTimeout(r, 900)); }
+  btn.click();
   await new Promise((r) => setTimeout(r, 2000));
   const v = window.__viewer;
   return { on: document.getElementById("blackbtn").classList.contains("on"),

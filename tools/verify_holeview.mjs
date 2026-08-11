@@ -48,7 +48,14 @@ ok('second hole is also underground', c2.cam.under===true, JSON.stringify(c2.cam
 ok('esc leaves hole view', e1.holeView===false);
 ok('esc closes the graph', e1.graph===false);
 ok('esc restores the chapter terrain', e1.ground===0);
-ok('esc comes back above ground', e1.cam.under===false, JSON.stringify(e1.cam));
+// Not "above ground" any more: the drilling chapter is now deliberately BELOW
+// the surface, looking across the forest, so returning to it correctly returns
+// underground. What matters is that esc restores THE CHAPTER'S shot rather than
+// leaving the hole's — asserted against the camera this chapter had before the
+// hole was entered, which holds whatever the chapter is later re-aimed at.
+ok('esc restores the chapter camera, not the hole camera',
+   e1.cam.heading===a.cam.heading && e1.cam.pitch===a.cam.pitch,
+   JSON.stringify(e1.cam)+' vs '+JSON.stringify(a.cam));
 ok('a model chapter still shows the model', m.blocks===true);
 ok('a model chapter leaves hole view behind', m.holeView===false);
 ok('the focused hole gets its own rendering', c1.focus>4, 'ents '+c1.focus);

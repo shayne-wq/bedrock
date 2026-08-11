@@ -330,6 +330,21 @@ VGROUP_NAMES = [VEINS[v] for v in TOP_VEINS] + ["other (%d)" % (len(VEINS) - len
 
 HOLES, DRILL_MAN = load_drills()
 
+# What the drilling amounts to, derived from the holes rather than typed. These
+# are the figures a drill slide leads with, and each is a fact about the file:
+# metres actually drilled, how many holes, how deep the deepest went. Nothing
+# interpretive — "open in three directions" is a geologist's judgement, not a
+# property of the data, and this does not invent one.
+DRILL_M = sum(float(_h.get("td") or 0) for _h in HOLES)
+DRILL_N = len(HOLES)
+DRILL_MAXD = max([float(_h.get("td") or 0) for _h in HOLES] or [0])
+
+# The lede a drill slide opens with, built from those figures. Written here so
+# the sentence and the numbers cannot drift apart — a body typed by hand would
+# still say 40 holes after somebody loaded 544.
+DRILL_LEDE = ("%s m of drilling in %d holes, the deepest to %d m."
+              % (format(int(round(DRILL_M)), ","), DRILL_N, int(round(DRILL_MAXD))))
+
 # Headline intercepts — grade x length, which is how a drill release ranks them.
 _int = []
 for _h in HOLES:
@@ -539,8 +554,18 @@ CHAPTERS = [
    "ground": 0.0, "classes": [0, 1, 2, 3], "section": "The deposit", "title": "How well is it known?", "body": "Recoloured by resource classification. Confidence is not evenly distributed through a deposit — and this is the first question any technical reader asks."},
   # Drills-only, so the model comes off automatically here. A grade-coloured
   # body directly behind a grade-coloured bead is the reason.
-  {"h": 38, "p": -24, "r": 1900, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11, "drills": True,
-   "ground": 0.0, "section": "Drilling & geometry", "title": "Drilled from surface", "body": "Drill traces coloured by assay grade, hung from their collars on the ridge above, with nothing else in the scene. Click any hole in the ledger to drop underground and read it end to end. These holes are synthetic — traced through the modelled grades."},
+  # Underground and broadside, not looking down from above.
+  #
+  # This was an oblique from 38/-24, which is a map view of a drill plan:
+  # you saw the collars and the tops of the traces, and depth read as
+  # length on a picture. The whole claim of a drill slide is what is UNDER
+  # the ground, so the camera goes under it — a shallow pitch puts the eye
+  # below the collar elevation, looking across the forest, and every trace
+  # reads at its true depth against its neighbours. The ground is already
+  # fully cut here, so there is no terrain between the viewer and the holes
+  # and no sky behind them: the frame is the drilling and nothing else.
+  {"h": 38, "p": -7, "r": 1750, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11, "drills": True, "black": True,
+   "ground": 0.0, "section": "Drilling & geometry", "title": "Drilled from surface", "body": DRILL_LEDE + " Seen from below the surface, looking across the drilling at depth, coloured by assay grade. Click any hole to read it end to end. Synthetic holes — traced through the modelled grades."},
   # Straight down, ground intact, body replaced by the grade map. Overhead is
   # the one angle where the 3D model tells you least and the map tells you most.
   {"h": 0, "p": -90, "r": 2350, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 11,
@@ -6251,6 +6276,14 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   function setGround(a){
     groundAlpha=a;
     viewer.scene.globe.translucency.frontFaceAlpha=a;
+    // Cut away means cut away. With the front faces at zero the camera can sit
+    // under the surface, and what it then looks at is the INSIDE of the globe —
+    // drawn opaque, in undergroundColor, as a grey-blue lid across the top of
+    // every underground shot. Ghosting the back faces with the ground is what
+    // makes "cut away" actually black, so a drill forest reads against nothing
+    // instead of against the underside of the terrain. enterHoleView had to do
+    // this for itself; now every chapter that cuts the ground gets it.
+    viewer.scene.globe.translucency.backFaceAlpha = a < 0.02 ? 0.10 : 1.0;
     // With the ground intact the deposit must draw over it, or it disappears
     // inside the mountain entirely.
     viewer.scene.globe.depthTestAgainstTerrain=a<0.9;

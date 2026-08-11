@@ -531,6 +531,47 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   global on all three paths, so nothing re-introduces a window. Re-run green:
   holeview 32, capture 28, ui 37, labels 11, transition 11, pit clean.
 
+- **2026-08-11** — **The drill slide goes underground, after Immersive Explorers.**
+
+  Shayne sent their "3D Data Animations" frame as the target: pure black, the
+  whole drill forest across the frame, assay beads by grade, headline metres
+  overlaid. Ours was an oblique from 38/-24 — which is a map view of a drill
+  plan. You saw the collars and the tops of the traces, and depth read as
+  length on a picture.
+
+  Now 38/**-7**, range 1750. A shallow pitch puts the eye below the collar
+  elevation, so the camera is under the ground looking across the drilling and
+  every trace reads at its true depth against its neighbours.
+
+  Two things had to change for that to be black rather than blue-grey:
+
+  - **`setGround` now ghosts the BACK faces with the front ones.** With the
+    front faces at zero the camera can sit under the surface — and what it then
+    looks at is the *inside* of the globe, drawn opaque in `undergroundColor`,
+    a grey-blue lid across the top of every underground shot. `enterHoleView`
+    had been doing this for itself since it was written; every chapter that cuts
+    the ground gets it now.
+  - **The chapter takes `black: True`**, which was already there for the
+    property shots — it drops imagery, sky atmosphere, ground atmosphere and
+    skybox while leaving terrain GEOMETRY, so collars still sit on the real
+    surface.
+
+  The lede is **derived, not typed**: `DRILL_M`, `DRILL_N`, `DRILL_MAXD` are
+  computed from the holes at build time, so the slide reads "9,195 m of drilling
+  in 40 holes, the deepest to 336 m" and cannot drift when the data changes — a
+  hand-typed body would still say 40 holes after somebody loaded 544. What is
+  NOT copied from the reference is "open in three directions": that is a
+  geologist's judgement about a deposit, not a property of the file, and this
+  does not invent one.
+
+  Two assertions had encoded the old design and were rewritten rather than
+  deleted. `verify_holeview` asserted esc "comes back above ground" — the
+  chapter is deliberately below ground now, so it asserts esc restores THE
+  CHAPTER'S camera instead, which is the thing that actually matters and holds
+  wherever the chapter is later aimed. `verify_ui` clicked the blackout button
+  and asserted it turned on, which now depends on which chapter is showing; it
+  normalises the state first.
+
 - **2026-08-10** — **Two of the seven slots could not be filled by clicking, and
   the file pickers were narrower than the readers.**
 
