@@ -532,6 +532,23 @@ async function save(project, zone, file, out, onDone) {
 // pick the file(s), say whether they are real, upload, record a dataset row.
 // Parsing (desurveying drill traces, triangulating surfaces) happens later in
 // the build; the console's job here is to collect the inputs, per zone.
+// The slots the "Add" button and a slot-drop can fill.
+//
+// Two things went stale here and both were invisible from the outside:
+//
+//   GEOCHEM and TOPOGRAPHY had no entry at all, and uploadAux returns early
+//   without one — so the Add button on those two slots, and a file dropped on
+//   them, did nothing whatsoever. No error, no toast. They could only be loaded
+//   by dropping on the zone, which routes by a different path. Topography is
+//   the dataset the geologists asked for by name.
+//
+//   The `accept` filters had not kept up with the readers. Geophysics accepted
+//   ".png,.jpg,.jpeg" — so a user clicking Add could not select the GeoTIFF the
+//   contractor delivered, even though it has been read for weeks. Same for KML
+//   claims, GOCAD .ts surfaces, OMF and ASCII grids. An accept filter that is
+//   narrower than the parser is a feature nobody can reach.
+//
+// These now list exactly what parseAux will take.
 const AUX = {
   drills: {
     label: "Drill holes",
@@ -539,34 +556,61 @@ const AUX = {
          + "the build desurveys the traces and pulls the intercepts.",
     parts: [
       { key: "collars", label: "Collars",
-        hint: "hole_id, easting, northing, elevation, total_depth_m, azimuth, dip", accept: ".csv" },
+        hint: "hole_id, easting, northing, elevation, total_depth_m, azimuth, dip", accept: ".csv,.txt,.tsv" },
       { key: "surveys", label: "Downhole surveys",
-        hint: "hole_id, depth_m, azimuth, dip", accept: ".csv" },
+        hint: "hole_id, depth_m, azimuth, dip", accept: ".csv,.txt,.tsv" },
       { key: "assays", label: "Assays",
-        hint: "hole_id, from_m, to_m, length_m, au_gpt", accept: ".csv" },
+        hint: "hole_id, from_m, to_m, length_m, au_gpt", accept: ".csv,.txt,.tsv" },
     ],
   },
   surfaces: {
     label: "Surfaces",
-    blurb: "Vein or grade-shell wireframes as triangulated mesh (OBJ / DXF) or "
-         + "the viewer's surfaces JSON. Optional — the build can also derive "
-         + "shells from the block model itself.",
-    parts: [{ key: "surfaces", label: "Surface mesh", hint: ".obj, .dxf or .json",
-              accept: ".obj,.dxf,.json" }],
+    blurb: "Vein or grade-shell wireframes as a triangulated mesh — OBJ, DXF "
+         + "(3DFACE or polyface), GOCAD .ts — or an OMF project, which carries "
+         + "every surface in it under its own name.",
+    parts: [{ key: "surfaces", label: "Surface mesh",
+              hint: ".obj, .dxf, .ts, .omf or the viewer's surfaces JSON",
+              accept: ".obj,.dxf,.ts,.omf,.json", multiple: true }],
   },
   site: {
     label: "Property & claims",
-    blurb: "Claim or tenure polygons as GeoJSON, in the project's coordinate "
-         + "system or WGS84. Drives the property extent and the claim colour-pop.",
-    parts: [{ key: "site", label: "Claims / tenure", hint: ".geojson or .json",
-              accept: ".geojson,.json" }],
+    blurb: "Claim or tenure polygons as GeoJSON or KML, in the project's "
+         + "coordinate system or WGS84. Drives the property extent and the "
+         + "claim colour-pop, and is what the register lookup adds neighbours to.",
+    parts: [{ key: "site", label: "Claims / tenure", hint: ".geojson, .kml or .json",
+              accept: ".geojson,.kml,.json" }],
   },
   geophysics: {
     label: "Geophysics",
-    blurb: "Georeferenced raster images (magnetics, radiometrics…) as PNG or "
-         + "JPEG. Draped on the terrain over the deposit.",
-    parts: [{ key: "images", label: "Raster image(s)", hint: ".png or .jpg — "
-              + "you can pick several", accept: ".png,.jpg,.jpeg", multiple: true }],
+    blurb: "Georeferenced grids — magnetics, radiometrics, gravity. A GeoTIFF "
+         + "or an ESRI ASCII grid places itself; a PNG or JPEG needs its world "
+         + "file beside it. Draped on the terrain over the deposit.",
+    parts: [{ key: "images", label: "Grid(s)",
+              hint: ".tif, .asc, or .png/.jpg with their .tfw/.pgw — several at once",
+              accept: ".tif,.tiff,.asc,.png,.jpg,.jpeg,.tfw,.pgw,.jgw,.wld",
+              multiple: true }],
+  },
+  geochem: {
+    label: "Geochemistry",
+    blurb: "Soil, till, stream sediment or rock chip samples as CSV — easting, "
+         + "northing and one element column. Below-detection results (\"<5\" or "
+         + "\"-5\") are handled explicitly and the substitution count travels in "
+         + "the provenance, because a map where a third of the points are half a "
+         + "detection limit is a different map.",
+    parts: [{ key: "samples", label: "Sample table",
+              hint: "east, north, and an element column such as au_ppb",
+              accept: ".csv,.txt,.tsv", multiple: true }],
+  },
+  topography: {
+    label: "Topography",
+    blurb: "The customer's own ground, at their own resolution. Cesium's global "
+         + "terrain is ~30 m and smoothed; a flown LiDAR or photogrammetric "
+         + "survey is the difference between a generic hillside and theirs. A "
+         + "DEM as GeoTIFF or ESRI ASCII grid, or the triangulated ground as "
+         + "OBJ, GOCAD .ts or DXF. Point clouds are refused with what to export.",
+    parts: [{ key: "surface", label: "DEM or surface",
+              hint: ".tif, .asc, .obj, .ts or .dxf",
+              accept: ".tif,.tiff,.asc,.obj,.ts,.dxf" }],
   },
 };
 

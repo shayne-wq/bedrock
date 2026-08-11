@@ -531,6 +531,40 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   global on all three paths, so nothing re-introduces a window. Re-run green:
   holeview 32, capture 28, ui 37, labels 11, transition 11, pit clean.
 
+- **2026-08-10** — **Two of the seven slots could not be filled by clicking, and
+  the file pickers were narrower than the readers.**
+
+  Found while finishing ingestion. Both failures were invisible from the outside
+  and neither would ever have produced an error.
+
+  1. **Geochemistry and Topography had no entry in `AUX`**, and `uploadAux`
+     returns early without one — so the **Add button on those two slots did
+     nothing at all**, and neither did a file dropped on them. No error, no
+     toast, no console message. They could only be loaded by dropping on the
+     zone, which routes through a different path entirely. Topography is the
+     dataset the geologists asked for by name, and it had been unreachable from
+     its own slot since the day the slot was added.
+
+  2. **The `accept` filters had not kept up with the readers.** Geophysics
+     accepted `.png,.jpg,.jpeg`, so a user clicking Add **could not select the
+     GeoTIFF their contractor delivered** — a format read for weeks. Same for
+     KML boundaries, GOCAD `.ts` surfaces, OMF, and ASCII grids. An accept
+     filter narrower than the parser is a feature nobody can reach, and it fails
+     by showing the user an empty file dialog rather than by throwing.
+
+  Fixed, and the blurbs brought up to date with what each slot really takes.
+
+  `tools/verify_slots.mjs` is new and is the guard: it reads the slot list out
+  of `app.js`, the loader table out of `ingest.js`, and the reader out of
+  `formats.js`, then asserts the three agree — every slot the console shows can
+  be opened, every kind can be turned into geometry, every extension a picker
+  offers is one the sniffer accepts, and every format the product advertises is
+  reachable from some picker. Checked against the pre-fix code: 7 failures,
+  including both dead slots. After: 37 passing.
+
+  Confirmed in a browser as well as in the suite — all six aux slots clicked,
+  all six open their dialog with the right filters.
+
 - **2026-08-10** — **An OMF block model loads. One file out of Leapfrog is now a
   whole project.**
 
