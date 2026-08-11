@@ -1634,6 +1634,10 @@ async function hydrate(token){
 
     PROV={source:(payload.deck&&payload.deck.title)||null,
           exploration:true,
+          // The one field on a deck that is asserted rather than derived, so
+          // it travels into the audit trail with what was loaded beside it.
+          stage:(payload.project&&payload.project.stage)||null,
+
           total:{blocks:0,tonnes:0,grade_gt:0,oz:0}, by_class:{},
           class_confirmed:false, drills_synthetic:false, site_synthetic:false,
           geophys_synthetic:false, blocks_synthetic:false,
@@ -2901,6 +2905,22 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     L.push('BEDROCK — AUDIT TRAIL');
     L.push('');
     L.push('Source            '+(PROV.source||'—'));
+    // The stage is the only thing on a deck its author asserts outright — no
+    // file says "we are in development" — so it is recorded next to the
+    // datasets that either do or do not demonstrate it. Stated, then checked,
+    // in the one place a reader goes to find out what to trust.
+    if(PROV.stage){
+      const EXPECT={discovery:['site'],exploration:['site','drills'],
+                    development:['site','drills','blocks'],
+                    mining:['site','drills','blocks']};
+      const have=PROV.datasets||[];
+      const miss=(EXPECT[PROV.stage]||[]).filter(k=>have.indexOf(k)<0);
+      const NAME={site:'a property boundary',drills:'drilling',blocks:'a block model'};
+      L.push('Stage             '+PROV.stage.toUpperCase()+
+             (miss.length ? '  — STATED BY THE AUTHOR AND NOT DEMONSTRATED HERE: '+
+                            miss.map(k=>NAME[k]||k).join(' and ')+' not loaded'
+                          : '  — supported by the datasets below'));
+    }
     // Every line below describes a block model. An exploration deck has none,
     // and reaching through the absent fields threw — which took the audit
     // trail down on exactly the decks whose provenance matters most, because

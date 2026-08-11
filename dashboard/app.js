@@ -13,6 +13,7 @@ import { ingestWizard, uploadAux, putAux, routeFiles } from "./ingest.js";
 import { sniff } from "./lib/formats.js";
 import { renderDeck } from "./deck.js";
 import { renderStudio, teardownStudio } from "./studio.js";
+import { STAGES, stageEvidence } from "./lib/stage.js";
 
 const view = $("view");
 
@@ -160,7 +161,7 @@ async function renderHome() {
 
   const { data: projects, error } = await db
     .from("projects")
-    .select("id, name, commodity, location, created_at, decks(id)")
+    .select("id, name, commodity, location, stage, created_at, decks(id)")
     .order("created_at", { ascending: false });
   if (error) return fail("Projects", error);
 
@@ -180,12 +181,13 @@ async function renderHome() {
         <button class="btn primary" id="newp2">Create the first one</button>
       </div>` : `
       <div class="panel"><div class="tablewrap"><table>
-        <thead><tr><th>Project</th><th>Commodity</th><th>Location</th>
+        <thead><tr><th>Project</th><th>Commodity</th><th>Stage</th><th>Location</th>
           <th class="n">Decks</th><th class="n">Created</th></tr></thead>
         <tbody>${projects.map((p) => `
           <tr style="cursor:pointer" data-go="#/p/${p.id}">
             <td><b>${esc(p.name)}</b></td>
             <td>${esc(p.commodity || "—")}</td>
+            <td>${p.stage ? `<span class="chip">${esc(p.stage)}</span>` : "—"}</td>
             <td>${esc(p.location || "—")}</td>
             <td class="n mono">${p.decks?.length || 0}</td>
             <td class="n mono">${fmtDate(p.created_at)}</td>
@@ -240,6 +242,11 @@ function newProject() {
       <div class="field"><label for="pl">Location</label>
         <input type="text" id="pl" placeholder="Cariboo, British Columbia"></div>
     </div>
+    <div class="field"><label for="pstage">Stage</label>
+      <select id="pstage">
+        <option value="" selected>— not set —</option>
+        ${STAGES.map((st) => `<option value="${st.key}">${esc(st.label)} — ${esc(st.blurb)}</option>`).join("")}
+      </select></div>
     <div class="field"><label for="pe">Coordinate system (EPSG)</label>
       <input type="number" id="pe" value="26910">
       <p class="hintline">The projection your block model is in — 26910 is UTM
@@ -259,6 +266,7 @@ function newProject() {
       org_id: state.orgs[0].id, name, slug: slugify(name),
       commodity: $("pc").value.trim() || null,
       location: $("pl").value.trim() || null,
+      stage: $("pstage").value || null,
       epsg: Number($("pe").value) || 26910,
     }).select("id").single();
     $("pgo").disabled = false;
@@ -272,7 +280,7 @@ function newProject() {
 async function renderProject(id) {
   view.innerHTML = skeleton(5);
   const { data: p, error } = await db.from("projects")
-    .select("id, name, commodity, location, epsg, org_id, holders, brand").eq("id", id).maybeSingle();
+    .select("id, name, commodity, location, epsg, org_id, holders, brand, stage").eq("id", id).maybeSingle();
   if (error) return fail("Project", error);
   if (!p) {
     view.innerHTML = `<div class="empty"><h3>Project not found</h3>
@@ -291,6 +299,9 @@ async function renderProject(id) {
   ]);
 
   const zs = zones || [];
+  // The stage is the author's claim; the datasets are the evidence. Computed
+  // here so the page can say when the two disagree.
+  const ev = stageEvidence(p, datasets || []);
   const dsByZone = {};
   (datasets || []).forEach((d) => { (dsByZone[d.zone_id] ||= []).push(d); });
   const zoneKind = (z, k) => (dsByZone[z.id] || []).find((d) => d.kind === k);
@@ -348,7 +359,8 @@ async function renderProject(id) {
         <span class="eyebrow"><a href="#/">Projects</a> / ${esc(p.commodity || "Project")}</span>
         <h1>${esc(p.name)}</h1>
         <p>${esc(p.location || "No location set")} · EPSG ${p.epsg}
-           · ${zs.length} zone${zs.length === 1 ? "" : "s"}</p>
+           · ${zs.length} zone${zs.length === 1 ? "" : "s"}${
+             ev.label ? ` · ${esc(ev.label)}` : ""}</p>
       </div>
       <div class="row-actions">
         <button class="btn" id="editproj">Project settings</button>
@@ -356,6 +368,12 @@ async function renderProject(id) {
       </div>
     </div></header>
 
+    ${ev.overreach ? `<div class="note warn" style="margin-bottom:16px">
+      <b>${esc(ev.label)} stage is not demonstrated by what is loaded.</b>
+      ${esc(ev.note)} You can still present it — a model sitting with a
+      consultant is a real situation — but the deck's audit trail will say the
+      same thing, so it is better said by you first.
+    </div>` : ""}
     ${fabricated.length ? `<div class="note warn" style="margin-bottom:16px">
       <b>This project contains fabricated data.</b>
       ${esc([...new Set(fabricated.map((d) => d.kind))].join(", "))} —
@@ -1034,6 +1052,12 @@ function editProject(p) {
         <p class="hintline">Used in the opening slide's own title, so it is read
           aloud as often as the project name.</p></div>
     </div>
+    <div class="field"><label for="eps">Stage</label>
+      <select id="eps">
+        <option value=""${p.stage ? "" : " selected"}>— not set —</option>
+        ${STAGES.map((st) => `<option value="${st.key}"${p.stage === st.key ? " selected" : ""}>${esc(st.label)}</option>`).join("")}
+      </select>
+      <p class="hintline" id="epshint"></p></div>
     <div class="field"><label for="epe">Coordinate system (EPSG)</label>
       <input type="number" id="epe" value="${p.epsg}">
       <p class="hintline">Every coordinate already loaded was read as being in
@@ -1050,6 +1074,17 @@ function editProject(p) {
       <button class="btn primary" id="epgo">Save</button>
       <button class="btn" id="epno">Cancel</button>
     </div>`);
+  // The stage is the one thing here an author asserts rather than derives, so
+  // the form says what each one is taken to mean and what it will be checked
+  // against — before it is chosen, not after.
+  const stHint = () => {
+    const st = STAGES.find((x) => x.key === $("eps").value);
+    $("epshint").textContent = st
+      ? `${st.blurb} A deck at this stage is expected to show ${
+          st.expects.join(", ")}; if it cannot, the deck says so.`
+      : "Optional. Sets which part of the story a generated deck leads with.";
+  };
+  $("eps").onchange = stHint; stHint();
   $("epno").onclick = closeModal;
   // The warning appears only when the value actually changes, so it reads as a
   // consequence of what they just did rather than as boilerplate.
@@ -1068,6 +1103,7 @@ function editProject(p) {
       name, slug: slugify(name),
       commodity: $("epc").value.trim() || null,
       location: $("epl").value.trim() || null,
+      stage: $("eps").value || null,
       epsg,
     }).eq("id", p.id);
     if (error) return fail("Save project", error);

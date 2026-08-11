@@ -20,6 +20,8 @@
 // A second implementation would drift, and the failure mode is a deck that
 // promises a slide the viewer cannot draw.
 
+import { stageRank } from "./stage.js";
+
 /** Every distinct dataset kind present for a zone. */
 function kindsOf(datasets, zoneId) {
   return new Set(
@@ -376,20 +378,28 @@ export function projectCandidates(project, zones, datasets) {
  *
  * @returns {{order: Array, dropped: number, extra: number}}
  */
-export function defaultOrder(candidates, zones, cap = 14) {
+export function defaultOrder(candidates, zones, cap = 14, project = null) {
   const zoneIx = new Map((zones || []).map((z, i) => [z.id, i]));
   const spine = (candidates || []).filter((c) => typeof c.spine === "number");
 
   // Property opener first, whole-property columns last, zones in their own
   // order in between — and within a zone, the argument's order.
+  //
+  // The project's STAGE breaks ties inside a zone, and only ties: a discovery
+  // project leads on ground and anomalies, a development project on the
+  // resource. It is a reorder and never a filter — what a deck can show is
+  // decided by what data exists, and if the stage could add or remove a slide
+  // it would be deciding what is true rather than what to say first.
+  const byStage = stageRank(project);
   const rank = (c) => [
     c.zone_id === null ? (c.spine >= 999 ? 2 : 0) : 1,
     c.zone_id === null ? 0 : (zoneIx.get(c.zone_id) ?? 99),
+    c.zone_id === null ? 0 : byStage(c),
     c.spine,
   ];
   spine.sort((a, b) => {
     const A = rank(a), B = rank(b);
-    return A[0] - B[0] || A[1] - B[1] || A[2] - B[2];
+    return A[0] - B[0] || A[1] - B[1] || A[2] - B[2] || A[3] - B[3];
   });
 
   let order = spine, dropped = 0;

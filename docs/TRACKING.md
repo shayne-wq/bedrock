@@ -531,6 +531,48 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   global on all three paths, so nothing re-introduces a window. Re-run green:
   holeview 32, capture 28, ui 37, labels 11, transition 11, pit clean.
 
+- **2026-08-11** — **Project stage: discovery, exploration, development, mining —
+  as a claim that gets checked, not a label.**
+
+  Migration `20260811000100_project_stage.sql` adds `projects.stage`, constrained
+  to the four and **nullable**: defaulting every existing project to
+  "exploration" would be a migration asserting something about somebody's asset
+  that nobody told it.
+
+  **The design decision this hangs on.** Every figure in this product is derived
+  from geometry and cannot be typed. The stage cannot be derived — no file
+  anywhere says "we are in development" — so it is the one number-like thing an
+  author asserts freely, which makes it the obvious place for a deck to
+  overstate itself. "Development stage" on a project with no resource estimate
+  is a sentence a securities regulator reads twice.
+
+  So: **the stage is a CLAIM, the datasets are the EVIDENCE**, and a claim the
+  evidence cannot support is reported — in the console while you build, and in
+  the deck's audit trail after you publish. It is **never blocked**. A company
+  can be in development with its model still at a consultant, and refusing to
+  let them say so would be this tool inventing a rule the industry does not
+  have. Same posture as fabricated data: stated, labelled, not forbidden.
+
+  The second rule, easier to break later and so pinned by tests: **the stage may
+  REORDER a deck and must never FILTER one.** What a deck can show is decided by
+  what data exists — that gate stays in the candidate generator. A stage only
+  says which of the things it CAN show should lead, so discovery opens on ground
+  and anomalies and development opens on the resource. If a dropdown could add
+  or remove a slide, the stage would be deciding what is true.
+
+  Live on real data: Macpass is seeded as **exploration**, which it genuinely
+  is — four defined deposits and a published resource — and only the land
+  package is loaded, so the audit trail now reads "STATED BY THE AUTHOR AND NOT
+  DEMONSTRATED HERE: drilling not loaded". The claim is true, the evidence is
+  absent, and the deck says so rather than hiding either. The reorder is visible
+  too: the seeded deck moved "The claim block" ahead of "Tom".
+
+  `tools/verify_stage.mjs`, 19 assertions, including that every stage offers and
+  orders the *same* slides and only their sequence differs. Caught one bug of my
+  own on the way in: `deck.js` passed the module-level `project` to
+  `defaultOrder` on the line *before* it was assigned, so a deck would have been
+  ordered by the previously-viewed project's stage, or by null on a first load.
+
 - **2026-08-11** — **The drill slide goes underground, after Immersive Explorers.**
 
   Shayne sent their "3D Data Animations" frame as the target: pure black, the

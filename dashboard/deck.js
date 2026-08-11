@@ -54,7 +54,10 @@ export async function renderDeck(id, view) {
   candidates = projectCandidates(p, zones, datasets);
   // The deck we would build if nobody touched it. Every candidate is still
   // offered; this is just the running order that reads as an argument.
-  suggestion = defaultOrder(candidates, zones);
+  // `p`, not `project` — the module-level `project` is not assigned until the
+  // next line, so passing it here would order the deck by the PREVIOUS
+  // project's stage, or by null on a first load.
+  suggestion = defaultOrder(candidates, zones, 14, p);
   project = p; chapters = ch || []; links = ln || [];
   const fabricated = (ds || []).filter((x) => x.synthetic);
   const blocks = (ds || []).find((x) => x.kind === "blocks");

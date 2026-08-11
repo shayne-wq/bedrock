@@ -129,6 +129,13 @@ await insert("orgs", { id: ORG, name: "Fireweed Metals Corp.", slug: "fireweed-m
 await insert("projects", {
   id: PRJ, org_id: ORG, name: "Macpass", slug: "macpass", epsg: 26909,
   commodity: "Zinc, Lead, Silver", location: "Eastern Yukon, Canada",
+  // Macpass genuinely is an exploration-stage project — four defined deposits
+  // and a published resource. Only the land package is loaded, so the stage
+  // check will correctly report that the drilling is not here to demonstrate
+  // it. That is the feature working, not a mistake in the seed: the claim is
+  // true, the evidence is absent, and the deck says so rather than either
+  // hiding the claim or pretending the data exists.
+  stage: "exploration",
   brand: {
     // Description only — every figure on this deck comes from the register or
     // from geometry. Nothing here asserts a resource, because none of the
@@ -168,7 +175,7 @@ const project = await rest("GET", `projects?id=eq.${PRJ}&select=*`).then((r) => 
 const zones = await rest("GET", `zones?project_id=eq.${PRJ}&select=*&order=ord`);
 const datasets = await rest("GET", `datasets?project_id=eq.${PRJ}&select=*`);
 const cands = projectCandidates(project, zones, datasets);
-const { order, extra } = defaultOrder(cands, zones);
+const { order, extra } = defaultOrder(cands, zones, 14, project);
 console.log(`  ${cands.length} candidates · ${order.length} in the running order` +
             `${extra ? ` · ${extra} in the tray` : ""}`);
 console.log("  " + order.map((c, i) => `${i + 1}. ${c.title}`).join("\n  "));

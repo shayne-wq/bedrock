@@ -143,7 +143,7 @@ const project = await rest("GET", `projects?id=eq.${PRJ}&select=*`).then((r) => 
 const zones = await rest("GET", `zones?project_id=eq.${PRJ}&select=*&order=ord`);
 const datasets = await rest("GET", `datasets?project_id=eq.${PRJ}&select=*`);
 const cands = projectCandidates(project, zones, datasets);
-const { order, dropped, extra } = defaultOrder(cands, zones);
+const { order, dropped, extra } = defaultOrder(cands, zones, 14, project);
 console.log(`  ${cands.length} candidates · ${order.length} in the running order` +
             `${dropped ? ` · ${dropped} trimmed` : ""} · ${extra} in the tray`);
 console.log("  " + order.map((c, i) => `${i + 1}. ${c.title}`).join("\n  "));
