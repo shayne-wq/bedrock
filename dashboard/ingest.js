@@ -16,7 +16,7 @@ import {
   sniff, readGeoJSON, readKML, readOBJ, readGOCAD, readDXF,
   readCollars, readSurveys, readAssays, desurvey,
   readWorldFile, worldExtent, magProduct, readGeochem, readGeoTiff, demToMesh,
-  readAsciiGrid, readOMF, bandToBitmap
+  readAsciiGrid, readOMF, bandToBitmap, omfVolumeToFile
 } from "./lib/formats.js";
 
 let worker = null;
@@ -43,16 +43,16 @@ function ask(msg, onProgress) {
 export function ingestWizard(project, zone, onDone, presetFile) {
   // Dropped straight onto the zone's slot: the picker step has already been
   // answered, so do not make the user answer it again.
-  if (presetFile) return step2(project, zone, presetFile, onDone);
+  if (presetFile) return startBlocks(project, zone, presetFile, onDone);
   modal(`
     <h2>Load a block model${zone ? ` — ${esc(zone.name)}` : ""}</h2>
     <p class="sub">Read in this browser. The file is not uploaded — only the
        geometry and rollups a deck needs, which is a few megabytes.</p>
     <div class="drop" id="drop">
-      <button class="btn primary" id="pick">Choose a CSV</button>
-      <p>or drag it here — MineSight, Vulcan, Datamine, Surpac and Leapfrog
-         exports all work</p>
-      <input type="file" id="file" accept=".csv,text/csv" hidden>
+      <button class="btn primary" id="pick">Choose a file</button>
+      <p>or drag it here — a CSV from MineSight, Vulcan, Datamine or Surpac,
+         or an <b>OMF</b> file from Leapfrog, Micromine or Deswik</p>
+      <input type="file" id="file" accept=".csv,.omf,text/csv" hidden>
     </div>
     <div class="note" style="margin-top:14px">
       A block-model export has no standard schema, so the next step shows what
@@ -61,7 +61,7 @@ export function ingestWizard(project, zone, onDone, presetFile) {
 
   const drop = $("drop"), input = $("file");
   $("pick").onclick = () => input.click();
-  input.onchange = () => { if (input.files[0]) step2(project, zone, input.files[0], onDone); };
+  input.onchange = () => { if (input.files[0]) startBlocks(project, zone, input.files[0], onDone); };
   ["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => {
     e.preventDefault(); drop.classList.add("over");
   }));
@@ -70,12 +70,111 @@ export function ingestWizard(project, zone, onDone, presetFile) {
   }));
   drop.addEventListener("drop", (e) => {
     const f = e.dataTransfer?.files?.[0];
-    if (f) step2(project, zone, f, onDone);
+    if (f) startBlocks(project, zone, f, onDone);
   });
 }
 
+// A CSV goes straight to the mapping step. An OMF is a whole project and may
+// hold several models, so it gets a step of its own first — which is a step
+// that ASKS rather than guesses, because the file names its own contents.
+async function startBlocks(project, zone, file, onDone) {
+  if (!/\.omf$/i.test(file.name || "")) return step2(project, zone, file, onDone);
+
+  modal(`<h2>Reading ${esc(file.name)}</h2>
+    <p class="sub">Opening the project to see what is in it.</p>
+    <div class="skel big"></div>`);
+  let proj;
+  try { proj = await readOMF(file); }
+  catch (e) {
+    modal(`<h2>Could not read that OMF</h2><p class="sub">${esc(e.message)}</p>
+      <div class="row-actions" style="margin-top:16px">
+        <button class="btn" id="back">Choose another file</button></div>`);
+    $("back").onclick = () => ingestWizard(project, zone, onDone);
+    return;
+  }
+
+  const vols = proj.elements.filter((e) => e.kind === "Volume" && e.grid);
+  const others = proj.elements.filter((e) => e.kind !== "Volume");
+  if (!vols.length) {
+    modal(`<h2>No block model in that file</h2>
+      <p class="sub">${esc(file.name)} holds
+         ${esc(others.map((e) => `${e.name} (${e.kind})`).join(", ") || "nothing this reads")}.</p>
+      <div class="note">Surfaces from an OMF load in the <b>Surfaces</b> slot.
+        This slot is for the block model.</div>
+      <div class="row-actions" style="margin-top:16px">
+        <button class="btn" id="back">Choose another file</button></div>`);
+    $("back").onclick = () => ingestWizard(project, zone, onDone);
+    return;
+  }
+
+  const volOpts = vols.map((v, i) =>
+    `<option value="${i}">${esc(v.name)} — ${fmtInt(v.blocks)} blocks</option>`).join("");
+  const varsFor = (v) => (v.data || [])
+    .filter((d) => /cell/i.test(d.location || ""))
+    .map((d) => d.name);
+
+  modal(`
+    <h2>What should the deck show?</h2>
+    <p class="sub">This file names its own contents, so nothing here is a
+       guess — pick the model and the variable to grade it by.</p>
+    <div class="field"><label for="ovol">Block model</label>
+      <select id="ovol">${volOpts}</select></div>
+    <div class="field"><label for="ograde">Grade variable</label>
+      <select id="ograde"></select>
+      <p class="hintline" id="ovarhint"></p></div>
+    <div class="grid two">
+      <div class="field"><label for="oden">Density variable</label>
+        <select id="oden"></select></div>
+      <div class="field"><label for="odom">Domain variable</label>
+        <select id="odom"></select></div>
+    </div>
+    ${others.length ? `<div class="note">Also in this file, and not loaded here:
+      ${esc(others.map((e) => `${e.name} (${e.kind})`).join(", "))}. Surfaces go
+      in the Surfaces slot.</div>` : ""}
+    <div class="row-actions" style="margin-top:16px">
+      <button class="btn primary" id="ogo">Continue</button>
+      <button class="btn" id="ocancel">Cancel</button>
+    </div>`);
+
+  const fill = () => {
+    const v = vols[+$("ovol").value];
+    const names = varsFor(v);
+    const opts = names.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+    const none = `<option value="">— none —</option>`;
+    $("ograde").innerHTML = opts || none;
+    $("oden").innerHTML = none + opts;
+    $("odom").innerHTML = none + opts;
+    $("ovarhint").textContent = names.length
+      ? `${names.length} per-block variable${names.length === 1 ? "" : "s"} in this model.`
+      : "This model carries no per-block values, so there is nothing to grade it by.";
+    $("ogo").disabled = !names.length;
+  };
+  $("ovol").onchange = fill; fill();
+  $("ocancel").onclick = closeModal;
+  $("ogo").onclick = () => {
+    const v = vols[+$("ovol").value];
+    try {
+      const conv = omfVolumeToFile(v, {
+        grade: $("ograde").value || undefined,
+        density: $("oden").value || undefined,
+        domain: $("odom").value || undefined,
+      });
+      // Straight into the existing mapping step. The block size is STATED by
+      // the file rather than inferred from spacing, so it is passed through and
+      // the mapping step shows it as a fact instead of a best guess.
+      step2(project, zone, conv.file, onDone,
+            { dx: conv.dx, dy: conv.dy, dz: conv.dz, from: v.name, omf: file.name });
+    } catch (e) {
+      modal(`<h2>Cannot load that model</h2><p class="sub">${esc(e.message)}</p>
+        <div class="row-actions" style="margin-top:16px">
+          <button class="btn" id="back">Back</button></div>`);
+      $("back").onclick = () => startBlocks(project, zone, file, onDone);
+    }
+  };
+}
+
 // ------------------------------------------------------- step 2: mapping ---
-async function step2(project, zone, file, onDone) {
+async function step2(project, zone, file, onDone, known = null) {
   modal(`
     <h2>Reading ${esc(file.name)}</h2>
     <p class="sub">Sampling the first rows to work out the grid.</p>
@@ -133,18 +232,22 @@ async function step2(project, zone, file, onDone) {
              entirely to the domain named here.</p>`}
     </div>
 
-    <h2 style="margin-top:20px">Block size <span class="hint">inferred from the grid</span></h2>
+    <h2 style="margin-top:20px">Block size <span class="hint">${known
+      ? "stated by the file" : "inferred from the grid"}</span></h2>
     <div class="grid three">
       <div class="field"><label for="dx">Easting (m)</label>
-        <input type="number" id="dx" step="any" value="${p.dx ?? ""}"></div>
+        <input type="number" id="dx" step="any" value="${known?.dx ?? p.dx ?? ""}"></div>
       <div class="field"><label for="dy">Northing (m)</label>
-        <input type="number" id="dy" step="any" value="${p.dy ?? ""}"></div>
+        <input type="number" id="dy" step="any" value="${known?.dy ?? p.dy ?? ""}"></div>
       <div class="field"><label for="dz">Bench (m)</label>
-        <input type="number" id="dz" step="any" value="${p.dz ?? ""}"></div>
+        <input type="number" id="dz" step="any" value="${known?.dz ?? p.dz ?? ""}"></div>
     </div>
-    <p class="hintline">Block dimensions are not written in the file — these are
-      the most common spacings between block centres in the sample. Tonnage is
-      meaningless if they are wrong, so check them against the technical report.</p>
+    <p class="hintline">${known
+      ? `Read from <b>${esc(known.omf || "the file")}</b>, which records the block ` +
+        "widths rather than leaving them to be inferred. Nothing here was guessed."
+      : "Block dimensions are not written in the file — these are the most " +
+        "common spacings between block centres in the sample. Tonnage is " +
+        "meaningless if they are wrong, so check them against the technical report."}</p>
 
     <div class="grid two" style="margin-top:14px">
       <div class="field"><label for="den">Density (t/m³)</label>
@@ -924,9 +1027,12 @@ async function parseAux(kind, chosen) {
         // What was in the file and did NOT come in. A block model inside an OMF
         // is real data the customer handed over, and silently dropping it is
         // how somebody concludes the upload worked and their resource is
-        // missing from the deck.
+        // missing from the deck. It says where to load it, because the block
+        // model slot takes this same file.
         p.elements.filter((e) => e.kind !== "Surface")
-          .forEach((e) => alsoInFile.push(`${e.name} (${e.kind})`));
+          .forEach((e) => alsoInFile.push(
+            `${e.name} (${e.kind}${e.kind === "Volume"
+              ? " — load this file in the Block model slot" : ""})`));
         continue;
       }
       const text = await textOf(c.file);

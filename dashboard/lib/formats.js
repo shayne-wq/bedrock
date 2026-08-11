@@ -897,6 +897,140 @@ export async function readGeoTiff(file) {
 }
 
 /**
+ * An OMF block model, as the rows the CSV pipeline already eats.
+ *
+ * Deliberately a CONVERSION and not a second ingest path. Everything that makes
+ * the block-model pipeline trustworthy — the cut-off, the share-weighted
+ * rollups, the reconciliation that proves the totals still add up — lives in
+ * extract.js and has tests. A parallel tonnage path for OMF would be a second
+ * place for tonnage to be wrong, and the two would drift.
+ *
+ * OMF is better input than a CSV in two ways, and both remove a guess:
+ *
+ *   Block size is STATED. The CSV path infers dx/dy/dz from the commonest
+ *   spacing between block centres and asks the user to check it against the
+ *   technical report, because a CSV does not record it. OMF writes the widths.
+ *
+ *   Variables are NAMED. No column-mapping guess: the file says which array is
+ *   "Zn %" and which is density.
+ *
+ * Two things are refused rather than approximated, both stated plainly by the
+ * file so the refusal is certain rather than heuristic:
+ *
+ *   A ROTATED model. The viewer draws axis-aligned boxes. Rotated block centres
+ *   with unrotated boxes render as a staircase through the deposit — wrong in a
+ *   way that looks like geology rather than like a bug.
+ *
+ *   A VARIABLE lattice. Per-axis widths that differ block to block are a
+ *   sub-blocked model. The CSV path has to detect those from coordinates and
+ *   cannot always do it; OMF simply says so, which is the first time this
+ *   codebase can refuse one with certainty instead of suspicion.
+ */
+export function omfVolumeToRows(vol, opts = {}) {
+  const g = vol && vol.grid;
+  if (!g) throw new Error("That OMF element is not a block model.");
+
+  const axisOff = (axis, want) => {
+    const n = Math.hypot(...axis) || 1;
+    const u = axis.map((c) => c / n);
+    // Degrees between the model's axis and the world's.
+    return Math.acos(Math.max(-1, Math.min(1, u[0] * want[0] + u[1] * want[1] + u[2] * want[2])))
+           * 180 / Math.PI;
+  };
+  const skew = Math.max(axisOff(g.axis_u, [1, 0, 0]), axisOff(g.axis_v, [0, 1, 0]),
+                        axisOff(g.axis_w, [0, 0, 1]));
+  if (skew > 0.01) {
+    throw new Error(
+      `${vol.name} is rotated ${skew.toFixed(1)}° off the project grid. This ` +
+      "draws axis-aligned blocks, so a rotated model would render as a " +
+      "staircase through the deposit — wrong in a way that looks like geology. " +
+      "Export it on world axes, or send the wireframes instead.");
+  }
+
+  const uniform = (t, axis) => {
+    if (!t || !t.length) throw new Error(`${vol.name} has no block widths on ${axis}.`);
+    const w = t[0];
+    const bad = t.find((x) => Math.abs(x - w) > 1e-6 * Math.max(1, Math.abs(w)));
+    if (bad !== undefined) {
+      const distinct = [...new Set(t.map((x) => Math.round(x * 1e6) / 1e6))];
+      throw new Error(
+        `${vol.name} is sub-blocked: its ${axis} widths are not all the same ` +
+        `(${distinct.slice(0, 5).join(", ")}${distinct.length > 5 ? ", …" : ""}). ` +
+        "Tonnage here assumes one block size, so a variable lattice would be " +
+        "reported wrongly. Re-block it to a regular grid before exporting.");
+    }
+    return w;
+  };
+  const dx = uniform(g.tensor_u, "easting"), dy = uniform(g.tensor_v, "northing"),
+        dz = uniform(g.tensor_w, "elevation");
+
+  const nu = g.tensor_u.length, nv = g.tensor_v.length, nw = g.tensor_w.length;
+  const total = nu * nv * nw;
+
+  // Cell attributes only. A value at the corners is not a block value, and
+  // averaging eight of them into one would be inventing a number.
+  const cells = (vol.data || []).filter((d) => /cell/i.test(d.location || "") &&
+                                              d.values && d.values.length === total);
+  const byName = new Map(cells.map((d) => [d.name, d]));
+  const pick = (n) => (n && byName.get(n)) || null;
+  const grade = pick(opts.grade);
+  if (opts.grade && !grade) {
+    throw new Error(`${vol.name} has no per-block variable called "${opts.grade}". ` +
+      `It has: ${cells.map((d) => d.name).join(", ") || "none"}.`);
+  }
+  const density = pick(opts.density), domain = pick(opts.domain),
+        cls = pick(opts.classification);
+
+  const cols = ["X", "Y", "Z", "GRADE"];
+  if (density) cols.push("DENSITY");
+  if (domain) cols.push("DOMAIN");
+  if (cls) cols.push("CLASS");
+
+  // u fastest, then v, then w — the OMF ordering for gridded cell data. Getting
+  // this wrong does not error: it transposes the deposit, which still totals
+  // correctly and is the reason the test asserts a known corner value.
+  function* rows() {
+    yield cols.join(",");
+    const ox = g.origin[0], oy = g.origin[1], oz = g.origin[2];
+    let i = 0;
+    for (let k = 0; k < nw; k++) {
+      const z = oz + (k + 0.5) * dz;
+      for (let j = 0; j < nv; j++) {
+        const y = oy + (j + 0.5) * dy;
+        for (let u = 0; u < nu; u++, i++) {
+          const x = ox + (u + 0.5) * dx;
+          const r = [x, y, z, grade ? grade.values[i] : 0];
+          if (density) r.push(density.values[i]);
+          if (domain) r.push(domain.values[i]);
+          if (cls) r.push(cls.values[i]);
+          yield r.join(",");
+        }
+      }
+    }
+  }
+
+  return { rows, blocks: total, dx, dy, dz, columns: cols,
+           variables: cells.map((d) => d.name),
+           origin: g.origin.slice() };
+}
+
+/** The same rows as a File, so the existing wizard and worker take it as-is. */
+export function omfVolumeToFile(vol, opts = {}) {
+  const r = omfVolumeToRows(vol, opts);
+  // Chunked so a large model is not one enormous string in memory before the
+  // Blob is built.
+  const chunks = [];
+  let buf = [];
+  for (const line of r.rows()) {
+    buf.push(line);
+    if (buf.length >= 20000) { chunks.push(buf.join("\n") + "\n"); buf = []; }
+  }
+  if (buf.length) chunks.push(buf.join("\n") + "\n");
+  const name = `${(vol.name || "model").replace(/[^\w.-]+/g, "_")}.csv`;
+  return { file: new File(chunks, name, { type: "text/csv" }), ...r };
+}
+
+/**
  * A single band of values as a picture, plus the range it was stretched over.
  *
  * Shared by the GeoTIFF reader and the ASCII-grid reader so both stretch the

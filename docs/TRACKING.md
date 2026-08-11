@@ -531,6 +531,52 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   global on all three paths, so nothing re-introduces a window. Re-run green:
   holeview 32, capture 28, ui 37, labels 11, transition 11, pit clean.
 
+- **2026-08-10** — **An OMF block model loads. One file out of Leapfrog is now a
+  whole project.**
+
+  The last gap on ingestion, and closed as a **conversion rather than a second
+  ingest path**. Everything that makes the block-model pipeline trustworthy —
+  the cut-off, the share-weighted rollups, the reconciliation that proves the
+  totals still add up — lives in `extract.js` and is tested. A parallel tonnage
+  path for OMF would have been a second place for tonnage to be wrong, and the
+  two would have drifted. So an OMF volume is turned into the rows the CSV
+  pipeline already eats, and `extract.js` does the arithmetic exactly as before.
+
+  Proven end to end rather than to the boundary: `verify_omf.mjs` now drives the
+  converted rows through the real `probe`/`extract`, and asserts the tonnage is
+  the hand-computed 5,400 t and that the rollups reconcile.
+
+  **OMF is better input than a CSV, and in two ways that each remove a guess:**
+
+  - **Block size is stated.** The CSV path infers dx/dy/dz from the commonest
+    spacing between block centres, and the mapping step has to ask the user to
+    check it against the technical report because a CSV does not record it. OMF
+    writes the widths, so the mapping step now says "stated by the file" and
+    "nothing here was guessed". The test asserts the inferred and the stated
+    sizes agree — and if they ever disagree, the stated one is the truth.
+  - **Variables are named.** The chooser lists "Zn %" and "density" off the
+    file. No column mapping to get wrong.
+
+  **Two things refused rather than approximated**, and both are refusals this
+  codebase could not previously make with certainty:
+
+  - **A rotated model.** The viewer draws axis-aligned boxes; rotated centres
+    with unrotated boxes render as a staircase through the deposit — wrong in a
+    way that looks like geology rather than like a bug. Refused with the angle.
+  - **A variable lattice**, which IS a sub-blocked model. The CSV path has to
+    detect those from coordinates and provably cannot always do it (see the
+    sub-blocking note). OMF simply states the widths, so this is the first time
+    a sub-blocked model can be refused **from the file** instead of from
+    suspicion — named by axis, with the distinct widths listed.
+
+  Cell order is u fastest, then v, then w. Getting that wrong does not error: it
+  transposes the deposit and the totals still reconcile, so it is asserted on
+  known corner coordinates rather than on a sum.
+
+  Dropping an OMF on a zone still routes to Surfaces, because meshes are what
+  most Leapfrog exports carry — and a volume inside it is now reported by name
+  as "load this file in the Block model slot" rather than merely as not loaded.
+
 - **2026-08-10** — **Magnetics: ASCII grids read, and a promise the advice was
   already making is now kept.**
 
