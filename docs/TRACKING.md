@@ -531,6 +531,46 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   global on all three paths, so nothing re-introduces a window. Re-run green:
   holeview 32, capture 28, ui 37, labels 11, transition 11, pit clean.
 
+- **2026-08-10** — **Magnetics: ASCII grids read, and a promise the advice was
+  already making is now kept.**
+
+  Asked how mags get in. The audit found the console telling users to do
+  something it could not then accept: the advice for a Geosoft `.grd` says
+  "export the grid as GeoTIFF, **or as an ASCII grid** with a world file" — and
+  a `.asc` routed nowhere. Oasis montaj exports ASCII grid in one click, so that
+  was the likeliest thing a geophysicist would actually send.
+
+  Fixed. A `.asc` whose name is not terrain now routes to geophysics and is read
+  as **values**, not as a picture: the grid states its own corner and cell size,
+  so it places itself with no world file at all.
+
+  The value/picture distinction is the point. `bandToBitmap` is now shared by
+  the GeoTIFF and ASCII readers, and it returns the 2nd–98th percentile range it
+  stretched over **in the grid's own units**, stored on the product as
+  `value_low`/`value_high`. That is the difference between a legend reading
+  "dark to light" and one reading 54,300–54,900 nT, and it is the first half of
+  the open item under #2 — a ramp keyed to real values rather than to image
+  colours. Percentile and not min/max, because a magnetic anomaly IS a small
+  number of cells a long way from the mean, which is exactly what a min/max
+  stretch flattens to black. NODATA cells are transparent, so a survey's ragged
+  edge stays ragged instead of squaring off in black over the ground beside it.
+
+  **Where mags now stand:** GeoTIFF (tags beat a sibling world file, because the
+  .tfw is a copy somebody made); PNG/JPEG plus world file; ESRI ASCII grid.
+  Product type inferred from the filename — TMI, RTP, 1VD, 2VD, analytic signal,
+  radiometrics, gravity — and each product draped on its OWN extent, since two
+  grids of one property are rarely clipped identically and stretching one to the
+  other's corners moves the anomaly.
+
+  **Still open, and worth naming:** Geosoft `.grd` is still refused (binary, no
+  viable open decoder, and reverse-engineering a geophysics format to save one
+  export click is a bad trade — the .bmf investigation is the precedent).
+  **Raw XYZ line data is not gridded** — a survey delivered as x,y,tmi readings
+  cannot be loaded, and gridding it is interpolation, which needs a deliberate
+  decision about method and a statement in the audit trail that the surface is
+  interpolated rather than measured. And a `.asc` carries no projection, so it
+  is read in the project's grid.
+
 - **2026-08-10** — **Deswik. Covered twice, and the second way was a real gap.**
 
   Applied the same test as OMF: does the format say what its own numbers mean?

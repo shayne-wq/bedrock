@@ -49,6 +49,10 @@ const cases = [
   ["survey.las", "topography"], ["cloud.laz", "topography"], ["scan.e57", "topography"],
   // geophysics keeps the bare and the magnetic grids
   ["grid.tif", "geophysics"], ["TMI_RTP.tif", "geophysics"],
+  // A .asc that is not terrain is a geophysics product — what Oasis montaj
+  // exports in one click, and what the Geosoft advice already tells people to
+  // produce.
+  ["TMI.asc", "geophysics"], ["mag_rtp_grid.asc", "geophysics"],
   ["mag_1vd.png", "geophysics"], ["survey.tfw", "geophysics"],
   // vein/ore wireframes still go to surfaces
   ["vein_2400.obj", "surfaces"], ["orebody.ts", "surfaces"], ["shells.dxf", "surfaces"],

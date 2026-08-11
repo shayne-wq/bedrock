@@ -16,7 +16,7 @@ import {
   sniff, readGeoJSON, readKML, readOBJ, readGOCAD, readDXF,
   readCollars, readSurveys, readAssays, desurvey,
   readWorldFile, worldExtent, magProduct, readGeochem, readGeoTiff, demToMesh,
-  readAsciiGrid, readOMF
+  readAsciiGrid, readOMF, bandToBitmap
 } from "./lib/formats.js";
 
 let worker = null;
@@ -701,6 +701,11 @@ export function classify(file) {
   // Magnetics and other grids. Name carries the product more reliably than the
   // extension does — a .tif could be anything.
   if (/\.(tif|tiff|grd|ers|gxf)$/.test(n)) return { kind: "geophysics", part: "grids" };
+  // An ESRI ASCII grid that is not terrain is a geophysics product — it is what
+  // Oasis montaj exports in one click, and the advice this console gives for a
+  // Geosoft .grd literally says "or as an ASCII grid", which until now it could
+  // not then read.
+  if (/\.asc$/.test(n)) return { kind: "geophysics", part: "grids" };
   // The world file travels with its image and belongs in the same slot.
   if (/\.(tfw|pgw|jgw|wld)$/.test(n)) return { kind: "geophysics", part: "grids" };
   if (/(mag|tmi|rtp|1vd|vd1|analytic|geophys)/.test(n) && /\.(png|jpg|jpeg)$/.test(n)) {
@@ -1022,7 +1027,7 @@ async function parseAux(kind, chosen) {
       const stem = f.name.toLowerCase().replace(/\.[^.]+$/, "");
       const isTiff = /\.(tiff?)$/.test(f.name.toLowerCase());
       let wfFile = worlds[stem];
-      let ext = null, bmp = null;
+      let ext = null, bmp = null, vLo, vHi, units = null;
 
       // A GeoTIFF's own tags win over a world file sitting next to it. If both
       // disagree the file is the authority — the .tfw is a copy somebody made,
@@ -1030,6 +1035,24 @@ async function parseAux(kind, chosen) {
       if (isTiff) {
         const geo = await readGeoTiff(f).catch((e) => { throw e; });
         if (geo) { ext = geo.extent; bmp = geo.bitmap; wfFile = null; }
+      }
+
+      // An ASCII grid is VALUES, not a picture, so the picture is made here and
+      // the range travels with it. That is the difference between a legend that
+      // says "low to high" and one that says 54,300 to 54,900 nT.
+      if (/\.asc$/.test(f.name.toLowerCase())) {
+        const g = readAsciiGrid(await textOf(f), f.name);
+        const pic = await bandToBitmap(g.band, g.width, g.height, null);
+        bmp = pic.bitmap; vLo = pic.lo; vHi = pic.hi; units = "grid units";
+        if (!pic.samples) {
+          throw new Error(`${f.name} has no readings in it — every cell is NODATA.`);
+        }
+        // A .asc states its own corner and cell size, so it places itself and
+        // needs no world file. It carries no projection, so it is read in the
+        // project's grid, same as a terrain .asc.
+        ext = { west: g.extent.west, south: g.extent.south,
+                east: g.extent.east, north: g.extent.north };
+        wfFile = null;
       }
 
       if (!ext) {
@@ -1048,7 +1071,9 @@ async function parseAux(kind, chosen) {
         ext = worldExtent(wf, bmp.width, bmp.height);
       }
       const prod = magProduct(f.name);
-      products.push({ ...prod, file: f.name, width: bmp.width, height: bmp.height, extent: ext });
+      products.push({ ...prod, file: f.name, width: bmp.width, height: bmp.height,
+                      extent: ext, units: units || undefined,
+                      value_low: vLo, value_high: vHi });
       bmp.close?.();
     }
     return {

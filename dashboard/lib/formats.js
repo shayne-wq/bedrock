@@ -897,6 +897,48 @@ export async function readGeoTiff(file) {
 }
 
 /**
+ * A single band of values as a picture, plus the range it was stretched over.
+ *
+ * Shared by the GeoTIFF reader and the ASCII-grid reader so both stretch the
+ * same way. The 2nd–98th percentile rather than min/max, because one hot cell
+ * in a magnetics grid flattens the whole survey to black — a real magnetic
+ * anomaly is a small number of cells a long way from the mean, which is
+ * precisely the thing a min/max stretch destroys.
+ *
+ * `lo` and `hi` come back with the picture. They are in the grid's own units,
+ * so a legend can say 54,300–54,900 nT instead of "dark to light", and the
+ * fact that the colours are clipped at the 2nd and 98th percentile can be
+ * stated rather than hidden.
+ */
+export async function bandToBitmap(band, w, h, nodata = null) {
+  const cv = new OffscreenCanvas(w, h);
+  const ctx = cv.getContext("2d");
+  const out = ctx.createImageData(w, h);
+  const finite = [];
+  for (let i = 0; i < band.length; i++) {
+    const v = band[i];
+    if (Number.isFinite(v) && !(nodata !== null && v === nodata)) finite.push(v);
+  }
+  finite.sort((a, b) => a - b);
+  const lo = finite[Math.floor(finite.length * 0.02)] ?? 0;
+  const hi = finite[Math.floor(finite.length * 0.98)] ?? 1;
+  const span = hi - lo || 1;
+  for (let i = 0; i < w * h; i++) {
+    const v = band[i];
+    const bad = !Number.isFinite(v) || (nodata !== null && v === nodata);
+    const t = bad ? 0 : Math.max(0, Math.min(1, (v - lo) / span));
+    const g = Math.round(t * 255);
+    out.data[i * 4] = g; out.data[i * 4 + 1] = g; out.data[i * 4 + 2] = g;
+    // Transparent where there is no reading, so a survey's ragged edge stays
+    // ragged instead of being squared off in black over the ground beside it.
+    out.data[i * 4 + 3] = bad ? 0 : 255;
+  }
+  ctx.putImageData(out, 0, 0);
+  return { bitmap: await createImageBitmap(cv), lo, hi,
+           samples: finite.length, blank: w * h - finite.length };
+}
+
+/**
  * Open Mining Format (.omf) — the one interchange format worth reading.
  *
  * Every other binary in BINARY_FORMATS is refused, and after taking a Vulcan
