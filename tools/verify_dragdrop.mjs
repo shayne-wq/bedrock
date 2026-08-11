@@ -58,6 +58,8 @@ const cases = [
   ["soil_samples.csv", "geochem"], ["stream_sediment.csv", "geochem"],
   // boundaries
   ["claims.geojson", "site"], ["tenure.kml", "site"], ["property.zip", "site"],
+  // OMF is a whole project; it lands in surfaces and reports the rest by name
+  ["tom_deposit.omf", "surfaces"],
 ];
 for (const [name, want] of cases) {
   const got = to(name);
@@ -90,7 +92,6 @@ const vendors = [
   ["geology.msh", /leapfrog/i, /obj|dxf|csv/i],
   ["block.dm", /datamine/i, /csv/i],
   ["model.mdl", /surpac/i, /csv|dxf/i],
-  ["survey.omf", /open mining format/i, /csv|obj|dxf/i],
   ["mag.grd", /geosoft/i, /geotiff|tif/i],
   ["claims.shp", /shapefile/i, /geojson|kml/i],
   ["cloud.las", /point cloud|lidar/i, /geotiff|obj|dxf|dem/i],
@@ -105,7 +106,8 @@ for (const [name, labelRe, adviceRe] of vendors) {
 
 console.log("\n— the formats a real export actually produces are readable");
 for (const name of ["blocks.csv", "vein.obj", "vein.ts", "pit.dxf",
-                    "claims.geojson", "claims.kml", "dem.tif", "dem.asc"]) {
+                    "claims.geojson", "claims.kml", "dem.tif", "dem.asc",
+                    "project.omf"]) {
   const s = sniff(F(name));
   ok(`${name.padEnd(16)} is accepted`, s.readable !== false, JSON.stringify(s));
 }

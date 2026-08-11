@@ -531,6 +531,56 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   global on all three paths, so nothing re-introduces a window. Re-run green:
   holeview 32, capture 28, ui 37, labels 11, transition 11, pit clean.
 
+- **2026-08-10** — **OMF is read now. Leapfrog and MinePlan, answered properly.**
+
+  Shayne asked what happens with the two packages he named. The honest audit:
+
+  **MinePlan was never theoretical — it is the demo.** `Siwash_North_BM_Nov_2021.csv`
+  is a real MineSight export and `tools/extract_blocks.py` opens by saying so:
+  495,074 rows scanned, 168,013 blocks, 46 vein domains. The block-model path
+  has been fed a MinePlan export since the beginning.
+
+  **Leapfrog worked via CSV/OBJ/DXF/GOCAD, and that was underselling it.**
+  Leapfrog exports **OMF** directly, and OMF was sitting in the refused list
+  with the note "support is planned and is the right long-term answer". It is
+  implemented now — `readOMF` in `dashboard/lib/formats.js`, 18 assertions in
+  `tools/verify_omf.mjs` against a fixture written from the published v0.9 spec
+  rather than by the reader itself.
+
+  **Why OMF and not the rest**, which is the whole argument and is now in the
+  file header: the line is not binary-versus-text, it is **whether a file says
+  what its own numbers mean**. Taking a Vulcan `.bmf` apart settled it — 576 MB,
+  not one variable name, so any reader would have had to guess which column was
+  zinc. OMF names every element and every attribute, is an open GMG-governed
+  spec with a public reference implementation, and carries surfaces, block
+  models, points and drillhole traces in ONE file. Nothing is inferred.
+
+  Both container layouts are handled: v1 (the 60-byte header, binary blob, then
+  a JSON dictionary at the end — what Leapfrog writes) and v2 (a ZIP with
+  project.json). Arrays are zlib blobs addressed by `{start,length,dtype}`;
+  `DecompressionStream("deflate")` reads them in the browser and in Node, so the
+  test exercises the shipped path.
+
+  Two traps the tests pin down. **Geometry origins**: OMF stores vertices
+  RELATIVE to an origin, and ignoring it puts a vein at the map origin off West
+  Africa rather than on the property. **Named attributes**: a surface's "Au g/t"
+  and a model's "Zn %" arrive as names, so the deck labels them from the file
+  instead of from a column guess.
+
+  Wired into the console: `.omf` sniffs readable, drops into the surfaces slot,
+  and loads every Surface element under **the name its author gave it** — not
+  the filename, which would put "export.omf" on nine different veins. Anything
+  else in the file (a block model, points, linesets) is reported by name in
+  stats and provenance as *not loaded*, because silently dropping a customer's
+  resource model is how somebody concludes the upload worked and their deck is
+  missing.
+
+  **Not done, and it is the obvious next step:** loading an OMF VolumeElement as
+  the block model. The reader already decodes the grid — origin, axes and
+  per-block width tensors, so OMF states a sub-blocked lattice natively rather
+  than needing the CSV path's detector — but the ingest wizard is CSV-only
+  through its worker, and routing a volume into it is a separate piece of work.
+
 - **2026-08-10** — **Drag-and-drop ingest audited against what the four packages
   actually export. Three routing bugs, all silent.**
 

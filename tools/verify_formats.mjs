@@ -22,10 +22,10 @@ const threw = (fn, re) => {
 };
 
 console.log("== sniff: what we can and cannot read");
-ok("OMF is named, not silently rejected", (() => {
-  const s = F.sniff({ name: "project.omf" });
-  return !s.readable && /Open Mining Format/.test(s.label) && /CSV/.test(s.advice);
-})());
+// OMF used to be in the refused list, told to export CSV instead. It is read
+// now — it is an open, self-describing spec, which is the line: see readOMF and
+// tools/verify_omf.mjs. The rest of the binaries below stay refused.
+ok("OMF is read, not refused", F.sniff({ name: "project.omf" }).format === "omf");
 ok("Datamine .dm is named", !F.sniff({ name: "model.dm" }).readable);
 ok("Vulcan .bmf is named", /Vulcan/.test(F.sniff({ name: "bm.bmf" }).label));
 ok("a lone .shp explains the missing siblings",

@@ -16,7 +16,7 @@ import {
   sniff, readGeoJSON, readKML, readOBJ, readGOCAD, readDXF,
   readCollars, readSurveys, readAssays, desurvey,
   readWorldFile, worldExtent, magProduct, readGeochem, readGeoTiff, demToMesh,
-  readAsciiGrid
+  readAsciiGrid, readOMF
 } from "./lib/formats.js";
 
 let worker = null;
@@ -691,6 +691,11 @@ export function classify(file) {
   // unmistakably terrain.
   if (/\.(las|laz|e57)$/.test(n)) return { kind: "topography", part: "surface" };
 
+  // An OMF is a whole project, not one dataset — it can hold surfaces, a block
+  // model, points and drillhole traces at once. It routes to surfaces because
+  // that is what Leapfrog users export most, and the surfaces branch reports
+  // by name whatever else was in the file rather than dropping it quietly.
+  if (/\.omf$/.test(n)) return { kind: "surfaces", part: "mesh" };
   if (/\.(obj|dxf|ts)$/.test(n)) return { kind: "surfaces", part: "mesh" };
 
   // Magnetics and other grids. Name carries the product more reliably than the
@@ -896,21 +901,48 @@ async function parseAux(kind, chosen) {
 
   if (kind === "surfaces") {
     const meshes = [];
+    const alsoInFile = [];
     for (const c of chosen) {
       const fmt = readable(c.file);
+      if (fmt === "omf") {
+        // One file, the whole project. Every surface in it is loaded and keeps
+        // the name its author gave it — not the filename, which for OMF would
+        // put "export.omf" on nine different veins.
+        const p = await readOMF(c.file);
+        const surfaces = p.elements.filter((e) => e.kind === "Surface" && e.verts);
+        if (!surfaces.length) {
+          throw new Error(`${c.file.name} is OMF but holds no surfaces. It ` +
+            `contains: ${p.elements.map((e) => `${e.name} (${e.kind})`).join(", ") ||
+            "nothing this reads"}.`);
+        }
+        surfaces.forEach((s) => meshes.push({ name: s.name, verts: s.verts, faces: s.faces }));
+        // What was in the file and did NOT come in. A block model inside an OMF
+        // is real data the customer handed over, and silently dropping it is
+        // how somebody concludes the upload worked and their resource is
+        // missing from the deck.
+        p.elements.filter((e) => e.kind !== "Surface")
+          .forEach((e) => alsoInFile.push(`${e.name} (${e.kind})`));
+        continue;
+      }
       const text = await textOf(c.file);
       const m = fmt === "obj" ? readOBJ(text, c.file.name)
               : fmt === "gocad" ? readGOCAD(text, c.file.name)
               : fmt === "dxf" ? readDXF(text, c.file.name)
-              : (() => { throw new Error(`${c.file.name}: surfaces must be OBJ, GOCAD .ts or DXF.`); })();
+              : (() => { throw new Error(`${c.file.name}: surfaces must be OBJ, GOCAD .ts, DXF or OMF.`); })();
       meshes.push({ name: c.file.name, verts: m.verts, faces: m.faces });
     }
     const nv = meshes.reduce((a, m) => a + m.verts.length, 0);
     const nf = meshes.reduce((a, m) => a + m.faces.length, 0);
     return {
       payload: { format: "orebody-surfaces/1", meshes },
-      stats: { meshes: meshes.length, vertices: nv, triangles: nf },
-      provenance: { parsed: "surfaces", vertices: nv, triangles: nf },
+      stats: { meshes: meshes.length, vertices: nv, triangles: nf,
+               names: meshes.map((m) => m.name).slice(0, 40),
+               not_loaded: alsoInFile.length ? alsoInFile : undefined },
+      provenance: { parsed: "surfaces", vertices: nv, triangles: nf,
+                    not_loaded: alsoInFile.length
+                      ? `${alsoInFile.length} other element(s) in the OMF were not ` +
+                        `loaded here: ${alsoInFile.join(", ")}`
+                      : undefined },
     };
   }
 

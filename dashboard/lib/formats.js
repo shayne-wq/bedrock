@@ -17,15 +17,19 @@
 //   parser can see it.
 //
 // Deliberately NOT attempted: Datamine .dm, Vulcan .bmf, Surpac .mdl, Micromine
-// .dat, Deswik .dwbm and OMF. Those are binary, several are undocumented, and a
-// parser written against a guess would mis-read silently. They are detected and
-// named so the user is told what to export instead — see sniff().
+// .dat, Deswik .dwbm. Those are binary, several are undocumented, and a parser
+// written against a guess would mis-read silently. They are detected and named
+// so the user is told what to export instead — see sniff().
+//
+// OMF is the exception, and it is read: see readOMF. The line is not "binary
+// versus text", it is whether the file says what its own numbers mean. A Vulcan
+// .bmf was taken apart to check — 576 MB of it, not one variable name — so any
+// reader would have had to guess which column was zinc. OMF names every element
+// and every attribute, is an open GMG-governed spec, and is what Leapfrog and
+// Micromine already export.
 
 // ------------------------------------------------------------- sniffing ----
 const BINARY_FORMATS = [
-  { id: "omf", ext: [".omf"], magic: ["\x84\x83\x82\x81"], label: "Open Mining Format",
-    advice: "OMF support is planned and is the right long-term answer. For now, " +
-            "export the block model as CSV and surfaces as OBJ or DXF." },
   // Geosoft's binary grid. No viable open decoder exists, and reverse
   // engineering a proprietary geophysics format to save one export step is not
   // a good trade. Named, with the two things Oasis montaj exports in one click.
@@ -122,6 +126,9 @@ export function sniff(file) {
   // ESRI ASCII grid — the DEM every one of these packages exports without
   // argument, and the only raster here that needs no library to read.
   if (/\.asc$/.test(n)) return { readable: true, format: "ascgrid" };
+  // Open Mining Format. The one binary here that is read rather than refused,
+  // because it is an open spec and it is self-describing — see readOMF.
+  if (/\.omf$/.test(n)) return { readable: true, format: "omf" };
   return { readable: false, format: "unknown", label: ext || "no extension",
            advice: "Supported: CSV for models, drilling and geochemistry; " +
                    "GeoJSON or KML for claims; OBJ, GOCAD .ts or DXF for " +
@@ -765,6 +772,188 @@ export async function readGeoTiff(file) {
   // picture; a DEM wants the numbers, and the same file can be either.
   return { extent, bitmap, width: w, height: h, epsg, bands: rasters.length,
            band: rasters[0], nodata };
+}
+
+/**
+ * Open Mining Format (.omf) — the one interchange format worth reading.
+ *
+ * Every other binary in BINARY_FORMATS is refused, and after taking a Vulcan
+ * .bmf apart I am more confident that is right: 576 MB of it contained not one
+ * variable name, so a reader would have had to GUESS which column was zinc.
+ * OMF is the opposite of that in every way that matters. It is an open spec
+ * governed by the Global Mining Guidelines Group, its reference implementation
+ * is public, and — the part that decides it — **it is self-describing**. Every
+ * element and every attribute carries its own name, so nothing is inferred.
+ *
+ * It is also what these packages export. Leapfrog writes OMF v0.9 directly;
+ * Micromine imports and exports it; it was built to carry wireframes, block
+ * models, points and drillhole traces in ONE file. A geologist exporting OMF
+ * hands over the whole project instead of six files named by hand.
+ *
+ * Two container layouts, both handled:
+ *   v1 (v0.9, what Leapfrog writes) — 60-byte header, binary blob, then a
+ *      UTF-8 JSON dictionary at the end keyed by UID. Arrays are zlib blobs
+ *      addressed by {start, length, dtype} into the blob.
+ *   v2 — a ZIP holding project.json plus one file per array.
+ *
+ * Returns the project decoded but NOT interpreted: elements with their real
+ * names, geometry, and named attributes. Deciding that a surface is a vein and
+ * a volume is a resource is the caller's job, not this reader's.
+ */
+const OMF_MAGIC = [0x84, 0x83, 0x82, 0x81];
+
+async function inflate(bytes) {
+  // zlib.compress output — the wrapped format, which is DecompressionStream's
+  // "deflate". "deflate-raw" would fail on the two-byte header.
+  const ds = new DecompressionStream("deflate");
+  const stream = new Blob([bytes]).stream().pipeThrough(ds);
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+/** One {start,length,dtype} index into the binary blob, as numbers. */
+async function omfArray(index, blob) {
+  if (!index || typeof index.start !== "number") return null;
+  const raw = await inflate(blob.subarray(index.start, index.start + index.length));
+  // The spec permits exactly two: little-endian float64 and int64. Anything
+  // else is a file this reader does not understand, and saying so beats
+  // returning numbers that are not the numbers in the file.
+  if (index.dtype === "<f8") return new Float64Array(raw.buffer, raw.byteOffset, raw.byteLength / 8);
+  if (index.dtype === "<i8") {
+    // int64 -> Number. Counts and indices in a mining model are far inside
+    // 2^53; anything that is not would be a corrupt file rather than a big one.
+    const big = new BigInt64Array(raw.buffer, raw.byteOffset, raw.byteLength / 8);
+    const out = new Float64Array(big.length);
+    for (let i = 0; i < big.length; i++) out[i] = Number(big[i]);
+    return out;
+  }
+  throw new Error(`OMF array has dtype ${index.dtype}, which the spec does not allow.`);
+}
+
+export async function readOMF(file) {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  let json, blob = buf, resolveArr;
+
+  if (OMF_MAGIC.every((b, i) => buf[i] === b)) {
+    const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    const version = new TextDecoder().decode(buf.subarray(4, 36)).replace(/\0+$/, "");
+    const jsonStart = Number(dv.getBigUint64(52, true));
+    if (!(jsonStart > 60 && jsonStart <= buf.length)) {
+      throw new Error(`${file.name} is an OMF file with a JSON offset outside ` +
+        "the file — it is truncated or was not written completely.");
+    }
+    json = JSON.parse(new TextDecoder().decode(buf.subarray(jsonStart)));
+    json.__version = version;
+    resolveArr = (idx) => omfArray(idx, blob);
+  } else if (buf[0] === 0x50 && buf[1] === 0x4b) {
+    // v2: a ZIP. project.json plus one member per array.
+    const files = await unzipMembers(buf);
+    const pj = files.get("project.json");
+    if (!pj) throw new Error(`${file.name} is a ZIP but has no project.json, so it is not OMF v2.`);
+    json = JSON.parse(new TextDecoder().decode(pj));
+    resolveArr = async (idx) => {
+      const key = typeof idx === "string" ? idx : idx && idx.array;
+      const raw = files.get(String(key));
+      if (!raw) return null;
+      return new Float64Array(raw.buffer, raw.byteOffset, raw.byteLength / 8);
+    };
+  } else {
+    throw new Error(`${file.name} does not start with the OMF magic number or a ZIP header.`);
+  }
+
+  const at = (uid) => (uid && json[uid]) || null;
+  const projUid = Object.keys(json).find((k) => (json[k] || {}).__class__ === "Project");
+  const proj = projUid ? json[projUid] : null;
+  const elementUids = (proj && proj.elements) || Object.keys(json)
+    .filter((k) => /Element$/.test((json[k] || {}).__class__ || ""));
+
+  const elements = [];
+  for (const uid of elementUids) {
+    const el = at(uid);
+    if (!el) continue;
+    const geom = at(el.geometry) || {};
+    const kind = String(el.__class__ || "").replace(/Element$/, "");
+    const out = { name: el.name || "(unnamed)", description: el.description || "",
+                  kind, geometryClass: geom.__class__ || "", data: [] };
+
+    if (/Surface/.test(kind) && geom.vertices) {
+      const v = await resolveArr(geom.vertices), t = await resolveArr(geom.triangles);
+      const o = geom.origin || [0, 0, 0];
+      out.verts = []; out.faces = [];
+      for (let i = 0; i + 2 < v.length; i += 3) {
+        out.verts.push([v[i] + o[0], v[i + 1] + o[1], v[i + 2] + o[2]]);
+      }
+      for (let i = 0; t && i + 2 < t.length; i += 3) out.faces.push([t[i], t[i + 1], t[i + 2]]);
+    } else if (/PointSet|LineSet/.test(kind) && geom.vertices) {
+      const v = await resolveArr(geom.vertices);
+      const o = geom.origin || [0, 0, 0];
+      out.verts = [];
+      for (let i = 0; i + 2 < v.length; i += 3) {
+        out.verts.push([v[i] + o[0], v[i + 1] + o[1], v[i + 2] + o[2]]);
+      }
+      if (geom.segments) {
+        const s = await resolveArr(geom.segments);
+        out.segments = [];
+        for (let i = 0; s && i + 1 < s.length; i += 2) out.segments.push([s[i], s[i + 1]]);
+      }
+    } else if (/Volume/.test(kind)) {
+      // A regular block model: three tensors of block widths, an origin and
+      // three axes. Widths per block, not one size — OMF carries a variable
+      // lattice natively, which is exactly the sub-blocked case this product
+      // otherwise has to detect and refuse.
+      out.grid = {
+        origin: geom.origin || [0, 0, 0],
+        axis_u: geom.axis_u || [1, 0, 0], axis_v: geom.axis_v || [0, 1, 0],
+        axis_w: geom.axis_w || [0, 0, 1],
+        tensor_u: Array.from(await resolveArr(geom.tensor_u) || []),
+        tensor_v: Array.from(await resolveArr(geom.tensor_v) || []),
+        tensor_w: Array.from(await resolveArr(geom.tensor_w) || []),
+      };
+      out.blocks = out.grid.tensor_u.length * out.grid.tensor_v.length *
+                   out.grid.tensor_w.length;
+    }
+
+    // The attributes, by name. This is the thing .bmf could not give.
+    for (const duid of el.data || []) {
+      const d = at(duid);
+      if (!d) continue;
+      const arrRef = d.array;
+      const arrObj = typeof arrRef === "string" ? at(arrRef) : arrRef;
+      const idx = arrObj && (arrObj.array || arrObj);
+      let values = null;
+      try { values = await resolveArr(idx); } catch { values = null; }
+      out.data.push({ name: d.name || "(unnamed)", location: d.location || "",
+                      description: d.description || "",
+                      values: values ? Array.from(values) : null });
+    }
+    elements.push(out);
+  }
+  return { version: json.__version || json.version || "unknown",
+           name: (proj && proj.name) || file.name, elements };
+}
+
+/** Minimal ZIP member reader — enough for OMF v2, which is stored/deflated. */
+async function unzipMembers(buf) {
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const out = new Map();
+  // Walk local file headers rather than the central directory: OMF v2 writes
+  // members in order and this avoids parsing two structures to read one file.
+  let p = 0;
+  while (p + 30 <= buf.length && dv.getUint32(p, true) === 0x04034b50) {
+    const method = dv.getUint16(p + 8, true);
+    let csize = dv.getUint32(p + 18, true);
+    const nlen = dv.getUint16(p + 26, true), elen = dv.getUint16(p + 28, true);
+    const name = new TextDecoder().decode(buf.subarray(p + 30, p + 30 + nlen));
+    const dataAt = p + 30 + nlen + elen;
+    if (!csize) break;                       // streamed entry; not written here
+    const raw = buf.subarray(dataAt, dataAt + csize);
+    out.set(name, method === 8
+      ? new Uint8Array(await new Response(
+          new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"))
+        ).arrayBuffer())
+      : raw);
+    p = dataAt + csize;
+  }
+  return out;
 }
 
 /**
