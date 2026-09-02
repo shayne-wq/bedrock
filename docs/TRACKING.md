@@ -380,6 +380,650 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
 
 ## Log
 
+- **2026-09-02 (slide editor)** — **Cameras and captions are now edited in the
+  deck rather than in the source.** An **Edit** button opens a per-slide panel:
+  fly the view and Lock it, and edit the eyebrow, title and body inline. Saves
+  to localStorage while authoring; **Copy changes** emits `CAM_FIXED` /
+  `TEXT_FIXED` to paste into the file so edits ship with the deck.
+
+  **The design decision worth keeping: a locked camera stores the FINAL position
+  and orientation and bypasses `frameFor()` and the aim shift completely.** The
+  alternative — storing a target and re-deriving the camera — means what the
+  author framed and what the deck flies to are produced by different code, and
+  the last several rounds were exactly that disagreement. Locking the end state
+  removes the class of bug rather than working around it.
+
+  This should replace hand-tuned chapter cameras across the product. Twelve
+  rounds of nudge → measure → deploy is a workflow problem, not a taste problem,
+  and the reviewer identified it as such.
+
+  Caught by the round-trip test: **Cesium reports a level camera's roll as
+  ~360°**, and flying to a 360° roll spins the camera through a full turn on
+  arrival. Normalised to (-180, 180].
+
+  Also this pass: slide 1's district blocks nudged right and down on request
+  (+27 px, +35 px measured).
+
+- **2026-09-02 (framing)** — **A camera bug that was non-deterministic by
+  navigation order, and three corrections made against a lying instrument.**
+
+  **The bug.** `aimShift()` read `scene.camera.pitch` — the CURRENT camera —
+  but it runs BEFORE the flight, so it measured the chapter being left rather
+  than the one being entered. Arriving at slide 12 (-48°) from slide 11 (-15°)
+  scaled the vertical shift by sin(15°) instead of sin(48°): nearly three times
+  too far, and the claim block left the top of the frame. It framed correctly
+  for whoever jumped straight to a chapter and wrongly for anyone paging
+  through — which is why every test here passed and the reviewer saw it
+  immediately. **Any value derived from camera state inside a
+  pre-flight frame computation must come from the DESTINATION.**
+
+  **The instrument.** Three separate camera "fixes" this session were made to
+  satisfy a check that was wrong, and all three have now been reverted or
+  re-derived:
+  - slide 12's 43 px nudge — measured under the wrong pitch;
+  - slides 6 and 11 widened — the check modelled the UI as ONE rectangle with a
+    full-width bottom limit, but the caption only covers the right side, so
+    neither subject was ever behind anything.
+
+  The harness went through three generations before it could be trusted:
+  1. bbox against a guessed rectangle — wrong region;
+  2. added `worldToWindowCoordinates` without checking the point is IN FRONT of
+     the camera — Cesium happily projects points behind it, producing
+     `y = 4280` on a 950 px screen and "off by 1,967 px" for a slide that reads
+     fine;
+  3. reads the **actual DOM rectangles** of brand, rail, caption, layers,
+     legends and watermark, and asks how many subject points are behind
+     furniture and which furniture.
+
+  Only the third agrees with what a person sees. **Result: 0 of N points behind
+  UI on all twelve chapters**, and slide 12 at +1 px off centre with no manual
+  correction at all.
+
+  Left alone deliberately: slide 10 puts two collars off-screen. It is a
+  1,550 m close-up at -13° where the camera sits level with the ground, so
+  distant collars leave frame by ordinary perspective. Zooming out to turn a
+  number green would cost the shot — the harness suggests work, it does not
+  authorise it.
+
+- **2026-09-02** — **Every label in the deck now goes through the screen-space
+  solve, and three separate reviewer reports turned out to be one bug.**
+  "Slide 2 title overlaps the stats", "slide 8 callout titles overlap each
+  other" and slide 12's zone stats landing on the other zone's name were all
+  fixed pixel offsets — the same mistake the district map made in degrees. An
+  offset that separates two labels at one camera does nothing at another, and
+  which pairs collide depends on where the camera lands.
+
+  Zone names, zone stats and grade callouts now share the district's solver:
+  measure, walk by priority, keep the declared offset if its rectangle is free,
+  otherwise search outward in pixels. Solved once on arrival and left alone.
+  Priority is zone name → zone stats → callout by gram-metre, so a genuinely
+  full frame drops the least important label rather than the last one drawn.
+  **Verified 0 overlaps across all twelve chapters**, by projecting every
+  visible label and comparing rectangles.
+
+  Bugs found on the way, all by measuring rather than looking:
+  - **A `TOP`-anchored Cesium label hangs BELOW its anchor**, so a negative
+    `pixelOffset` drags it up into whatever sits above. Slide 2's stats chip was
+    10 px inside the title. The zone sub-label had the same sign error and only
+    escaped because the name above happened to be lifted further — clearance
+    that depended on two unrelated numbers keeping their order.
+  - **The solver read `horizontalOrigin` on labels that never declared one.**
+    Cesium leaves undeclared properties undefined rather than defaulted, so it
+    threw mid-loop and switched off every zone label it had not yet reached.
+    Optional graphics properties need a guarded read, always.
+  - **`LBL` was declared after the layers that push into it** — a TDZ error that
+    killed the page outright.
+  - **The overlap detector counted labels on hidden data sources** and reported
+    ten collisions on a slide showing two labels. A checker that does not model
+    visibility invents work.
+
+  Also: **the aim shift centres the AIM POINT, which is not the subject's
+  centre.** At -48° the far half of the frame compresses, so slide 12's claim
+  block sat 43 px below centre despite the shift. Corrected with 1.4 km of aim
+  point; 7 px off now. Worth remembering wherever a wide oblique is framed.
+
+- **2026-09-01 (twenty-first pass, overnight)** — **The no-WebGL fallback is now
+  a slide deck.** It carried every figure and none of the maps, which is most of
+  what a deck is for. Each chapter is pre-rendered by `williams/capture.mjs` on
+  a machine that HAS a graphics context, and the fallback shows the still above
+  its caption and figures. Twelve stills, 1.48 MB as JPEG — PNG was 11 MB, and
+  PNG is the wrong container for a satellite photograph. Lazy-loaded, because
+  twelve images decoded at once on the device that could not afford a graphics
+  context is the same mistake in another currency.
+
+  **Standing cost to know about:** the stills are a build artifact of the
+  cameras and layers. Change a chapter and re-run the capture, or the fallback
+  will quietly describe an older deck than the text beside it does.
+
+  Two bugs found by testing rather than by reading:
+  - **`url.pathname` does not percent-decode.** The capture wrote to a literal
+    `Claude%20` directory beside the real one and reported success. Only
+    `fileURLToPath` is correct, and any path on this machine hits it because the
+    project directory has a space in its name.
+  - **`setStat` is the Elk viewer's helper; this file has `stat`.** Copied
+    across with the retry-delay code and placed OUTSIDE the try, so the
+    ReferenceError escaped the entire ladder: no context, no fallback, no
+    message, page dead at "loading terrain…". A guard around the attempt does
+    not help if the thing that throws sits above it.
+
+- **2026-09-01 (twentieth pass, overnight)** — **Stopped testing through the
+  reviewer's phone and got Safari's engine locally.** Playwright's WebKit was in
+  the cache but mismatched with playwright-core 1.62; the matching build
+  (webkit-2336, WebKit 26.5) installs in 77 MB. **The deck boots clean in WebKit
+  at an iPhone viewport, desktop and mobile, with no page errors.** So it is not
+  the engine and not the JavaScript — it is real iOS hardware limits that
+  desktop WebKit does not have. Worth having regardless: every Safari-specific
+  change can now be checked here rather than by asking somebody to reload.
+
+  Ruled out by inspection at the same time: no regex lookbehind, no `Array.at`,
+  no `Object.hasOwn`, no `structuredClone`, no logical-assignment operators —
+  nothing needing a Safari newer than 15.
+
+  **Corrected a claim made to the reviewer:** the payload was described as 12 MB
+  of JSON. It is 816 KB. The 12 MB is the geophysics rasters on disk, loaded
+  lazily one at a time. The reordering done on that premise is still right, but
+  the premise was wrong and measuring first would have shown it.
+
+  Shipped anyway, because each is defensible on its own:
+  - **Phone data build.** Geochem drops samples below the median (already never
+    drawn) and every element except gold, coordinates to 1 m. Grids at 900 px
+    rather than 2,400 — ~2 MB of texture instead of ~15 MB. Prefetch off on
+    mobile, so a second grid is never allocated while one is resident. Measured
+    end to end: desktop 3.87 MB, phone 0.98 MB, nothing visible lost.
+  - **Lean Cesium on small screens:** `scene3DOnly`, no order-independent
+    translucency (several full-screen framebuffers, the largest single item),
+    `msaaSamples: 1`, no skybox, sun or moon. Desktop keeps all of it.
+  - **Retries now wait.** Three attempts inside one millisecond all meet the
+    same moment; 600 ms and 900 ms pauses give transient pressure a chance to
+    pass.
+  - **`webglcontextcreationerror` is captured at document level.** The driver's
+    own `statusMessage` is the one piece of evidence this has never had, because
+    Cesium creates the canvas itself and swallows the event. It now travels into
+    the fallback message and into `diag.html`.
+
+  `williams/diag.html` runs four escalating tests — raw WebGL2, raw WebGL1, a
+  bare Cesium globe with no data, then terrain plus imagery — with a copy
+  button. **Whether the bare globe starts is the question that splits "our deck
+  is too heavy" from "Cesium will not run on this device", and nothing shipped
+  so far has answered it.**
+
+- **2026-09-01 (nineteenth pass)** — **Text mode confirmed working on the real
+  iPhone.** The last round of "still broken" was iOS Safari serving a cached
+  copy of the page; `?v=N` proved it in one load. Worth remembering when
+  iterating on a deployed deck with someone on a phone: **iOS has no
+  hard-reload, so a cache-busting query param belongs in the first reply, not
+  the fifth.** Four fixes were shipped against a report that a cache-bust would
+  have disambiguated immediately — the code fixes were all real, but two of the
+  round trips were not needed.
+
+  State: Williams renders the full 3D deck on desktop and the text deck on that
+  phone. The device still will not give Cesium a live context; the fallback is
+  graceful degradation, not a cure.
+
+- **2026-09-01 (eighteenth pass)** — **The iPhone question, answered, and the
+  answer was not WebGL.** The device probe came back `webgl2: yes, webgl: yes`
+  and the Elk demo failed on the same phone, which settles the item open since
+  2026-08-08: this is not Williams and it is not a browser without WebGL.
+  - **`null is not an object (evaluating 'u[0]')` is Cesium reading
+    `getParameter(MAX_VIEWPORT_DIMS)[0]`.** Safari returns a context object it
+    has already given up on: `getContext` succeeds and every parameter query
+    then returns null. **"Does this browser have WebGL" is the wrong question** —
+    it is what sent two passes of fixes down the wrong road — and the probe now
+    asks what Cesium asks: not whether a context exists, but whether it answers.
+  - **The WebGL1 rung had never run.** Cesium's option is `requestWebgl1`;
+    `requestWebgl2:false` is not read, so rung three was a duplicate of rung two.
+    Caught by `?ctxfail=2` reporting `webgl2:true` where it should say false —
+    the switch earning its keep a second time.
+  - **Williams now has the text fallback Elk already had**, and it is not an
+    apology screen: all twelve chapters, their figures and the full Sources
+    audit trail, on any device that cannot render a globe. This was cheap only
+    because the chapter data was already computed from the files rather than
+    read off the scene — hoisting it above the renderer was a move, not a
+    rewrite, and both modes now share one `sourcesHTML()`.
+
+  **Generalise:** every deck should compute its figures before it builds its
+  scene. The renderer is the part that fails on somebody's hardware; the
+  numbers are the part that has to survive it.
+
+- **2026-09-01 (seventeenth pass)** — **The iOS "fix" was reporting its own
+  bug.** The retry ladder shipped last pass produced, on a real iPhone:
+  `null is not an object (evaluating 'u[0]')` — which is not a graphics error at
+  all. Two causes, both in the ladder rather than in WebGL:
+  - **One ImageryLayer was shared across all three attempts.** A Viewer that
+    fails to construct still destroys what it was handed, so attempts two and
+    three were given a destroyed layer. Each attempt now builds its own.
+  - **The container was reused.** `innerHTML = ''` leaves Cesium's own state
+    behind and the abandoned canvas still holds the context the next attempt is
+    asking for. The node is now replaced outright.
+  - The message reported the LAST error; it now reports every attempt, so a
+    failure on hardware we do not have arrives as diagnostics rather than as one
+    misleading line.
+
+  **The lesson is the testing, not the code.** A fallback path that only runs on
+  hardware we cannot reproduce will ship broken, because nothing exercises it.
+  `?ctxfail=N` now forces the first N attempts to throw, and the ladder is
+  verified at every rung: boots on 1, on 2, on 3, and fails with the message at
+  4. **Any retry ladder in this product needs that switch** — the shared-layer
+  bug survived exactly because rung one always succeeded here.
+
+  Still unknown: what the iPhone's ACTUAL first failure was. The old message
+  hid it behind the secondary error. The next report will say.
+
+- **2026-09-01 (sixteenth pass)** — **iOS: "Error constructing CesiumWidget",
+  the item left unresolved on 2026-08-08.** An iPhone refused the Williams deck
+  a WebGL context. Three things were wrong, and the first is the likely cause:
+  - **`powerPreference:'high-performance'` asks iOS for a discrete GPU the
+    device does not have,** and some builds of Safari answer by refusing the
+    context rather than ignoring the hint. The context is now requested three
+    times — webgl2/high-performance, then webgl2/default with antialias and
+    alpha off, then webgl1 — each asking for less. **The container must be
+    emptied between attempts:** a failed Viewer leaves its canvas behind and
+    that canvas holds the very context the next attempt is asking for, which is
+    the same leak noted in the August entry.
+  - **Texture memory.** Each geophysics grid is 2400x1522, roughly 15 MB
+    uploaded. `rasters.py` now emits an `@m` half-size copy and phones load
+    those — a quarter of the pixels, and detail nobody can see at six inches.
+  - **5,526 terrain samples at level 13** had a phone fetching tiles through the
+    entire opening flight. Level 11 on small screens: four times fewer tiles,
+    a metre or two of error on a surface sample.
+
+  **And one fix that was wrong, recorded so it is not repeated:** setting
+  `resolutionScale = 1.5/devicePixelRatio` looked like the obvious memory win
+  and was not. Cesium's `useBrowserRecommendedResolution` already defaults to
+  true and renders at CSS resolution — the buffer on a DPR-3 phone is 390x844,
+  not 1170x2532 — so the scale halved it AGAIN to 195x422 and bought blur for
+  nothing. The line is gone and a comment sits where it was.
+
+  Verified under an emulated iPhone 390x844 at DPR 3: context acquired, buffer
+  390x844, `@m` rasters served, no errors. **Not verified on real hardware** —
+  Safari's context policy is not reproducible in Chromium, so this needs a
+  retest on the actual phone.
+
+- **2026-09-01 (fifteenth pass)** — **Williams live at
+  <https://bedrock-fawn.vercel.app/williams/>.** Deployed as a SUBPATH of the
+  existing Bedrock project rather than as its own, so it is on the Bedrock
+  domain and the Elk Gold demo keeps the root. `orebody/williams/` is a build
+  copy of `Bedrock/williams/`; the source is the latter. There is no custom
+  bedrock domain registered — `bedrock-fawn.vercel.app` is the product URL.
+
+  The page is `noindex, nofollow`. It is a client's data room rendered on a
+  public host: unlisted is not private, and if Omega Pacific want it gated the
+  answer is the console's passcode path, not obscurity.
+
+  Also this pass: the opening now starts at 3,300 km — far enough to read the
+  curvature — with every company mark held back until the camera lands and the
+  layout freezes, then popped in on a 95 ms stagger. A logo drifting across the
+  Pacific at altitude is a sticker on a globe; the same logo arriving once the
+  camera has settled on the belt is a place.
+
+- **2026-09-01 (fourteenth pass)** — **Solve once, then freeze — and this
+  reverses the twelfth pass on purpose.** The screen-space label layout was
+  correct at every zoom and unsettling to watch: labels slid and leaders grew
+  as the camera moved, so the district map never looked finished and a presenter
+  could not point at anything on it. The reviewer's word was "stress".
+
+  The solver is unchanged; only how often it runs. It solves on arrival at the
+  opening frame and then holds, so the labels are ground-anchored points that
+  behave like every other thing on the map. **A district map is read, not
+  explored: one good solve and a fixed answer beats a continuously optimal
+  one.** Verified frozen — ground positions byte-identical after zooming out to
+  500 km and back.
+
+  Worth keeping the distinction: the twelfth pass was still right about the
+  UNIT. Laying out in pixels is what makes one solve correct; degrees would
+  have been wrong at the opening frame too. What was wrong was re-solving.
+
+  Finlay Minerals removed from the district map at the issuer's request. Six
+  blocks remain — Williams, Lawyers–Ranch, Theory / Orbit, Baker–Shasta, JOY
+  district and Kemess.
+
+- **2026-09-01 (thirteenth pass)** — **Hand-tuned cameras rot when the layout
+  moves.** Chapters 3 and 9 still carried longitude nudges from when the caption
+  card sat on the LEFT. The card moved to the right two passes ago and those
+  nudges became backwards, pushing both zones underneath it — the north zone was
+  entirely behind the caption on slide 9. Removed; the chapters now aim at the
+  true midpoint of the two zones and the aim shift does the offsetting, which is
+  the whole reason it exists.
+
+  **Framing is now measured, not eyeballed.** `tools`-side check projects each
+  zone's hull to screen and asserts its bounding box sits inside the clear
+  rectangle (`x 264–1100, y 96–530` at 1600x950). It caught two more chapters
+  the reviewer had not reached: the magnetics slide was clipping GIC off the top
+  edge, and chapter 3's T-Bill hull was 65 px below the caption line. Every
+  chapter that shows a zone now fits it. **Any deck with fixed UI needs this
+  assertion** — "does the subject fit in the part of the canvas nobody has
+  covered" is not something to judge by eye, and it changes whenever the chrome
+  does.
+
+- **2026-09-01 (twelfth pass)** — **Map labels have to be laid out in SCREEN
+  space, and this is the finding to keep.** Everything before this pass spaced
+  the district labels in degrees, and degrees are the wrong unit: the same
+  25 km of ground is 300 px at 60 km range and 40 px at 400 km, so a map tuned
+  at one zoom piles up at another. The reviewer found it immediately by zooming
+  out. Three attempts failed before the right shape appeared, and each failure
+  is worth naming:
+  1. **Wider degree spacing** — fixes one zoom, breaks the others.
+  2. **Constrain de-collision to the holder's own ground** — correct
+     attribution, but with nowhere legal to go two of seven named blocks simply
+     never appeared.
+  3. **Screen-space culling** — no overlaps at any zoom, and a missing
+     neighbour on a neighbours map is the one outcome that costs something.
+
+  The answer is to MOVE, not cull, and to move in pixels: anchor each label to a
+  real point on its holder's ground, project it, spiral-search in pixels until
+  its rectangle is free, unproject the chosen pixel back onto the globe, and
+  draw a leader whenever the label had to travel. Runs on `preRender`, so it is
+  correct at every frame of a camera flight rather than at the range it was
+  tuned for. Verified 14/14 labels visible with zero overlaps at 120, 200, 400
+  and 900 km. Priority is holding size with the subject pinned above all, so the
+  block the deck is about never yields to a neighbour.
+
+  **This should replace every fixed-position label in the product** — zone
+  names, drill callouts and holder chips all have the same latent bug.
+
+  Also: `PREFER` lets a holder nominate which of its separate blocks carries the
+  label by compass direction — Eagle Plains has 24 parcels west and 10
+  north-east, and the Theory / Orbit ground being shown is the north-eastern
+  one, which no size-based rule would pick.
+
+- **2026-09-01 (eleventh pass)** — **De-collision was undoing the anchoring.**
+  The tenth pass fixed label placement and asserted it — and the assertion ran
+  on the anchor, BEFORE the viewer's de-collision moved everything. Three
+  labels were still landing on other holders' ground. De-collision now only
+  accepts a candidate position that is inside one of the holder's OWN parcels,
+  and keeps the anchor with an overlap if nothing clear is available: an
+  overlapping label reads as crowding, a displaced one reads as a fact.
+  **The check has to run on the final position, not the computed one.**
+
+  - **The aim shift needed a vertical component too.** Horizontal alone fixed
+    the caption covering the subject left-to-right, and left it covering the
+    bottom: the clear band ends 420 px above the canvas floor. Ground distance
+    per screen pixel grows as the camera flattens, so the vertical term carries
+    a `sin(pitch)` factor — at -14° a hundred pixels is four times the ground it
+    covers at -60°.
+  - **Display precision has to survive rounding.** Composites were stored to
+    three decimals and shown to two, so 2.1554 became 2.155 became **2.15** —
+    against a news release saying 2.16. Stored to four now. A compositing rule
+    reverse-engineered to match the issuer exactly is worth nothing if the
+    formatter loses it on the way to the screen.
+
+  **Slide copy rewritten for an investor audience.** The bodies had drifted
+  into methodology — compositing rules, percentile ramps, hull construction —
+  which is Bedrock arguing with itself on the customer's slide. All of it moved
+  to Sources, where the audit trail is stronger for being in one place. Every
+  number in the new copy is still computed, not typed.
+
+- **2026-09-01 (tenth pass)** — **"Swap those two logos" was a placement bug.**
+  The ask was to exchange Thesis with Eagle Plains and Finlay with TDG. Testing
+  point-in-polygon first showed why they looked swapped: **the centroid of every
+  parcel a holder owns is not necessarily on any of them.** TDG's ground is
+  scattered and its centroid fell in a gap; Eagle Plains' landed inside
+  Evergold's block. Nothing needed exchanging — the labels needed to be on their
+  own ground.
+
+  `anchor()` now single-linkage clusters a holder's parcels at 9 km (wider than
+  the gaps between abutting claim cells, closer than the gaps between separate
+  properties), takes the largest cluster, and snaps to a parcel that actually
+  contains the point if the cluster centroid does not. All six named blocks now
+  test inside their own tenure; the only label deliberately outside is the
+  subject's, which is anchored off its eastern edge so it does not cover the one
+  boundary that matters.
+
+  **Worth generalising: assert it.** Any map that places a label from a centroid
+  should point-in-polygon check the result, because the failure is silent and
+  looks like a design choice — the reviewer's read was "you swapped two logos,"
+  not "your placement is wrong."
+
+  Also: district tilt to -50° for topography, which pushed the far end of the
+  corridor past the label fade threshold and turned the subject
+  half-transparent — the same dark-chip-at-partial-alpha failure as the drill
+  callouts, fixed the same way, by cutting rather than fading.
+
+- **2026-09-01 (ninth pass)** — **The district label placer, rewritten twice.**
+  Three real bugs, all in the same fifteen lines, and all of them the kind that
+  look like styling problems:
+  - **Push-away de-collision does not converge.** Moving a label away from the
+    FIRST overlap it finds bounces it onto the second and back again until the
+    guard expires — Baker–Shasta and PIL ended 1.1 km apart *after* separating.
+    Replaced with an outward spiral from the label's true position: always
+    converges, and keeps the label as near its own ground as it can be.
+  - **Labels that are never drawn must not take part.** Seven holders below the
+    naming threshold were occupying slots and shoving the visible chips around;
+    Prospect Ridge displaced a real label by 27 km without ever appearing.
+  - **A point test cannot separate rectangles of different widths.** The
+    subject's chip is half as wide again as the others, so it needs its own
+    exclusion radius or the next label lands on its edge.
+
+  Also: a block's label now sits at the centroid of ALL the holder's parcels
+  rather than its largest one — the biggest single parcel is often on an edge,
+  which is how Thesis's logo ended up off the block it names. Colour is keyed to
+  the HOLDER, not the block, so Finlay's PIL and ATTY stopped reading as two
+  companies. And a named property is always labelled however small, because
+  ATTY at 4,470 ha is one of the two the map exists to show.
+
+- **2026-09-01 (eighth pass)** — **Williams review round four.** Six changes,
+  three of them general:
+  - **One registered holder can work several named properties.** Finlay's 65
+    parcels fall into two groups 15 km apart — PIL north, ATTY south — and a
+    single label placed between them named neither. `SPLITS` divides a holder's
+    ground by geography and emits one named block per property; the logo goes
+    on the largest only, since the same mark twice on one map reads as two
+    companies.
+  - **Callouts must extend AWAY from the fixed UI, not alternate.** Alternating
+    sides fitted more cards and the right-hand ones ran under the caption —
+    which cannot be predicted at build time because it depends on where the
+    camera lands. Leftward is always into the clear area the aim shift opens up.
+  - **A hole named in a callout does not need a collar chip.** Both were on, so
+    every headline hole printed its id twice within forty pixels of itself.
+    Collar chips now switch off wherever grade callouts are on; the hover
+    readout still names any hole on demand.
+  - Zone labels split into two entities — a 30 px name and a 12.5 px stats line
+    — because a Cesium label has one font and the name needed to be readable
+    from across the property while the counts did not.
+  - Title card: issuer mark centred above the property name, *powered by
+    Bedrock* at the foot.
+
+- **2026-09-01 (seventh pass)** — **Aim at the clear area, not the canvas
+  centre.** The chapter rail owns the left ~240 px and the caption card the
+  right ~470 px, so a subject centred on the canvas lands underneath the
+  paragraph describing it — the T-Bill zone was half behind its own caption on
+  three chapters, and the 110 g/t rock sample was behind it on a fourth. Fixed
+  once, at the camera: the AIM POINT is shifted screen-right (heading + 90°) by
+  the gap between the canvas centre and the clear area's centre, converted to
+  metres on the ground from the range and the field of view, so one rule holds
+  at 1.5 km and at 190 km. This belongs in `frameFor()` for every deck — any
+  viewer with fixed UI strips has the same bug and normally hides it by nudging
+  cameras by hand.
+
+  Also: neighbour outlines removed. The dissolved boundary was correct and
+  still wrong to draw fourteen times over — the subject keeps its edge, because
+  that block is the point of the slide.
+
+- **2026-09-01 (sixth pass)** — **Dissolving a claim block without a polygon
+  library.** The district map needed coloured outlines, and outlining every
+  tenure redrew the filing grid that the consolidated fill exists to remove.
+  There is no shapely here and a real dissolve was not worth a dependency, but
+  it turns out not to need one: **MTO tenure cells are a grid and abutting
+  parcels share edges exactly, so an edge that appears twice is interior and an
+  edge that appears once is the boundary.** Counting edges dissolves the block
+  for drawing while leaving the parcels intact as data — 127 parcels reduce to
+  389 boundary segments. Seams survive only where two parcels meet along edges
+  that are not vertex-for-vertex equal, which is rare on a grid. This should be
+  the default for any consolidated-tenure rendering.
+  Also: name chips now take their block's colour, with the text colour picked
+  from the chip's own relative luminance rather than assumed — half a
+  categorical palette is dark enough for light text and half is not.
+
+- **2026-09-01 (fifth pass)** — **Neighbour logos on the Williams district map,
+  and the rule that had to bend.** #12 says *logos: own only* — a neighbour's
+  mark on their claims is someone else's trademark implying a relationship that
+  does not exist. The issuer supplied the marks and asked for them, which is
+  their call to make, so the rule is now: **a mark is drawn only where the
+  ISSUER supplied the file, and only against the holder whose ground it is.**
+  Everything else keeps the registered name as text. That keeps what the rule
+  was actually protecting — nobody's mark ends up on the wrong block, and none
+  are invented — while letting an issuer brand a map they are presenting.
+  - **Plate polarity has to be measured, not assumed.** Logos arrive as JPEG,
+    P-mode PNG, WebP and SVG; some are white-on-transparent and some are black
+    on a baked white box. A white mark on a white plate and a black wordmark on
+    a dark one are the same empty rectangle. Mean luminance of the mark's own
+    OPAQUE pixels picks the plate; a baked background is punched out first,
+    detected by the alpha channel being flat rather than by file extension.
+  - **A supplied asset can be broken.** The AMARC file is cropped in the source
+    — the H and the C are cut off — so that holder falls back to a text chip.
+    Shipping a clipped trademark reads as a bug in the deck, not in the file.
+  - **The register name is not the operator, and sometimes neither is the
+    logo.** AuRORA Minerals Ltd is the Freeport (60 %) / Amarc (40 %) JV holding
+    the JOY district titles. An Amarc mark alone would overstate one side of a
+    joint venture, so the chip names the JV.
+  - Branding split: issuer mark top-left, **powered by Bedrock** bottom-left.
+
+- **2026-09-01 (fourth pass)** — **Williams, review round three.** Down to 12
+  chapters. Layout reworked: caption and transport on the right, chapter rail
+  and issuer mark on the left, layer controls behind a **Layers** dropdown,
+  legends bottom-left. Five findings worth carrying into the product:
+  - **A translucency rectangle drawn tight to the property is visible as a
+    seam**, and it was running through the middle of every property-scale shot.
+    Enlarged to ~45 km and switched off entirely above 0.98 alpha.
+  - **A Cesium `Primitive` is all-or-nothing.** To let a zone chapter draw only
+    its own drilling, line geometry has to be bucketed by zone at BUILD time —
+    there is no per-instance hide. Worth knowing before any "show only X" filter
+    is designed on top of batched geometry.
+  - **A fading label reads as an empty box.** Its dark background survives at
+    15 % alpha over bright terrain; its light text does not. Any label with a
+    background needs a near-binary fade, not a gradient.
+  - **An establishing shot must wait on `globe.tilesLoaded`, not a timer.**
+    Chapter 1 now opens on British Columbia and flies in; the first version
+    flew out of an unloaded blur because 2.2 s was a guess about someone else's
+    network.
+  - **A dropdown that covers the slide text is a dropdown people close.** The
+    layer panel went two-column so it fits between its button and the caption.
+
+- **2026-09-01 (third pass)** — **Williams review round two.** Deck trimmed to
+  13 chapters; the vertical-gradient and 2026-programme slides were cut but
+  their layers stay toggleable, which is the right default — a chapter is an
+  editorial choice and the data should not leave with it.
+  - **Globe translucency needs a generous rectangle AND an off switch.** The
+    rectangle's edge is a hard seam between see-through and solid ground, and a
+    box drawn tight to the property put that seam through the middle of every
+    property-scale shot. Two fixes: enlarge it to ~45 km, and set
+    `translucency.enabled = alpha < 0.98` — enabled at full opacity still
+    composites through `undergroundColor` and still draws the edge, so every
+    chapter that did not need to see underground was paying for a seam.
+  - **Draw every line twice.** A 2.6 px zone-coloured trace over a translucent
+    hillside is the same luminance as the hillside. A wider near-black halo
+    underneath makes it readable on ANY background rather than on the one it
+    was tuned against. Should be the default for all line work.
+  - **Callouts belong on every hole that returned one.** Seven cards on a
+    45-hole property left thirty-eight holes as anonymous rods, and the question
+    in front of a drill fan is what came out of it. Now the best composite per
+    hole, spatially de-clustered at 95 m, parked in alternating columns, with
+    rank deciding how far out a card stays visible. **The bug worth
+    remembering:** the list was sorted by latitude for stacking order and then
+    the loop index was used for the distance rule — so long-range visibility
+    went to the six southernmost holes rather than the six best, and the
+    headline intercept vanished from the overview.
+  - **Prefetch the next chapter's raster.** An IP slice is a 1.5 MB PNG that has
+    to be fetched, decoded and uploaded to the GPU; a 2.5 s flight is not enough
+    and the deck arrived at geophysics slides blank, painting them in a second
+    later. #11's "arm the next slide's layers before arrival" covers visibility
+    but not loading.
+  - **A chapter about one zone should scope the labels to it.** The other
+    zone's label was floating over the chapter rail from 3 km off-screen.
+
+- **2026-09-01 (second pass)** — **Williams review round one, and four things
+  the generator should learn.**
+  - **Zones are the first thing a property slide has to establish.** Williams
+    has two — GIC and T-Bill, 3 km apart and geologically unrelated — and the
+    first build drew 45 identical grey rods. Rod colour now carries the ZONE and
+    the bars along it carry the GRADE, which are two different questions. The
+    outlines are the convex hull of each zone's drilled collars pushed out
+    300 m, captioned as the extent of DRILLING rather than a mapped contact,
+    because nobody has walked a boundary here. #9 should propose a zone slide
+    whenever a project has more than one.
+  - **A geophysics layer must be a SET of rasters, not one.** Neither magnetic
+    survey at Williams covers the claim block: the 2020 heliborne block stops
+    short of the southern tenures and the 2021 VTEM short of the eastern ones.
+    Their union covers all eleven. Showing either alone and calling it "the
+    magnetics" leaves a third of the property silently unflown. Also recorded:
+    two surveys flown a year apart are levelled separately, so the colour
+    stretch is not continuous across the seam and the caption has to say so.
+  - **A percentile legend cannot answer the question a geochem map raises.**
+    Percentiles have to decide the COLOUR — the data is lognormal — but the
+    legend now prints the grades those percentiles stand for, and the strongest
+    samples carry their own value, spatially de-clustered at 400 m so twelve
+    cards do not stack on two hot cores. "90–95th percentile" tells a reader
+    where a sample sits in a distribution they cannot see.
+  - **The neighbours map is consolidated, at district scale, and named by
+    operator.** Individual prospectors are dropped — one man's two claims wedged
+    into the middle of the block, labelled with his name, competed with the
+    slide's subject. Holders are consolidated to one fill per holder with no
+    internal outlines (NOT dissolved: a dissolve draws an outer boundary the
+    register never issued). And the register records the REGISTERED HOLDER, not
+    the operator, and in the Toodoggone they differ routinely — Sun Summit works
+    Theory under option from Eagle Plains, Kemess is Centerra's mine held by
+    AuRico Metals. Operator and project names are carried as EDITORIAL, kept
+    separate from the register in both the payload and the rendering.
+
+  Deck is now 15 chapters in five sections: the district → the property → the
+  evidence → what has been drilled → what is next.
+
+- **2026-09-01** — **Williams (Omega Pacific), the first real exploration deck.**
+  A client data room went through end to end and came out as a 14-chapter deck:
+  `Bedrock/williams/`. 45 drilled holes and 13,056 m, 5,526 geochemical samples,
+  three geophysical surveys, 11 real tenures, and no block model — the
+  exploration path in #1 exercised on something other than a fixture.
+
+  **The finding worth keeping is that the compositing rule can be recovered
+  rather than chosen.** Candidate rules were run against the two intervals the
+  issuer has published and the one that reproduced both was kept — 0.5 g/t Au
+  cut, ≤3 m continuous internal dilution, length-weighted, never ending on
+  waste. WM22-02 comes back as 96.92 m @ 2.16 g/t and WM24-01 as 18.98 m @
+  6.22 g/t, exact to the reported figures. This should be a product feature, not
+  a one-off: an issuer's own numbers are the calibration set, and a deck whose
+  headline disagrees with the news release gives a reader no way to tell which
+  one is wrong. The pair, and the recomputation, are printed under Sources.
+
+  **#12 audited itself.** The register returns 11 tenures totalling 11,490 ha
+  for OMEGA PACIFIC RESOURCES INC. The company's release says 11,490 ha. Two
+  independent sources agreeing is worth more than either alone, and the
+  agreement is only available because the claims are looked up.
+
+  **Four rendering constraints, each of which drew cleanly and was wrong:**
+  - **Globe translucency must be confined to a rectangle.** Every hole on an
+    exploration property is underground; with opaque terrain a correct drill
+    forest is a field of dots. Turning on `globe.translucency` fixes that and
+    makes the FAR SIDE OF THE EARTH visible through the hillside — the first
+    build drew the Mediterranean under the GIC fan. `translucency.rectangle`
+    over the property plus `backFaceAlpha = 0` is the fix.
+  - **Chapters must declare a target and a range, not a camera position.**
+    `flyTo` takes a position; a chapter knows what it wants to LOOK AT.
+    Converting by hand means every pitch change silently re-aims the shot: at
+    -42° and 16 km back the subject is 18 km in front of the camera, and
+    chapter one framed the ridge north of the claim block.
+  - **Surface samples need draping, and the honest kind.** Geochem points went
+    in at 4 m absolute — 1,500 m beneath the ground here — and the whole layer
+    rendered inside the mountain. Four fifths of the samples carry no recorded
+    elevation, so ALL of them are draped on the DEM: mixing surveyed and
+    interpolated heights in one layer produces a surface that is neither, and
+    the split is stated under Sources.
+  - **Planned holes cannot share a collection with drilled ones.** They did, so
+    17 holes that do not exist appeared on every drilling slide, labelled
+    exactly like the ones that do.
+
+  **A slide the data produced that nobody would have written:** 45 holes over
+  four decades fit inside a 2.6 × 3.7 km box in a 15 km claim block, with 6.7 km
+  of untested ground west and 6.0 km east. Measured off the collars and the
+  tenure boundary in the browser. "Largely untested" is a line every exploration
+  deck carries and almost none of them can show — #9 should generate it.
+
+  **Still not read, and all of it renderable:** OMF voxels (#13's outstanding
+  item, and this data room has ten of them), 1.4 GB of DXF isosurfaces, a
+  georeferenced scanned map sheet, and 279 MB of raw magnetic line data.
+  This deck is also standalone rather than hydrated — the console/Supabase path
+  was not used, so the upload → zones → deck chain still has no real
+  exploration project through it.
+
 - **2026-08-10** — **Renamed Orebody → Bedrock.** 44 files. Three categories
   were deliberately left alone, and one mistake was worth the whole exercise.
 

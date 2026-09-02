@@ -12,3 +12,8 @@ Siwash_North_BM_Nov_2021.csv
 
 # local hydration fixtures — generated, never committed
 .fixtures/
+
+# The Williams deploy copy. THIS REPO IS PUBLIC and williams/ holds a client's
+# derived drill assays and geophysics — it is built here only so Vercel serves
+# it as a subpath. Source and backup live in the PRIVATE shayne-wq/bedrock-williams.
+williams/
