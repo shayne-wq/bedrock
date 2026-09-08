@@ -156,7 +156,12 @@ figure img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit
    page — the wordmark clips itself instead, see below. */
 .wordmark-close { position: relative; z-index: 2; display: flex; flex-direction: column;
   background: var(--bg-2); }
-.wc-copy { position: relative; z-index: 2; padding: 8px var(--edge) 40px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+.wc-copy { position: relative; z-index: 2; padding: 8px var(--edge) 40px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+  /* Centred, like .showcase-intro. Pinned left, the headline and its button
+     sat against one edge of a full-bleed band and left the right half empty —
+     the band spans the viewport, so its content has no column to hang off. */
+  justify-content: center; text-align: center; }
+.wordmark-close .kicker { justify-content: center; }
 .wc-copy h3 { font-family: var(--heading); font-weight: 600; font-size: clamp(24px, 3vw, 34px); letter-spacing: -0.02em; color: var(--ink); margin: 0; }
 .wc-figure { position: relative; margin: 0; aspect-ratio: 16/7; overflow: hidden; }
 .wc-figure img { filter: saturate(0.9) contrast(1.05); }
@@ -686,7 +691,7 @@ footer { position: relative; z-index: 1; background: #fff;
 </div>
 
 <section class="wordmark-close" id="demo">
-  <span class="kicker" style="margin: 0 0 0 var(--edge); padding-top: 40px">START DISCOVERING</span>
+  <span class="kicker" style="padding-top: 40px">START DISCOVERING</span>
   <div class="wc-copy">
     <h3>Put your project in front of the room</h3>
     <button type="button" class="btn btn-primary" data-demo-open>BOOK A DEMO</button>
