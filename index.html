@@ -342,6 +342,84 @@ footer { position: relative; z-index: 1; background: #fff;
   .exch-set li::after { display: none; }
   .exch-set li { padding: 8px clamp(16px, 2vw, 28px); }
 }
+
+/* ---- Demo request dialog -------------------------------------------------
+   A native <dialog>, so focus trapping, Esc and inertness of the page behind
+   are the platform's job rather than ours. Every value below is the page's
+   own token: this is a form inside an existing design, not a place to have a
+   second opinion about radius or type. */
+.demo-dlg { border: 1px solid var(--border); border-radius: 4px; padding: 0;
+  width: min(680px, calc(100vw - 32px)); max-height: calc(100dvh - 48px);
+  /* Capped height without a scroller puts the submit button somewhere the
+     keyboard can reach and the finger cannot, on any short viewport. */
+  overflow: auto; overscroll-behavior: contain;
+  background: var(--bg); color: var(--ink); }
+.demo-dlg::backdrop { background: rgb(10 12 14 / 0.55); }
+.demo-dlg-in { padding: clamp(20px, 4vw, 36px); }
+.demo-dlg h2 { font-family: var(--heading); font-size: clamp(22px, 3vw, 28px);
+  letter-spacing: -0.02em; margin: 0 0 6px; text-wrap: balance; }
+.demo-dlg .demo-sub { color: var(--ink-dim); margin: 0 0 24px; font-size: 15px; line-height: 1.5; }
+.demo-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.demo-x { font-family: var(--mono); font-size: 12px; letter-spacing: 0.03em; background: none;
+  border: 1px solid var(--border); border-radius: 4px; color: var(--ink-dim);
+  min-width: 44px; min-height: 44px; cursor: pointer; flex: none; }
+.demo-x:hover { border-color: var(--ink-mute); color: var(--ink); }
+
+.demo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 640px) { .demo-grid { grid-template-columns: 1fr; } }
+.demo-field { display: flex; flex-direction: column; gap: 6px; }
+.demo-field.full { grid-column: 1 / -1; }
+/* Label above the input, never a placeholder standing in for one. */
+.demo-field label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ink-dim); }
+.demo-field input, .demo-field textarea { font-family: var(--body); font-size: 15px; color: var(--ink);
+  background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 11px 12px;
+  width: 100%; min-height: 44px; }
+.demo-field textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
+.demo-field input::placeholder, .demo-field textarea::placeholder { color: var(--ink-mute); }
+.demo-field input:focus-visible, .demo-field textarea:focus-visible {
+  outline: 2px solid var(--accent-deep); outline-offset: 1px; border-color: transparent; }
+.demo-field[data-invalid] input, .demo-field[data-invalid] textarea { border-color: #b3261e; }
+.demo-err { font-size: 13px; color: #b3261e; min-height: 0; }
+
+.demo-legend { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ink-dim); padding: 0; margin: 0 0 10px; }
+.demo-cats { border: 0; padding: 0; margin: 24px 0 0; }
+/* Four, on one row: auto-fit left a 3+1 orphan, which reads as a wrapped
+   accident rather than a set of four peers. */
+.demo-cat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+@media (max-width: 640px) { .demo-cat-row { grid-template-columns: repeat(2, 1fr); } }
+/* The whole chip is the target, so the hit area matches what looks clickable. */
+.demo-cat { display: flex; align-items: center; gap: 8px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 4px; padding: 12px 10px; min-height: 44px;
+  font-size: 13.5px; color: var(--ink); white-space: nowrap; }
+.demo-cat:hover { border-color: var(--ink-mute); }
+.demo-cat input { accent-color: var(--accent-deep); width: 16px; height: 16px; margin: 0; flex: none; }
+.demo-cat:has(input:checked) { border-color: var(--accent-deep);
+  background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.demo-cat:has(input:focus-visible) { outline: 2px solid var(--accent-deep); outline-offset: 1px; }
+
+.demo-actions { display: flex; align-items: center; gap: 14px; margin-top: 26px; flex-wrap: wrap; }
+/* 44px minimum touch target. Scoped to the dialog: the page's own .btn sits
+   at 41px by design and this is not the place to relitigate that. */
+.demo-actions .btn { border: 0; min-height: 44px; display: inline-flex;
+  align-items: center; justify-content: center; }
+.demo-done .btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+.demo-actions .btn-ghost { border: 1px solid var(--border); }
+.demo-note { font-size: 13px; color: var(--ink-mute); margin: 14px 0 0; line-height: 1.5; }
+.btn[disabled] { opacity: 0.6; cursor: progress; }
+/* Tactile press, and it must not fight the reduced-motion preference. */
+.demo-dlg .btn:active { transform: translateY(1px); }
+
+.demo-done { text-align: left; }
+.demo-done h2 { margin-bottom: 10px; }
+.demo-fallback { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border);
+  font-size: 14px; color: var(--ink-dim); line-height: 1.6; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .demo-dlg[open] { animation: demo-in 180ms cubic-bezier(0.22, 1, 0.36, 1); }
+  @keyframes demo-in { from { opacity: 0; transform: translateY(6px); } }
+}
 </style>
 </head>
 <body>
@@ -373,7 +451,7 @@ footer { position: relative; z-index: 1; background: #fff;
       </h1>
       <p class="sh-tagline">Your asset, decision-ready.</p>
       <div class="row">
-        <a class="btn btn-primary" href="#demo">BOOK A DEMO</a>
+        <button type="button" class="btn btn-primary" data-demo-open>BOOK A DEMO</button>
         <!-- A live deck, not a video. The claim on this page is that the
              thing is interactive, and the cheapest way to prove it is to
              let them open one. -->
@@ -611,7 +689,7 @@ footer { position: relative; z-index: 1; background: #fff;
   <span class="kicker" style="margin: 0 0 0 var(--edge); padding-top: 40px">START DISCOVERING</span>
   <div class="wc-copy">
     <h3>Put your project in front of the room</h3>
-    <a class="btn btn-primary" href="mailto:shayne.taker@gmail.com?subject=Bedrock%20demo">BOOK A DEMO</a>
+    <button type="button" class="btn btn-primary" data-demo-open>BOOK A DEMO</button>
   </div>
   <figure class="wc-figure">
     <img src="img/footer-terrain.jpg" alt="" width="2200" height="962" loading="lazy" decoding="async">
@@ -946,5 +1024,227 @@ if (renderer) {
 }
 </script>
 
+
+<!-- Demo request. The four categories are the asset lifecycle, which is also
+     the axis that decides what a Bedrock deck can show: a discovery-stage
+     property has no block model, an operating mine has everything. Asking here
+     means the first conversation starts from the right material. -->
+<dialog class="demo-dlg" id="demoDialog" aria-labelledby="demoTitle">
+  <div class="demo-dlg-in" id="demoBody">
+    <div class="demo-head">
+      <div>
+        <h2 id="demoTitle">Book a demo</h2>
+        <p class="demo-sub">Tell us about the asset and we&rsquo;ll show you the deck it would produce.</p>
+      </div>
+      <button type="button" class="demo-x" id="demoClose" aria-label="Close">ESC</button>
+    </div>
+
+    <form id="demoForm" novalidate>
+      <div class="demo-grid">
+        <div class="demo-field">
+          <label for="dfName">Name</label>
+          <input id="dfName" name="name" autocomplete="name" required>
+          <span class="demo-err" data-err-for="dfName"></span>
+        </div>
+        <div class="demo-field">
+          <label for="dfEmail">Email</label>
+          <input id="dfEmail" name="email" type="email" autocomplete="email" required>
+          <span class="demo-err" data-err-for="dfEmail"></span>
+        </div>
+        <div class="demo-field full">
+          <label for="dfCompany">Company</label>
+          <input id="dfCompany" name="company" autocomplete="organization" required>
+          <span class="demo-err" data-err-for="dfCompany"></span>
+        </div>
+        <div class="demo-field full">
+          <label for="dfProject">Describe your project</label>
+          <textarea id="dfProject" name="project" required
+            placeholder="Commodity, location, and what you need the deck to do."></textarea>
+          <span class="demo-err" data-err-for="dfProject"></span>
+        </div>
+      </div>
+
+      <fieldset class="demo-cats">
+        <legend class="demo-legend">Asset category</legend>
+        <div class="demo-cat-row">
+          <label class="demo-cat"><input type="checkbox" name="category" value="Discovery"> Discovery</label>
+          <label class="demo-cat"><input type="checkbox" name="category" value="Exploration"> Exploration</label>
+          <label class="demo-cat"><input type="checkbox" name="category" value="Development"> Development</label>
+          <label class="demo-cat"><input type="checkbox" name="category" value="Operating"> Operating</label>
+        </div>
+        <span class="demo-err" data-err-for="category"></span>
+      </fieldset>
+
+      <div class="demo-actions">
+        <button type="submit" class="btn btn-primary" id="demoSubmit">SEND REQUEST</button>
+        <button type="button" class="btn btn-ghost" data-demo-dismiss>CANCEL</button>
+      </div>
+      <p class="demo-note">Opens your email client with the details filled in, addressed to us.</p>
+    </form>
+  </div>
+</dialog>
+
+
+<script>
+/* Demo request dialog.
+   There is no backend on this page, so the form composes a mail message and
+   hands it to the visitor's own client. That is a real limitation, not a
+   design: the mail client may not open, so the success state always carries
+   the address and the composed text remains recoverable. Wiring this to an
+   endpoint later means replacing sendByMail() and nothing else. */
+(function () {
+  var TO = 'shayne.taker@gmail.com';
+  var dlg = document.getElementById('demoDialog');
+  if (!dlg || typeof dlg.showModal !== 'function') return;  // no <dialog>: links still work
+
+  var form = document.getElementById('demoForm');
+  var body = document.getElementById('demoBody');
+  var opener = null;
+
+  function open(e) {
+    opener = e.currentTarget;
+    dlg.showModal();
+    // Focus the first field rather than the close button, which is what
+    // autofocus would land on and reads as "leave" instead of "start".
+    var first = dlg.querySelector('#dfName');
+    if (first) first.focus();
+  }
+  function close() {
+    dlg.close();
+    if (opener && document.contains(opener)) opener.focus();
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-demo-open]'), function (b) {
+    b.addEventListener('click', open);
+  });
+  dlg.addEventListener('click', function (e) {
+    // Clicking the backdrop closes; clicking inside must not.
+    if (e.target === dlg) close();
+  });
+  document.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('[data-demo-dismiss]')) close();
+  });
+  var x = document.getElementById('demoClose');
+  if (x) x.addEventListener('click', close);
+
+  function setError(id, msg) {
+    var slot = dlg.querySelector('[data-err-for="' + id + '"]');
+    if (slot) slot.textContent = msg || '';
+    var field = slot && slot.closest('.demo-field');
+    if (field) { if (msg) field.setAttribute('data-invalid', ''); else field.removeAttribute('data-invalid'); }
+  }
+
+  function validate() {
+    var ok = true, firstBad = null;
+    [['dfName', 'Tell us who you are.'],
+     ['dfCompany', 'Tell us who you are with.'],
+     ['dfProject', 'A sentence or two is plenty.']].forEach(function (pair) {
+      var el = document.getElementById(pair[0]);
+      if (!el.value.trim()) { setError(pair[0], pair[1]); ok = false; firstBad = firstBad || el; }
+      else setError(pair[0], '');
+    });
+    var em = document.getElementById('dfEmail');
+    var v = em.value.trim();
+    if (!v) { setError('dfEmail', 'We need somewhere to reply.'); ok = false; firstBad = firstBad || em; }
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) { setError('dfEmail', 'That address looks incomplete.'); ok = false; firstBad = firstBad || em; }
+    else setError('dfEmail', '');
+
+    var cats = dlg.querySelectorAll('input[name="category"]:checked');
+    if (!cats.length) { setError('category', 'Pick at least one.'); ok = false; }
+    else setError('category', '');
+
+    if (firstBad) firstBad.focus();
+    return ok;
+  }
+
+  function collect() {
+    var cats = Array.prototype.map.call(
+      dlg.querySelectorAll('input[name="category"]:checked'), function (c) { return c.value; });
+    return {
+      name: document.getElementById('dfName').value.trim(),
+      email: document.getElementById('dfEmail').value.trim(),
+      company: document.getElementById('dfCompany').value.trim(),
+      project: document.getElementById('dfProject').value.trim(),
+      categories: cats
+    };
+  }
+
+  function sendByMail(d) {
+    var lines = [
+      'Name: ' + d.name,
+      'Email: ' + d.email,
+      'Company: ' + d.company,
+      'Asset category: ' + d.categories.join(', '),
+      '',
+      'Project:',
+      d.project
+    ].join('\r\n');
+    var href = 'mailto:' + TO +
+      '?subject=' + encodeURIComponent('Bedrock demo request - ' + d.company) +
+      '&body=' + encodeURIComponent(lines);
+    window.location.href = href;
+    return lines;
+  }
+
+  function done(d, composed) {
+    body.innerHTML = '';
+    var wrap = document.createElement('div');
+    wrap.className = 'demo-done';
+
+    var h = document.createElement('h2');
+    h.textContent = 'Your email client should be opening';
+    var p1 = document.createElement('p');
+    p1.className = 'demo-sub';
+    p1.textContent = 'Send the message it has drafted and we will come back to you at ' + d.email + '.';
+
+    var fb = document.createElement('p');
+    fb.className = 'demo-fallback';
+    fb.appendChild(document.createTextNode('Nothing opened? Some browsers have no mail client set up. Email '));
+    var a = document.createElement('a');
+    a.href = 'mailto:' + TO;
+    a.textContent = TO;
+    fb.appendChild(a);
+    fb.appendChild(document.createTextNode(' directly, or copy the details below.'));
+
+    var pre = document.createElement('textarea');
+    pre.readOnly = true;
+    pre.value = composed;
+    pre.style.cssText = 'width:100%;min-height:132px;margin-top:12px;font-family:var(--mono);font-size:12px;' +
+      'line-height:1.6;color:var(--ink);background:var(--bg-2);border:1px solid var(--border);' +
+      'border-radius:4px;padding:12px;resize:vertical;';
+
+    var act = document.createElement('div');
+    act.className = 'demo-actions';
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn btn-ghost'; b.textContent = 'CLOSE';
+    b.addEventListener('click', close);
+    act.appendChild(b);
+
+    wrap.appendChild(h); wrap.appendChild(p1); wrap.appendChild(fb);
+    wrap.appendChild(pre); wrap.appendChild(act);
+    body.appendChild(wrap);
+    b.focus();
+  }
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (!validate()) return;
+    var btn = document.getElementById('demoSubmit');
+    btn.disabled = true;
+    btn.textContent = 'OPENING MAIL\u2026';
+    var d = collect();
+    var composed = sendByMail(d);
+    // The mail handoff is synchronous but the client takes a moment to appear;
+    // swapping instantly reads as though the form was ignored.
+    setTimeout(function () { done(d, composed); }, 400);
+  });
+
+  // Clear a field's error as soon as it is being fixed.
+  form.addEventListener('input', function (e) {
+    if (e.target.id) setError(e.target.id, '');
+    if (e.target.name === 'category') setError('category', '');
+  });
+})();
+</script>
 </body>
 </html>
