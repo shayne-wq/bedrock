@@ -1,7 +1,7 @@
 # Standing up the backend
 
 Bedrock is two halves. The **viewer** (`/index.html`) is a static file that needs
-no backend at all — the Elk Gold demo runs entirely on its own. The **console**
+no backend at all — the Bedrock Demo demo runs entirely on its own. The **console**
 (`/dashboard/`) is what turns it into a platform: accounts, uploads, deck
 editing, share links and audience analytics. That half needs Supabase.
 
@@ -75,8 +75,8 @@ supabase db reset                         # loads supabase/seed.sql
 bash supabase/tests/functions_test.sh     # 43 assertions against a running stack
 ```
 
-The suite asserts against fixtures in `supabase/seed.sql` — the Elk Gold
-project, the Siwash North deck and a known share token — so it needs a local
+The suite asserts against fixtures in `supabase/seed.sql` — the Bedrock Demo
+project, the North Zone deck and a known share token — so it needs a local
 stack that has been reset with that seed loaded. Run it against a **local**
 stack only: the seed creates a live, passcode-free share link with a guessable
 token, which has no business in a hosted project.
@@ -140,19 +140,19 @@ Be straight with customers about two limits:
 ## Where the customer's data goes
 
 The raw block model is **not uploaded**. `dashboard/lib/extract.js` streams it in
-the browser and uploads only the derived artifacts — 1.18 GB of MineSight export
+the browser and uploads only the derived artifacts — a multi-gigabyte MineSight export
 becomes 3.9 MB. The sensitive file never leaves the machine that exported it,
 there is no GB-scale ingest bill, and the upload takes seconds.
 
 That extractor is verified against the Python reference implementation on the
-real Elk Gold model:
+real Bedrock Demo model:
 
 ```bash
 node tools/verify_extract.mjs /path/to/source_BM.csv
 ```
 
 36 assertions — block count, tonnage, grade, ounces, straddling count, every
-resource class and all 46 vein domains individually. Per-vein figures are checked
+resource class and all 22 vein domains individually. Per-vein figures are checked
 one by one rather than trusting the total, because a total that reconciles while
 its parts are wrong is exactly the share-weighting bug this guards against.
 

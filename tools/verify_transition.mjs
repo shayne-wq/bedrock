@@ -10,16 +10,16 @@ const ok=(n,c,d='')=>c?(pass++,console.log('  ok   '+n)):(fail++,console.log('  
 const V = (e,a) => pg.evaluate(e,a);
 
 const titles = await V(()=>window.titles());
-const nicola = titles.indexOf('Nicola South');
-console.log('deposit-change chapter:', nicola);
+const south = titles.indexOf('South Zone');
+console.log('deposit-change chapter:', south);
 
 // The bug: a chapter that names a deposit AND a camera had its camera thrown
 // away a second later by the deposit switch's own default framing.
-const want = await V(i=>window.viewerApi().chapter(i), nicola);
+const want = await V(i=>window.viewerApi().chapter(i), south);
 ok('the chapter declares both a deposit and a camera',
    !!want.deposit && want.r>0, JSON.stringify([want.deposit, want.h, want.p, want.r]));
 
-const t = await pg.evaluate(async i=>await window.viewerApi().transition(i), nicola);
+const t = await pg.evaluate(async i=>await window.viewerApi().transition(i), south);
 console.log('measured:', JSON.stringify(t));
 ok('the transition reports a measurement', !!t && t.camMs>0, JSON.stringify(t));
 ok('it noticed the deposit switch', t.depMs !== null, JSON.stringify(t.depMs));
@@ -35,7 +35,7 @@ ok('the authored heading survived the deposit switch', dh<3, o.h+' vs '+want.h);
 ok('the authored pitch survived', Math.abs(o.p-want.p)<3, o.p+' vs '+want.p);
 ok('the authored range survived', Math.abs(o.r-want.r)/want.r<0.06, o.r+' vs '+want.r);
 ok('and it is orbiting the NEW deposit, not the old one',
-   (await V(()=>window.viewerApi().state())).deposit==='nicola',
+   (await V(()=>window.viewerApi().state())).deposit==='south',
    (await V(()=>window.viewerApi().state())).deposit);
 
 // A normal transition, for contrast.

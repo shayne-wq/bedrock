@@ -8,7 +8,9 @@ node_modules
 !.env.example
 # large native/source exports — keep out of git
 *_BM_*.csv
-Siwash_North_BM_Nov_2021.csv
+# The demo's block model is generated, not committed: 25 MB that
+# tools/make_demo_model.py reproduces exactly from its seed.
+data/demo_model_source.csv
 
 # local hydration fixtures — generated, never committed
 .fixtures/

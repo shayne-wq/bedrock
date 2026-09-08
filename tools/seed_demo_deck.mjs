@@ -55,28 +55,28 @@ console.log("clearing any previous seed…");
 await del("orgs", `id=eq.${ORG}`).catch(() => {});
 
 console.log("org, project, zone…");
-await insert("orgs", { id: ORG, name: "Elk Gold Mining Corp.", slug: "elk-gold-demo" });
+await insert("orgs", { id: ORG, name: "Bedrock Demo", slug: "bedrock-demo" });
 await insert("projects", {
-  id: PRJ, org_id: ORG, name: "Elk Gold", slug: "elk-gold", epsg: 26910,
-  commodity: "Gold", location: "Nicola, British Columbia",
+  id: PRJ, org_id: ORG, name: "Bedrock Demo", slug: "bedrock-demo", epsg: 26910,
+  commodity: "Gold", location: "Coast Mountains, British Columbia",
   brand: {
-    summary: "A past-producing high-grade gold property in south-central " +
-      "British Columbia, 30 km west of Merritt. Mined intermittently since " +
-      "1936; the current resource sits in a set of steeply-dipping quartz " +
-      "veins that remain open at depth.",
+    summary: "A fabricated demonstration property in British Columbia's " +
+      "Coast Mountains. Twenty-two steeply dipping vein domains on a common " +
+      "northeast trend, open at depth. Nothing here was drilled, sampled or " +
+      "estimated — it exists to show what the viewer does with a model.",
   },
   // Two of the surrounding companies carry a line the register cannot supply.
   // Both are illustrative and are marked as author-supplied in the audit trail.
   holders: {
-    "BARRANCO GOLD MINING CORP.": { note: "Along strike to the northeast" },
-    "FLOW METALS CORP.": { note: "Adjoining ground, held since 2021" },
+    "Northline Metals Ltd.": { note: "Along strike to the northeast" },
+    "Ridgeway Exploration Inc.": { note: "Adjoining ground · conceptual" },
   },
 });
-await insert("zones", { id: ZONE, project_id: PRJ, name: "Siwash North", slug: "siwash-north", ord: 0 });
+await insert("zones", { id: ZONE, project_id: PRJ, name: "North Zone", slug: "north-north", ord: 0 });
 
 // ---- claims, from the real BC register bake -------------------------------
 console.log("claims…");
-const tj = JSON.parse(readFileSync(join(ROOT, "data/bc_tenures_elk.geojson"), "utf8"));
+const tj = JSON.parse(readFileSync(join(ROOT, "data/demo_tenures.geojson"), "utf8"));
 const rings = [];
 for (const f of tj.features) {
   const g = f.geometry || {};
@@ -126,13 +126,13 @@ await insert("datasets", {
 
 // ---- block model ----------------------------------------------------------
 console.log("block model…");
-const bin = readFileSync(join(ROOT, "data/elk_blocks.bin"));
-const stats = JSON.parse(readFileSync(join(ROOT, "data/elk_stats.json"), "utf8"));
-const buckets = JSON.parse(readFileSync(join(ROOT, "data/elk_buckets.json"), "utf8"));
+const bin = readFileSync(join(ROOT, "data/demo_blocks.bin"));
+const stats = JSON.parse(readFileSync(join(ROOT, "data/demo_stats.json"), "utf8"));
+const buckets = JSON.parse(readFileSync(join(ROOT, "data/demo_buckets.json"), "utf8"));
 await upload(`${base}/blocks.bin`, bin, "application/octet-stream");
 await upload(`${base}/buckets.json`, JSON.stringify(buckets), "application/json");
 await insert("datasets", {
-  project_id: PRJ, zone_id: ZONE, kind: "blocks", label: "Siwash North block model",
+  project_id: PRJ, zone_id: ZONE, kind: "blocks", label: "North Zone block model",
   storage_path: `${base}/blocks.bin`, bytes: bin.length, synthetic: false,
   stats, provenance: { buckets_path: `${base}/buckets.json`, source: stats.source },
 });
@@ -148,8 +148,8 @@ console.log(`  ${cands.length} candidates · ${order.length} in the running orde
             `${dropped ? ` · ${dropped} trimmed` : ""} · ${extra} in the tray`);
 console.log("  " + order.map((c, i) => `${i + 1}. ${c.title}`).join("\n  "));
 
-await insert("decks", { id: DECK, project_id: PRJ, title: "Elk Gold — Siwash North",
-                        subtitle: "Nicola, British Columbia", status: "published" });
+await insert("decks", { id: DECK, project_id: PRJ, title: "Bedrock Demo — North Zone",
+                        subtitle: "Coast Mountains, British Columbia", status: "published" });
 await insert("chapters", order.map((c, i) => ({ deck_id: DECK, ...toChapter(c, i) })));
 await insert("share_links", { deck_id: DECK, token: TOKEN, label: "Demo", allow_embed: true });
 

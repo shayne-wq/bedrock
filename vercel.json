@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "redirects": [
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "t" }],
+      "destination": "/pit/",
+      "permanent": false
+    }
+  ],
+  "rewrites": [
+    { "source": "/pit/data/:path*", "destination": "/data/:path*" }
+  ]
+}

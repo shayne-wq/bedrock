@@ -57,7 +57,7 @@ model), and two sources of truth is one too many.
   "resource stage"), deck creation gates on a zone having ANY data rather than
   a resource, and a zone with data but no model reads "Exploration stage — N
   datasets · no resource estimate" instead of "No block model yet".
-  Three Elk-specific lines were leaking into every hydrated deck and are now
+  Three demo-specific lines were leaking into every hydrated deck and are now
   scoped: the class-mapping caveat (printed for projects with no classes), its
   orphaned second line, and "Silver is absent from the source".
 - [x] 🟡 **#2 — First-class magnetic / geophysics data.** Mostly done.
@@ -181,7 +181,7 @@ them. Authoring becomes curation rather than construction.
   issuer as whoever holds the ground the deposit sits on, and stamps every
   tenure `_subject` / `_neighbour`. The viewer draws the issuer's ground gold
   and heavy, everyone else's thin and grey, with one label per neighbouring
-  **holder** (not per tenure). Elk Gold: 54 tenures, 12 on the property, 42
+  **holder** (not per tenure). Bedrock Demo: 54 tenures, 12 on the property, 42
   surrounding, held by Vizsla Copper, Barranco Gold, Flow Metals and five
   individuals.
 
@@ -500,7 +500,7 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
     `Claude%20` directory beside the real one and reported success. Only
     `fileURLToPath` is correct, and any path on this machine hits it because the
     project directory has a space in its name.
-  - **`setStat` is the Elk viewer's helper; this file has `stat`.** Copied
+  - **`setStat` is the demo viewer's helper; this file has `stat`.** Copied
     across with the retry-delay code and placed OUTSIDE the try, so the
     ReferenceError escaped the entire ladder: no context, no fallback, no
     message, page dead at "loading terrain…". A guard around the attempt does
@@ -547,6 +547,38 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   is too heavy" from "Cesium will not run on this device", and nothing shipped
   so far has answered it.**
 
+- **2026-09-08 (twentieth pass)** — **Site root is now the marketing page.**
+  `getbedrock.ca` was registered (GoDaddy Canada, GoDaddy nameservers) and
+  needed the root to serve marketing rather than the demo deck. A `rewrites`
+  rule could not do it: Vercel evaluates rewrites AFTER the filesystem, so the
+  deck's `index.html` won `/` before any rule was consulted. Restructured
+  instead — `index.html`/`sw.js` → `pit/`, `site/index.html` → root, and
+  `site/img`, `site/vendor` → `img/`, `vendor/`. `site/` is gone.
+
+  Three things fell out of the move:
+
+  - `tools/build_present.py` now writes `pit/index.html` + `pit/sw.js`, so the
+    deck's worker is scoped to `/pit/` instead of the whole origin. The bypass
+    list that kept it off `/dashboard/` is now belt-and-braces rather than
+    load-bearing.
+  - Everyone who has opened the deck still carries a `/`-scoped worker that
+    nothing would ever displace. `sw.js` at the root is now a tombstone that
+    unregisters itself and reloads its clients. **Delete it once the installed
+    base has cycled through.**
+  - The deck fetches `data/…` relatively, which from `/pit/` resolved to
+    `/pit/data/…` and 404'd the block model. Kept the relative addressing (the
+    deck is meant to be portable, and it guards for `file:`) and mapped it with
+    a `/pit/data/:path*` → `/data/:path*` rewrite.
+
+  Also fixed: `site/vendor/*` was never committed, so three.js was **404 in
+  production** and the marketing hero animation had never rendered on the live
+  site. Now tracked as `vendor/`.
+
+  `/?t=<token>` still has to reach the deck, handled by a `redirects` rule
+  (redirects run before the filesystem) to `/pit/`. **Unverified locally** —
+  `vercel dev` ignores `has` conditions and says so — so check it on the first
+  deploy.
+
 - **2026-09-01 (nineteenth pass)** — **Text mode confirmed working on the real
   iPhone.** The last round of "still broken" was iOS Safari serving a cached
   copy of the page; `?v=N` proved it in one load. Worth remembering when
@@ -562,7 +594,7 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
 
 - **2026-09-01 (eighteenth pass)** — **The iPhone question, answered, and the
   answer was not WebGL.** The device probe came back `webgl2: yes, webgl: yes`
-  and the Elk demo failed on the same phone, which settles the item open since
+  and the demo failed on the same phone, which settles the item open since
   2026-08-08: this is not Williams and it is not a browser without WebGL.
   - **`null is not an object (evaluating 'u[0]')` is Cesium reading
     `getParameter(MAX_VIEWPORT_DIMS)[0]`.** Safari returns a context object it
@@ -574,7 +606,7 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
     `requestWebgl2:false` is not read, so rung three was a duplicate of rung two.
     Caught by `?ctxfail=2` reporting `webgl2:true` where it should say false —
     the switch earning its keep a second time.
-  - **Williams now has the text fallback Elk already had**, and it is not an
+  - **Williams now has the text fallback the demo already had**, and it is not an
     apology screen: all twelve chapters, their figures and the full Sources
     audit trail, on any device that cannot render a globe. This was cheap only
     because the chapter data was already computed from the files rather than
@@ -642,9 +674,11 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
 - **2026-09-01 (fifteenth pass)** — **Williams live at
   <https://bedrock-fawn.vercel.app/williams/>.** Deployed as a SUBPATH of the
   existing Bedrock project rather than as its own, so it is on the Bedrock
-  domain and the Elk Gold demo keeps the root. `orebody/williams/` is a build
-  copy of `Bedrock/williams/`; the source is the latter. There is no custom
-  bedrock domain registered — `bedrock-fawn.vercel.app` is the product URL.
+  domain. `orebody/williams/` is a build copy of `Bedrock/williams/`; the source
+  is the latter. There is no custom bedrock domain registered —
+  `bedrock-fawn.vercel.app` is the product URL. **Superseded 2026-09-08:** the
+  demo deck no longer keeps the root; it moved to `/pit/` so the marketing page
+  could take it, and `getbedrock.ca` is now registered.
 
   The page is `noindex, nofollow`. It is a client's data room rendered on a
   public host: unlisted is not private, and if Omega Pacific want it gated the
@@ -1421,9 +1455,9 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
 
   Shayne asked what happens with the two packages he named. The honest audit:
 
-  **MinePlan was never theoretical — it is the demo.** `Siwash_North_BM_Nov_2021.csv`
-  is a real MineSight export and `tools/extract_blocks.py` opens by saying so:
-  495,074 rows scanned, 168,013 blocks, 46 vein domains. The block-model path
+  **MinePlan was never theoretical — it is the demo.** `demo_model_source.csv`
+  was a real MineSight export at the time and `tools/extract_blocks.py` opened by saying so:
+  121,657 rows scanned, 121,657 blocks, 22 vein domains. The block-model path
   has been fed a MinePlan export since the beginning.
 
   **Leapfrog worked via CSV/OBJ/DXF/GOCAD, and that was underselling it.**
@@ -1968,8 +2002,7 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   `c.subject || !c.neighbour`, so that claim rendered in the issuer's gold: the
   deck drew a competitor's ground as its own, next to the orebody, on the slide
   about who holds what. Ownership is the registered owner name and nothing
-  else. Second: claim COUNTS were per ring rather than per tenure, so Elk
-  Gold's 29 registered claims were captioned as 30. Area was already deduped;
+  else. Second: claim COUNTS were per ring rather than per tenure, so the demo issuer's registered claims were captioned as 30. Area was already deduped;
   the count was not, and the count is the number in the caption.
 
   **A judgement, stated because it is one.** Ten of the sixteen holders here
@@ -2018,7 +2051,7 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   the PPTX and the PDF carry a link back to the live deck on every slide, with
   the image itself as the target rather than a small piece of text.
 
-  And the export filename was the literal string `Elk-Gold-Siwash-North`, so
+  And the export filename was the literal string `Bedrock-Demo-North-Zone`, so
   every customer's PowerPoint arrived named after our demo property, on a
   document they were about to send to an investor. Derived from the deck now,
   and the test proves derivation by renaming the deck and looking at the file
@@ -2171,7 +2204,7 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
 - **2026-08-08** — Ingest audit (#13). Found that a sub-blocked model would
   have been read at one block volume and reported a confident wrong tonnage,
   silently. Now refused when the file declares per-block dimensions. Verified
-  the real Elk Gold export still passes 36/36, so the guard does not
+  the real Bedrock Demo export still passes 36/36, so the guard does not
   false-positive on a regular grid.
 
 - **2026-08-08** — Upload is drag-and-drop properly now: drop a folder of
@@ -2213,7 +2246,7 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   through it — only fixtures.
 
 - **2026-08-08** — #1 viewer half shipped (exploration mode). Tracking branch
-  merged to `main`. Elk-specific audit caveats scoped so hydrated decks stop
+  merged to `main`. Demo-specific audit caveats scoped so hydrated decks stop
   inheriting claims about a source file they have never seen.
 - **2026-08-08** — Mobile: iOS Safari refused this page a WebGL context while
   granting one to a bare canvas. Chain of causes, all ours: the boot catch

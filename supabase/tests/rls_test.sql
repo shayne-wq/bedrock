@@ -70,7 +70,7 @@ end $$;
 
 insert into projects (id, org_id, name, slug)
 values ('bbbbbbbb-0000-0000-0000-000000000002',
-        'bbbbbbbb-0000-0000-0000-000000000001', 'Elk Gold', 'elk-gold');
+        'bbbbbbbb-0000-0000-0000-000000000001', 'Bedrock Demo', 'bedrock-demo');
 
 insert into datasets (project_id, kind, storage_path, synthetic, synthetic_note)
 values ('bbbbbbbb-0000-0000-0000-000000000002', 'blocks', 'a/b/c/blocks.bin',
@@ -78,7 +78,7 @@ values ('bbbbbbbb-0000-0000-0000-000000000002', 'blocks', 'a/b/c/blocks.bin',
 
 insert into decks (id, project_id, title)
 values ('bbbbbbbb-0000-0000-0000-000000000003',
-        'bbbbbbbb-0000-0000-0000-000000000002', 'Siwash North');
+        'bbbbbbbb-0000-0000-0000-000000000002', 'North Zone');
 
 insert into chapters (deck_id, ord, title)
 values ('bbbbbbbb-0000-0000-0000-000000000003', 0, 'Opening'),
@@ -160,7 +160,7 @@ insert into view_sessions (id, deck_id, share_link_id, watch_ms, chapters_seen,
 values ('bbbbbbbb-0000-0000-0000-000000000005',
         'bbbbbbbb-0000-0000-0000-000000000003',
         'bbbbbbbb-0000-0000-0000-000000000004',
-        61000, 2, true, true, 'investors.example.com', '/projects/elk-gold');
+        61000, 2, true, true, 'investors.example.com', '/projects/bedrock-demo');
 insert into view_events (session_id, deck_id, t_ms, kind, chapter_ord, dwell_ms)
 values ('bbbbbbbb-0000-0000-0000-000000000005',
         'bbbbbbbb-0000-0000-0000-000000000003', 0,     'chapter', 0, 21000),

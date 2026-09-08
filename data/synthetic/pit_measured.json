@@ -1,0 +1,15 @@
+{
+  "R": 300.0,
+  "depth": 240.0,
+  "crest": 1620.07,
+  "floor": 1380.07,
+  "rim_relief": 155.26,
+  "moved_mt": 36.52337196865242,
+  "ore_mt": 15.674525485054993,
+  "grade": 2.4878081896561044,
+  "oz": 1253725.0774091238,
+  "strip": 1.3301102163172935,
+  "daylight_ha": 16.76,
+  "note": "Measured by tools/size_pit.py against real Cesium terrain (data/synthetic/pit_site_dem.json) and the FABRICATED South Zone block centroids. The pit is conceptual; the arithmetic about it is not invented.",
+  "generator": "tools/size_pit.py"
+}

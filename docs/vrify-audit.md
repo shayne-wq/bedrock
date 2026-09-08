@@ -146,7 +146,7 @@ quoting this list):
 
 - **Multi-deposit decks** — one deck, more than one orebody, with a switcher in
   Explore and a `deposit:` key chapters can drive. The second deposit
-  (**Nicola South**) is FABRICATED, sited in real tenure 516750, and loaded
+  (**South Zone**) is FABRICATED, sited in real tenure 516750, and loaded
   through the same OREB v1 path a customer upload takes. `BLOCKS_SYNTHETIC` is
   the gravest fabricated flag in the tool — not a decoration over real numbers
   but every tonne and gram in the readout invented — and it joins all five

@@ -1,0 +1,200 @@
+{
+  "source": "demo_model_source.csv",
+  "scanned_rows": 121657,
+  "block_m3": 250.0,
+  "density": 2.7,
+  "tonnes_per_block": 675.0,
+  "class_labels": {
+    "0": "Unclassified",
+    "1": "Measured",
+    "2": "Indicated",
+    "3": "Inferred"
+  },
+  "class_mapping_confirmed": false,
+  "veins": [
+    "DZ-01",
+    "DZ-02",
+    "DZ-03",
+    "DZ-04",
+    "DZ-05",
+    "DZ-06",
+    "DZ-07",
+    "DZ-08",
+    "DZ-09",
+    "DZ-10",
+    "DZ-11",
+    "DZ-12",
+    "DZ-13",
+    "DZ-14",
+    "DZ-15",
+    "DZ-16",
+    "DZ-17",
+    "DZ-18",
+    "DZ-19",
+    "DZ-20",
+    "DZ-21",
+    "DZ-22"
+  ],
+  "dropped_blocks": 0,
+  "blocks_straddling_multiple_domains": 2008,
+  "total": {
+    "blocks": 121657,
+    "tonnes": 6336971.5,
+    "grade_gt": 2.587,
+    "oz": 526981.0
+  },
+  "by_class": {
+    "1": {
+      "blocks": 33436,
+      "tonnes": 1640029.5,
+      "grade_gt": 2.278,
+      "oz": 120133.0
+    },
+    "2": {
+      "blocks": 84681,
+      "tonnes": 4607704.8,
+      "grade_gt": 2.702,
+      "oz": 400345.0
+    },
+    "3": {
+      "blocks": 3540,
+      "tonnes": 89237.2,
+      "grade_gt": 2.267,
+      "oz": 6503.0
+    }
+  },
+  "by_vein": {
+    "DZ-07": {
+      "blocks": 8393,
+      "tonnes": 613545.2,
+      "grade_gt": 3.11,
+      "oz": 61345.0
+    },
+    "DZ-09": {
+      "blocks": 8910,
+      "tonnes": 601814.5,
+      "grade_gt": 1.64,
+      "oz": 31738.0
+    },
+    "DZ-13": {
+      "blocks": 11947,
+      "tonnes": 508389.3,
+      "grade_gt": 3.03,
+      "oz": 49533.0
+    },
+    "DZ-18": {
+      "blocks": 7186,
+      "tonnes": 484010.8,
+      "grade_gt": 3.338,
+      "oz": 51950.0
+    },
+    "DZ-16": {
+      "blocks": 10245,
+      "tonnes": 458502.7,
+      "grade_gt": 1.762,
+      "oz": 25973.0
+    },
+    "DZ-03": {
+      "blocks": 4629,
+      "tonnes": 371740.3,
+      "grade_gt": 4.178,
+      "oz": 49930.0
+    },
+    "DZ-05": {
+      "blocks": 7166,
+      "tonnes": 316938.4,
+      "grade_gt": 2.436,
+      "oz": 24820.0
+    },
+    "DZ-17": {
+      "blocks": 8885,
+      "tonnes": 312220.8,
+      "grade_gt": 2.535,
+      "oz": 25445.0
+    },
+    "DZ-04": {
+      "blocks": 5434,
+      "tonnes": 292155.7,
+      "grade_gt": 2.355,
+      "oz": 22122.0
+    },
+    "DZ-12": {
+      "blocks": 3958,
+      "tonnes": 280232.9,
+      "grade_gt": 2.501,
+      "oz": 22535.0
+    },
+    "DZ-20": {
+      "blocks": 4679,
+      "tonnes": 277598.4,
+      "grade_gt": 1.891,
+      "oz": 16880.0
+    },
+    "DZ-19": {
+      "blocks": 6072,
+      "tonnes": 244472.7,
+      "grade_gt": 2.673,
+      "oz": 21007.0
+    },
+    "DZ-08": {
+      "blocks": 6143,
+      "tonnes": 229704.1,
+      "grade_gt": 2.52,
+      "oz": 18609.0
+    },
+    "DZ-01": {
+      "blocks": 3226,
+      "tonnes": 206781.3,
+      "grade_gt": 4.174,
+      "oz": 27748.0
+    },
+    "DZ-22": {
+      "blocks": 2918,
+      "tonnes": 205678.0,
+      "grade_gt": 1.416,
+      "oz": 9366.0
+    },
+    "DZ-06": {
+      "blocks": 3751,
+      "tonnes": 179767.5,
+      "grade_gt": 1.918,
+      "oz": 11084.0
+    },
+    "DZ-11": {
+      "blocks": 3188,
+      "tonnes": 178391.8,
+      "grade_gt": 2.163,
+      "oz": 12406.0
+    },
+    "DZ-21": {
+      "blocks": 4625,
+      "tonnes": 145307.6,
+      "grade_gt": 2.289,
+      "oz": 10693.0
+    },
+    "DZ-02": {
+      "blocks": 4215,
+      "tonnes": 142886.4,
+      "grade_gt": 2.732,
+      "oz": 12553.0
+    },
+    "DZ-14": {
+      "blocks": 3362,
+      "tonnes": 114676.1,
+      "grade_gt": 2.853,
+      "oz": 10518.0
+    },
+    "DZ-10": {
+      "blocks": 2714,
+      "tonnes": 104129.3,
+      "grade_gt": 2.056,
+      "oz": 6885.0
+    },
+    "DZ-15": {
+      "blocks": 2019,
+      "tonnes": 68027.9,
+      "grade_gt": 1.757,
+      "oz": 3842.0
+    }
+  }
+}

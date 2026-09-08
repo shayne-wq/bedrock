@@ -4,9 +4,9 @@
   "generator": "tools/make_synthetic_drills.py",
   "seed": 20211130,
   "holes": 40,
-  "total_metres": 9194.7,
-  "assay_intervals": 359,
-  "mineralized_intervals": 162,
-  "best_interval_gpt": 58.06,
+  "total_metres": 10177.8,
+  "assay_intervals": 227,
+  "mineralized_intervals": 94,
+  "best_interval_gpt": 7.944,
   "crs": "EPSG:26910 (UTM 10N, NAD83)"
 }

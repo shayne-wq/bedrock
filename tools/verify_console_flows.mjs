@@ -48,7 +48,7 @@ await pg.goto(BASE + '#/p/dddddddd-0000-0000-0000-000000000002', {waitUntil:'loa
 await pg.waitForSelector('#nbfetch', {timeout:90000}).catch(()=>{});
 await pg.screenshot({path:'/tmp/qa-project.png', fullPage:true});
 const txt = await pg.locator('#view').innerText();
-ok('the project page loads', /Elk Gold/.test(txt), txt.slice(0,100));
+ok('the project page loads', /Bedrock Demo/.test(txt), txt.slice(0,100));
 ok('the neighbouring-ground panel is shown', /Neighbouring ground/i.test(txt));
 ok('it lists the companies from the register', /Barranco/i.test(txt), 
    (txt.match(/Barranco[^\n]*/)||[''])[0]);

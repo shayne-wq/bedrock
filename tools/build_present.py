@@ -9,9 +9,9 @@ Builds a single self-contained index.html from the extracted block model.
   Phase 4  embed mode, and export to PNG / PPTX / PDF
 
 Inputs
-  data/elk_blocks_v2.csv     from tools/extract_blocks.py
-  data/elk_stats.json        exact rollups, computed over every block
-  data/elk_buckets.json      share-weighted (vein, class, bin) rollups
+  data/demo_blocks_v2.csv     from tools/extract_blocks.py
+  data/demo_stats.json        exact rollups, computed over every block
+  data/demo_buckets.json      share-weighted (vein, class, bin) rollups
   tools/assets/fonts.css     self-hosted webfonts, inlined
   data/synthetic/*.csv       drill holes (optional; see manifest.json)
 
@@ -32,12 +32,17 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "data" / "elk_blocks_v2.csv"
-STATS = ROOT / "data" / "elk_stats.json"
-BUCKETS_JSON = ROOT / "data" / "elk_buckets.json"
+SRC = ROOT / "data" / "demo_blocks_v2.csv"
+STATS = ROOT / "data" / "demo_stats.json"
+BUCKETS_JSON = ROOT / "data" / "demo_buckets.json"
 DRILLDIR = ROOT / "data" / "synthetic"
-OUT = ROOT / "index.html"
-OUT_SW = ROOT / "sw.js"
+# The deck lives at /pit/, not the site root: the root is the marketing page.
+# Moving it also narrows the service worker's scope to /pit/ (a worker's scope
+# is its own directory), which is why the bypass list below no longer has to
+# defend the dashboard from a root-scoped cache.
+OUT_DIR = ROOT / "pit"
+OUT = OUT_DIR / "index.html"
+OUT_SW = OUT_DIR / "sw.js"
 
 # Grade ladder for bucketing. Shaped like the cut-offs people actually pull
 # (0.1 / 0.3 / 1.0 g/t), not a linear bin — a linear bin fragments into
@@ -65,7 +70,7 @@ EX = max(Es) - min(Es); EY = max(Ns) - min(Ns)
 ZTOP = max(Zs); ZBOT = min(Zs)
 
 # ------------------------------------------------------- ground vantages
-# VRIFY's decks carry 360° site photography. There is none for Siwash North,
+# VRIFY's decks carry 360° site photography. There is none for North Zone,
 # and fabricating a photosphere is the one thing on this project I would not
 # do: a photograph reads as evidence before anyone reaches the caption, so an
 # invented picture of a real place is the fabricated layer a label cannot
@@ -132,7 +137,57 @@ def depth_band(x, y, z):
 # the viewer slices the buffer instead of shipping per-block indices.
 # Depth joins the bucket key so an aerial-perspective fade is a per-primitive
 # uniform rather than a per-block attribute.
+
+# ---- inside the final pit shell ------------------------------------------
+# Which blocks the pit would actually take. Grade colouring alone cannot
+# answer that: it runs over the whole model, so a mine-plan chapter shows a
+# resource with a shell drawn near it and leaves the reader to guess which
+# rock is inside. The viewer greys out everything the shell does not reach.
+#
+# This USED to be computed here and baked into the run key. It is computed in
+# the browser now, in buildModel(), because the pit moved. It sits on the
+# South Zone — the bulk-tonnage body — and the South Zone is not this model:
+# it is a second OREB file the viewer fetches on demand and bins client-side.
+# A flag baked here could only ever describe the North Zone, which the pit is
+# 2.6 km away from and never touches, so every block would come back "outside"
+# and a mine-plan chapter would render the whole deposit as waste.
+#
+# Doing it in one place also restored parity: Python's row order and
+# buildModel()'s sort are the same four keys again, which they have to be,
+# since RUNS are index ranges into that order.
+#
+# The rim is a CONSTANT, not sampled: the viewer asks the globe how high the
+# ground is, but the flag has to be decidable before any terrain request
+# resolves. 1,659 m is Cesium's own MAXIMUM over the pit's footprint, which is
+# where the site layer puts the crest — the shell has to fill the hole it cuts
+# in the terrain, and a rim at the median leaves the uphill third of that hole
+# open onto nothing. It is a rendering hint, never a tonnage: every
+# figure in the readout still comes from the share-weighted rollups.
+PIT_RIM, PIT_DEPTH, PIT_TAPER = 1659.0, 384.0, 0.851
+# Read straight from the file: SITE is loaded much further down, and the
+# constant has to exist before the chapters are written.
+_sitef = ROOT / "data" / "synthetic" / "SYNTHETIC_site_features.json"
+_sitej = json.loads(_sitef.read_text()) if _sitef.exists() else {}
+_pit = next((a for a in (_sitej.get("areas") or []) if a.get("kind") == "pit"), None)
+if _pit:
+    _pr = _pit["ring"]
+    _pcx = sum(q[0] for q in _pr) / len(_pr)
+    _pcy = sum(q[1] for q in _pr) / len(_pr)
+    PITCUT = {
+        "cx": round(_pcx, 1), "cy": round(_pcy, 1),
+        "rim": PIT_RIM, "depth": PIT_DEPTH, "taper": PIT_TAPER,
+        # Polar table, sorted by angle: the ring is irregular, so the shell
+        # radius at a bearing is interpolated between the two nearest vertices
+        # rather than assumed circular.
+        "pol": [[round(a, 5), round(r, 1)] for a, r in
+                sorted((math.atan2(q[1] - _pcy, q[0] - _pcx),
+                        math.hypot(q[0] - _pcx, q[1] - _pcy)) for q in _pr)],
+    }
+else:
+    PITCUT = None
+
 rows = [r + (depth_band(r[0], r[1], r[2]),) for r in rows]
+# Same four keys, in the same order, as buildModel()'s sort in the viewer.
 rows.sort(key=lambda r: (r[5], binof(r[3]), r[7], r[6]))
 
 N = len(rows)
@@ -187,7 +242,7 @@ for (_n, _t, _a, _f, _arr), _lay in zip(_cols, _layout):
     for _v in _arr:
         struct.pack_into(_f, _blob, _pos, _v)
         _pos += _a
-BLOCKS_BIN = ROOT / "data" / "elk_blocks.bin"
+BLOCKS_BIN = ROOT / "data" / "demo_blocks.bin"
 BLOCKS_BIN.write_bytes(bytes(_blob))
 
 assert len(VEINS) <= 256, f"{len(VEINS)} vein domains exceeds the uint8 packing in META"
@@ -213,7 +268,7 @@ for i in range(1, N + 1):
 # domains, so rolling tonnage up from the CSV's single dominant `vein` column
 # would overstate some veins by a third. Do not recompute these here.
 _bj = json.loads(BUCKETS_JSON.read_text())
-assert _bj.get("share_weighted"), "elk_buckets.json is not share-weighted — re-run extract_blocks.py"
+assert _bj.get("share_weighted"), "demo_buckets.json is not share-weighted — re-run extract_blocks.py"
 assert _bj["ladder"] == LADDER, "bucket ladder differs from the viewer's LADDER"
 BUCKETS = _bj["buckets"]
 BY_CB = _bj["by_cb"]
@@ -375,17 +430,26 @@ SITE_SYNTHETIC = bool(SITE.get("synthetic", True)) if SITE else False
 # This split also narrows what the fabricated banner has to condemn: areas,
 # roads and pit stages remain invented and remain labelled; claims no longer
 # drag real geography into that sentence.
-_tenure_p = ROOT / "data" / "bc_tenures_elk.geojson"
+_tenure_p = ROOT / "data" / "demo_tenures.geojson"
 REAL_CLAIMS: list = []
 CLAIMS_ATTRIB = ""
 CLAIMS_SUBJECT = ""
+CLAIMS_SYNTHETIC = False
 
 if _tenure_p.exists():
     _tj = json.loads(_tenure_p.read_text())
-    if _tj.get("synthetic") is True:                 # refuse to mislabel
-        raise SystemExit("bc_tenures_elk.geojson is flagged synthetic — "
-                         "it must not be drawn as real tenure")
-    CLAIMS_ATTRIB = _tj.get("attribution", "")
+    # Fabricated boundaries are allowed through — the demo has to be able to
+    # show a land package without staking an invented deposit on somebody's
+    # real ground — but never silently. The flag rides into the viewer, which
+    # captions every holder conceptual and names claim boundaries in the
+    # fabricated-data banner.
+    #
+    # What is still refused is presenting invented ground AS real tenure. That
+    # claim lives in the attribution line ("licensed under the Open Government
+    # Licence"), so the attribution is dropped rather than carried over: a
+    # fabricated boundary must not arrive wearing a provenance it does not have.
+    CLAIMS_SYNTHETIC = _tj.get("synthetic") is True
+    CLAIMS_ATTRIB = "" if CLAIMS_SYNTHETIC else _tj.get("attribution", "")
     CLAIMS_SUBJECT = _tj.get("subject_owner") or ""
     for _f in _tj.get("features", []):
         _p = _f.get("properties") or {}
@@ -417,27 +481,32 @@ DRILL_SYNTHETIC = bool(DRILL_MAN.get("synthetic", True)) if HOLES else False
 
 # ------------------------------------------------------- second deposit
 # The demo held one model, so "multi-deposit" was untestable — there was
-# nothing to switch to. Nicola South is FABRICATED (tools/make_synthetic_
-# deposit.py) and sits inside real tenure 516750, ~2.5 km south of Siwash
-# North. It is loaded through the OREB v1 path a customer's own upload takes,
+# nothing to switch to. South Zone is FABRICATED (tools/make_synthetic_
+# deposit.py) and sits in the fabricated claim block, ~2.6 km south of North
+# Zone. It is loaded through the OREB v1 path a customer's own upload takes,
 # not a private back door, so the format stays exercised.
+#
+# It also carries the mine plan. North Zone is a narrow-vein system — twenty-
+# two sheets a metre or two thick — and an open pit on it would strip several
+# hundred tonnes for every tonne of ore, so the pit, the stages and the haul
+# cycle are all sited here instead, on a body that can actually hold one.
 #
 # `synthetic` here drives BLOCKS_SYNTHETIC in the viewer, which is the gravest
 # of the fabricated flags: not a decoration over real numbers but every tonne
 # and gram in the readout invented. It joins all five labelling paths.
-_dep_p = DRILLDIR / "SYNTHETIC_nicola_south.json"
+_dep_p = DRILLDIR / "SYNTHETIC_south_zone.json"
 DEPOSITS = [{
-    "key": "siwash", "name": "Siwash North", "synthetic": False, "baked": True,
-    "note": "Real Nov-2021 MineSight block model, 46 vein domains.",
+    "key": "north", "name": "North Zone", "synthetic": False, "baked": True,
+    "note": "FABRICATED block model, 22 vein domains. No drilling, no sampling, no resource.",
 }]
 if _dep_p.exists():
     _dj = json.loads(_dep_p.read_text())
     if not _dj.get("synthetic"):
-        raise SystemExit("SYNTHETIC_nicola_south.json is not flagged synthetic — "
+        raise SystemExit("SYNTHETIC_south_zone.json is not flagged synthetic — "
                          "an invented deposit must never load unflagged")
     DEPOSITS.append({
-        "key": "nicola",
-        "name": _dj.get("name", "Nicola South"),
+        "key": "south",
+        "name": _dj.get("name", "South Zone"),
         "synthetic": True,
         "baked": False,
         "note": _dj.get("warning", ""),
@@ -486,175 +555,270 @@ if _geo_p.exists():
 # Slide chapters sit in the same deck as the 3D scenes, so a presenter can move
 # between corporate narrative and the model without leaving the tool. The 3D
 # view stays live behind them - the deposit never disappears mid-story.
+# Callout anchors, as offsets from the centre of the block model rather than
+# literal eastings and northings. They used to be literal UTM taken from the
+# property this demo replaced, so when the deposit moved the pins stayed
+# behind — 500 km from anything on screen, pointing at nothing. Deriving them
+# means a pin cannot outlive the model it annotates.
+_CE = EMIN + EX / 2
+_CN = NMIN + EY / 2
+def _pin(dx=0.0, dy=0.0):
+    return [round(_CE + dx), round(_CN + dy)]
+
 _T = stats["total"]
 _M = stats["by_class"]
+# ---- ground under the pit ------------------------------------------------
+# The DEM the pit is seated and trimmed against, baked in so the shell does not
+# depend on which terrain tiles the camera has pulled. Row-major by northing
+# then easting, which is the order tools/sample_pit_dem.mjs writes.
+_DEMF = ROOT / "data" / "synthetic" / "pit_site_dem.json"
+PIT_DEM = None
+if _DEMF.exists():
+    _d = json.loads(_DEMF.read_text())
+    _w = int(round(2 * _d["half_m"] / _d["step_m"])) + 1
+    assert _w * _w == _d["n"], f"DEM is not square: {_w}^2 != {_d['n']}"
+    PIT_DEM = {"centre": _d["centre"], "half": _d["half_m"], "step": _d["step_m"],
+               "w": _w, "h": [None if h is None else round(h, 1) for h in _d["heights"]]}
+
+# ---- the pit, as measured --------------------------------------------
+# Every figure the deck prints about the pit — depth, rock moved, ore taken,
+# strip ratio — comes from here, and here comes from tools/size_pit.py run
+# against sampled terrain and the deposit's own block centroids. The previous
+# set were literals typed into three files, and when the pit was resized they
+# silently became false on a slide captioned as a measurement.
+_PITF = ROOT / "data" / "synthetic" / "pit_measured.json"
+if not _PITF.exists():
+    raise SystemExit(
+        "missing data/synthetic/pit_measured.json — run:\n"
+        "  node tools/sample_pit_dem.mjs\n"
+        "  BEDROCK_DUMP_ROWS=/tmp/sz_rows.csv python3 tools/make_synthetic_deposit.py\n"
+        "  python3 tools/size_pit.py 300 240 /tmp/sz_rows.csv")
+PIT = json.loads(_PITF.read_text())
+
+# Stage depths come from the site file, so the timeline and the final shell
+# cannot drift apart.
+_stg = SITE.get("stages") or []
+_pit_depth = _stg[-1]["depth"] if _stg else 0
+
+# ---- the deck ------------------------------------------------------------
+# Fifteen chapters in six sections, on the arc the Williams deck uses: where
+# the ground is, what has been measured on it, what the model says, what a
+# mine would take, what that is worth, then the camera.
+#
+# It was thirty. Half of them were variations rather than chapters — a section
+# stepped west, the same section turned across strike, the same section turned
+# on edge; Measured alone, then Measured and Indicated, then everything. Each
+# was defensible on its own and the set was a deck nobody finishes. What
+# survives is one frame per idea.
+#
+# GROUND OPACITY is the other thing that changed, and it is why the mine plan
+# looked wrong. The rule since 2026-08-10 has been that terrain drops to 10%
+# whenever there is rock on screen, because a modelled body is INSIDE the
+# mountain and only reads through a see-through one. That rule is right for an
+# orebody and exactly backwards for a pit: an excavation is a SURFACE feature,
+# and a hole cut into a hillside you can see straight through is not a hole at
+# all. Every mine-plan chapter now declares solid ground and lets the terrain
+# clip do the work it was built for — the pit is a real hole in an opaque
+# mountain, with the ore visible down inside it.
 CHAPTERS = [
+  # ---- the property ----
   {"h": 26, "p": -28, "r": 4200, "dwell": 9, "slide": {
      "eyebrow": "The project",
-     "section": "The project", "title": "Elk Gold - Siwash North",
-     "body": "A drill-defined, high-grade gold system in the Nicola region of "
-             "southern British Columbia, southeast of Merritt. Road-accessible, in an established mining region, and open at depth.",
+     "section": "The property", "title": "Bedrock Demo - North Zone",
+     "body": "A vein-hosted gold system in British Columbia's Coast Mountains: "
+             "twenty-two steeply dipping domains on a common northeast trend, open at depth. "
+             "Everything in this deck is fabricated \u2014 it is a demonstration of the tool, "
+             "not of a property.",
      "stats": [{"k": "Contained AuEq", "v": f"{_T['oz']/1e6:.2f} Moz"},
                {"k": "Tonnes", "v": f"{_T['tonnes']/1e6:.2f} Mt"},
                {"k": "Grade", "v": f"{_T['grade_gt']} g/t"},
                {"k": "Vein domains", "v": str(len(VEINS))}]}},
-  # Cut-offs across the deck are authored, not left at the floor.
-  #
-  # GRADE_FLOOR (0.5) draws essentially the whole mineralized envelope: 168k
-  # blocks over 46 domains, every bin opaque. That reads as one solid mass and
-  # the structure disappears. An opening scene wants the shape of the system,
-  # not its full extent, so these sit above the floor and let the eye find the
-  # sheets. Where a body line quotes a grade, the two move together — a chapter
-  # that says "above half a gram" while rendering 1.5 g/t is worse than blobby,
-  # it is wrong.
-  # Opens on surfaces, not blocks.
-  #
-  # Blocks are voxels: at any cut-off they fuse into one opaque mass, because
-  # every bin at or above the cut draws solid and the outer bin hides the rest.
-  # Tested at 0.5, 1.5 and 3.0 g/t — the silhouette barely changes, only the
-  # colour does. The vein hulls are what carry the northwest structural grain,
-  # so the deck's first look at the deposit uses them. Blocks still get their
-  # turn at "The orebody", which is where the blocks-then-surfaces contrast in
-  # the next chapter's copy actually lands.
-  {"h": 28, "p": -26, "r": 3600, "cut": 1.5, "xray": True, "mode": "grade", "dwell": 9,
-   "surfaces": "veins", "section": "The project", "title": "A high-grade gold system", "body": "The Elk Gold project sits in the Nicola region of southern British Columbia, southeast of Merritt — road-accessible, in an established mining district. The vein domains are drawn as solid bodies, so the structural grain of the system reads immediately."},
-  {"h": 30, "p": -22, "r": 2500, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 9,
-   "section": "The ground", "title": "On real ground", "body": "Every block is placed at its true UTM position on real terrain — this is the actual mountain the deposit sits inside."},
-  # The one chapter whose copy has to argue against its own picture. A layer
-  # this suggestive is exactly where a deck stops being a visualization and
-  # starts being a claim, so the body text says what it is before the audience
-  # can read anything into it. The banner fires here too, by design.
+  # The land package on solid ground, the way Williams opens: the ground
+  # first, and nothing drawn on it but the tenure it is held under.
+  {"h": 24, "p": -30, "r": 4800, "cut": 1.0, "xray": False, "mode": "grade", "dwell": 10,
+   "ground": 1.0, "blocks": False, "site": True, "deposit": "north",
+   "section": "The property", "title": "On real ground",
+   "body": "The claim block on the mountain it covers, at its true UTM position. Every later frame in this deck is the same ground seen closer \u2014 nothing is schematic and nothing is to one side of a map."},
+
+  # ---- the evidence ----
   {"h": 0, "p": -78, "r": 2900, "cut": 1.0, "xray": False, "mode": "grade", "dwell": 11,
-   # Blocks off: with the ground intact they draw over the terrain, and a
-   # survey read through a cloud of grade cubes is neither map nor model.
-   "ground": 1.0, "geo": "rtp", "site": True, "blocks": False, "section": "The ground",
-   "title": "The magnetic picture", "body": "Reduced-to-pole magnetics draped over the property, with the tenure boundaries on top. This survey is FABRICATED — nothing was flown, and the field was synthesised from the block model itself, so the anomaly sits over the deposit because it was built from it. It shows how a real survey would sit in the deck; it is not evidence for anything."},
-  {"h": 52, "p": -24, "r": 2600, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11,
-   "ground": 0.1, "section": "The ground", "title": "The orebody", "body": "Forty-six vein domains threading the ridge, drawn as the blocks they are modelled as. Above a gram the sheets separate and the northwest structural grain of the system becomes obvious."},
-  {"h": 50, "p": -22, "r": 2100, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 12,
-   "ground": 0.0, "surfaces": "veins", "section": "The deposit",
-   "title": "The veins as bodies", "body": "The same domains drawn as solid geological surfaces rather than blocks \u2014 the hull of each vein, extracted face by face from the model so nothing is invented between the data points.",
-   "pin": {"at": [693500, 5525400], "dz": 520, "text": "Eight largest vein domains"}},
-  {"h": 58, "p": -34, "r": 2450, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11,
-   "ground": 0.0, "surfaces": "cores", "section": "The deposit", "title": "The high-grade core", "body": "The richest fifth of the blocks carry 78% of the metal. Raising the cut-off strips the rest away and leaves the bonanza shells that actually matter."},
-  # Cumulative reveal: Measured, then +Indicated, then +Inferred, the way a
-  # resource statement is actually presented rather than all at once.
-  # The classification reveal holds one cut-off across all three so the only
-  # thing changing between them is the category. Move the cut-off here and the
-  # reveal stops being a comparison.
-  {"h": 52, "p": -30, "r": 1900, "cut": 1.0, "xray": True, "mode": "class", "dwell": 9,
-   "ground": 0.0, "classes": [1], "section": "The deposit",
-   "title": "Measured only",
-   "body": "The part of the deposit with the most drilling behind it, on its own."},
-  {"h": 52, "p": -30, "r": 1900, "cut": 1.0, "xray": True, "mode": "class", "dwell": 9,
-   "ground": 0.0, "classes": [1, 2], "section": "The deposit",
-   "title": "Measured and Indicated",
-   "body": "Adding Indicated. This is the material a study would normally be built on."},
-  {"h": 52, "p": -30, "r": 1700, "cut": 1.0, "xray": True, "mode": "class", "dwell": 11,
-   "ground": 0.0, "classes": [0, 1, 2, 3], "section": "The deposit", "title": "How well is it known?", "body": "Recoloured by resource classification. Confidence is not evenly distributed through a deposit — and this is the first question any technical reader asks."},
-  # Drills-only, so the model comes off automatically here. A grade-coloured
-  # body directly behind a grade-coloured bead is the reason.
-  # Underground and broadside, not looking down from above.
-  #
-  # This was an oblique from 38/-24, which is a map view of a drill plan:
-  # you saw the collars and the tops of the traces, and depth read as
-  # length on a picture. The whole claim of a drill slide is what is UNDER
-  # the ground, so the camera goes under it — a shallow pitch puts the eye
-  # below the collar elevation, looking across the forest, and every trace
-  # reads at its true depth against its neighbours. The ground is already
-  # fully cut here, so there is no terrain between the viewer and the holes
-  # and no sky behind them: the frame is the drilling and nothing else.
-  {"h": 38, "p": -7, "r": 1750, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11, "drills": True, "black": True,
-   "ground": 0.0, "section": "Drilling & geometry", "title": "Drilled from surface", "body": DRILL_LEDE + " Seen from below the surface, looking across the drilling at depth, coloured by assay grade. Click any hole to read it end to end. Synthetic holes — traced through the modelled grades."},
-  # Straight down, ground intact, body replaced by the grade map. Overhead is
-  # the one angle where the 3D model tells you least and the map tells you most.
-  {"h": 0, "p": -90, "r": 2350, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 11,
-   "ground": 1.0, "plan": True, "blocks": False, "site": True, "section": "Drilling & geometry",
-   "title": "Footprint in plan",
-   "body": "Overhead, the body itself tells you nothing \u2014 you see the top of it and the ground disappears. So this is grade times thickness accumulated down every column, laid on the terrain: where the metal is, and how much of it, against the ground you would actually mine.",
-   "pin": {"at": [693500, 5525900], "dz": 260, "text": "Grade \u00d7 thickness, g\u00b7m"}},
-  # Looking straight down the section line, so the slab is seen edge-on.
-  # Perpendicular to the slab and well above the ridge line — at a grazing
-  # pitch the camera sits below the topography and the hillside fills the frame.
-  {"h": 90, "p": -30, "r": 2700, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 12,
-   "ground": 0.0, "section3d": "ns", "sectionAt": 50,
-   "section": "Drilling & geometry", "title": "A section through it",
-   "body": "A 90-metre slab taken north\u2013south through the middle of the deposit and viewed edge-on. Everything outside the slice is removed, so the veins read in true relationship instead of overlapping in projection \u2014 the view a geologist actually works from.",
-   "pin": {"at": [693500, 5525400], "dz": 420, "text": "N\u2013S section, \u00b145 m"}},
-  # A section set, not a single section. One slice proves the mechanism; a
-  # fence of them is how a geologist actually interrogates continuity, and it
-  # is what the competing decks ship. The readout re-totals per slab, so each
-  # of these reports its own contained metal rather than the whole deposit's.
-  {"h": 90, "p": -30, "r": 2700, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 10,
-   "ground": 0.0, "section3d": "ns", "sectionAt": 30,
-   "section": "Drilling & geometry", "title": "Stepping the section west",
-   "body": "The same slab moved 20% west along the deposit. The vein sheets persist across the step \u2014 continuity between sections is the thing a section set is drawn to test.",
-   "pin": {"at": [693100, 5525400], "dz": 420, "text": "N\u2013S section, west"}},
-  {"h": 0, "p": -26, "r": 2700, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 11,
-   "ground": 0.0, "section3d": "ew", "sectionAt": 50,
-   "section": "Drilling & geometry", "title": "Across the grain",
-   "body": "An east\u2013west slab, cut perpendicular to the first. The veins are sectioned across their strike here rather than along it, which is what shows their true dip and how steeply the system stands.",
-   "pin": {"at": [693500, 5525400], "dz": 420, "text": "E\u2013W section, \u00b145 m"}},
-  {"h": 4, "p": -4, "r": 2650, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 10,
-   "ground": 0.0, "section": "Drilling & geometry", "title": "In profile", "body": "Turned on edge, the veins persist to roughly 475 metres below surface — and remain open at depth."},
+   "ground": 1.0, "geo": "rtp", "site": True, "blocks": False, "deposit": "north",
+   "section": "The evidence", "title": "The magnetic picture",
+   "body": "Reduced-to-pole magnetics draped over the property, with the tenure boundaries on top. This survey is FABRICATED \u2014 nothing was flown, and the field was synthesised from the block model itself, so the anomaly sits over the deposit because it was built from it. It shows how a real survey would sit in the deck; it is not evidence for anything."},
+  {"h": 38, "p": -7, "r": 1750, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11,
+   "drills": True, "black": True, "ground": 0.0, "site": False,
+   "section": "The evidence", "title": "Drilled from surface",
+   "body": DRILL_LEDE + " Seen from below the surface, looking across the drilling at depth, coloured by assay grade. Click any hole to read it end to end. Synthetic holes \u2014 traced through the modelled grades."},
   {"h": 44, "p": -18, "r": 1500, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 12,
    "ground": 0.0, "drills": True, "highlights": True,
-   "section": "Drilling & geometry", "title": "The intercepts behind it", "body": "The headline hits, each labelled where it sits in three dimensions \u2014 the drill-release table, put back in the ground it came out of."},
-  {"h": 26, "p": -27, "r": 3000, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 10,
-   "ground": 0.0, "section": "Appendix", "title": "Explore it yourself", "body": "Forty-six vein domains, each one isolatable, each with its own grade and tonnage. Open Explore and interrogate the model directly."},
-  # Property scale. Grade x thickness as a column per 40 m cell across the whole
-  # land package, every deposit at once — the orientation shot that no
-  # per-deposit view can give. Blacked out, because once the ground has been
-  # established it only competes with the thing being measured.
-  {"h": 18, "p": -27, "r": 6000, "cut": 0.5, "mode": "grade", "dwell": 13,
-   "ground": 1.0, "property": True, "black": True, "blocks": False,
-   "section": "The property", "title": "Where the metal is",
-   "body": "One column per 40 m cell, across the whole property. Height and colour carry accumulated grade × thickness — gram-metres, the same quantity the plan-view map colours — so a tall bar is a long, rich intersection under that ground. Both deposits are in this view, and one of them is fabricated."},
-  {"h": 26, "p": -18, "r": 4200, "cut": 0.5, "mode": "grade", "dwell": 13,
-   "ground": 1.0, "property": True, "black": True, "blocks": False,
-   "drills": True, "highlights": True, "callouts": True,
-   "section": "The property", "title": "And where it was drilled",
-   "body": "The same columns with the drill traces beneath them, assays as beads on each trace, and the headline intercepts called out to the edge of the frame. The holes are synthetic; the columns above them are not, except where they come from the fabricated deposit."},
-  # The multi-deposit beat. Both chapters name the fabrication in their own
-  # copy — the banner fires too, but a presenter reads the body text aloud and
-  # the banner is not read aloud by anyone.
-  {"h": 24, "p": -30, "r": 2600, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 12,
-   "ground": 0.0, "deposit": "nicola", "section": "A second deposit",
-   "title": "Nicola South", "body": "A second orebody on the same property, 2.5 km south, inside tenure 516750. THIS DEPOSIT IS FABRICATED — there is no Nicola South. It exists so the multi-deposit view could be built and shown; every tonne and gram in the readout for it was generated, not measured."},
-  {"h": 40, "p": -34, "r": 2400, "cut": 1.0, "xray": True, "mode": "class", "dwell": 11,
-   "ground": 0.0, "deposit": "nicola", "section": "A second deposit",
-   "title": "A different kind of deposit", "body": "Broad disseminated zones on a coarser 12 × 12 × 8 m lattice rather than Siwash North's narrow high-grade sheets on 10 × 5 × 5 m — more tonnes, less grade. The deck carries both models and the readout re-totals for whichever is loaded. Still fabricated."},
-  {"h": 34, "p": -28, "r": 3000, "dwell": 12, "deposit": "siwash", "section": "Appendix", "slide": {
+   "section": "The evidence", "title": "The intercepts behind it",
+   "body": "The headline hits, each labelled where it sits in three dimensions \u2014 the drill-release table, put back in the ground it came out of."},
+
+  # ---- the orebody ----
+  {"h": 50, "p": -22, "r": 2100, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 12,
+   "ground": 0.0, "surfaces": "veins",
+   "section": "The orebody", "title": "The veins as bodies",
+   "body": "The domains drawn as solid geological surfaces rather than blocks \u2014 the hull of each vein, extracted face by face from the model so nothing is invented between the data points.",
+   "pin": {"at": _pin(0, -200), "dz": 520, "text": "Eight largest vein domains"}},
+  {"h": 90, "p": -30, "r": 2700, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 12,
+   "ground": 0.0, "section3d": "ns", "sectionAt": 50,
+   "section": "The orebody", "title": "A section through it",
+   "body": "A 90-metre slab taken north\u2013south through the middle of the deposit and viewed edge-on. Everything outside the slice is removed, so the veins read in true relationship instead of overlapping in projection \u2014 the view a geologist actually works from.",
+   "pin": {"at": _pin(0, -200), "dz": 420, "text": "N\u2013S section, \u00b145 m"}},
+  {"h": 52, "p": -24, "r": 2600, "cut": 1.0, "xray": True, "mode": "grade", "dwell": 11,
+   "ground": 0.1, "deposit": "north", "site": False,
+   "section": "The orebody", "title": "The orebody",
+   "body": "Twenty-two vein domains threading the ridge, drawn as the blocks they are modelled as. Above a gram the sheets separate and the northeast structural grain of the system becomes obvious. The mountain is dropped to a tenth opacity here because the body is inside it."},
+  {"h": 52, "p": -30, "r": 1700, "cut": 1.0, "xray": True, "mode": "class", "dwell": 11,
+   "ground": 0.0, "classes": [0, 1, 2, 3], "deposit": "north",
+   "section": "The orebody", "title": "How well is it known?",
+   "body": "Recoloured by resource classification. Confidence is not evenly distributed through a deposit \u2014 and this is the first question any technical reader asks. The class labels follow the usual convention and are fabricated along with the model they classify."},
+
+  # ---- the mine plan ----
+  # Solid ground from here down. A pit is a surface feature and a hole in a
+  # transparent hillside is not a hole.
+  {"h": 24, "p": -30, "r": 2400, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 13,
+   "ground": 0.35, "deposit": "south", "site": False,
+   "section": "The mine plan", "title": "Which orebody gets a pit",
+   "body": "The pit is on the South Zone, not on the veins the last section was about \u2014 and the reason is the whole difference between the two. North Zone is twenty-two sheets a metre or two thick spread through 1.5 km of ridge: a block there is a tenth ore and nine tenths waste, so bulk-mining it means moving a gigatonne of rock to recover three megatonnes of it. That is an underground deposit. South Zone is 38.8 Mt at 1.62 g/t in broad zones near surface, and it is the one a shovel can work. It is also entirely fabricated."},
+  {"h": 48, "p": -42, "r": 1150, "cut": 1.0, "xray": False, "mode": "grade", "dwell": 11,
+   "ground": 1.0, "deposit": "south", "site": True, "stage": 0, "blocks": False,
+   "holders": False, "siteLabels": False, "targets": False, "pitCut": True,
+   "section": "The mine plan", "title": "The starter pit",
+   "body": "The first stage, cut into the ground rather than drawn on it: the terrain is clipped inside the rim, so this is a hole in the mountain rather than an outline drawn on one. Conceptual, like every line on the surface here \u2014 it is the shape a pit takes following this shell down, not a pit anyone has designed."},
+  {"h": 48, "p": -40, "r": 2000, "cut": 1.0, "xray": False, "mode": "grade", "dwell": 12,
+   "ground": 1.0, "deposit": "south", "site": True, "stage": 3, "blocks": False,
+   "holders": False, "siteLabels": False, "targets": False, "pitCut": True,
+   "section": "The mine plan", "title": "Four stages to the final pit",
+   "body": f"Each stage nests inside the one before it, down to {_pit_depth} m below the crest. What a sequence shows that a resource statement cannot is which ore is reachable early and which of it waits behind three cutbacks \u2014 and how much waste has to come off the hillside first. Measured against the real terrain this shell moves {PIT['moved_mt']:.1f} Mt to recover {PIT['ore_mt']:.1f} Mt at {PIT['grade']:.2f} g/t: a strip ratio of {PIT['strip']:.2f} to 1."},
+  {"free": {"lon": -126.38918, "lat": 52.58239, "height": 1825, "heading": 200, "pitch": -24},
+   "h": 128, "p": -22, "r": 900, "cut": 0.5, "xray": False, "mode": "grade", "dwell": 14,
+   "ground": 1.0, "deposit": "south", "site": True, "blocks": False, "haul": True,
+   "holders": False,
+   "siteLabels": False, "targets": False,
+   "section": "The mine plan", "title": "A truck for scale",
+   "body": f"The trucks are drawn at their real size \u2014 13.5 m, about a CAT 793. Against 27 m benches and {_pit_depth} m from crest to floor that is the whole point: it is how big the hole is, said by something whose size you already know."},
+
+  # ---- what it is worth ----
+  {"h": 34, "p": -28, "r": 3000, "dwell": 12, "deposit": "north",
+   "section": "What it is worth", "slide": {
      "eyebrow": "Grade-tonnage",
      "title": "What a cut-off costs you",
      "body": "Every cut-off trades tonnes for grade. This curve is computed from the "
              "same rollups the readout uses, so it cannot disagree with anything else "
              "in the deck.",
      "chart": "gradeTonnage"}},
-  {"h": 40, "p": -30, "r": 2600, "dwell": 12, "section": "Appendix", "slide": {
-     "eyebrow": "Where the metal is",
-     "title": "Ten domains carry it",
-     "body": "Contained ounces by vein domain, share-weighted so blocks straddling "
-             "two domains are split rather than double-counted.",
-     "chart": "veinContribution"}},
-  {"h": 30, "p": -26, "r": 3200, "dwell": 11, "section": "Appendix", "slide": {
-     "eyebrow": "Resource by confidence",
-     "title": "What is known, and how well",
-     "body": "Classification splits the deposit by how much drilling stands behind it. "
-             "Labels follow the usual MineSight convention and remain unconfirmed "
-             "against the Nov-2021 technical report.",
-     "table": [["Class", "Tonnes", "Grade", "Contained"]] +
-              [[stats["class_labels"][k], f"{v['tonnes']/1e6:.2f} Mt",
-                f"{v['grade_gt']} g/t", f"{v['oz']:,.0f} oz"]
-               for k, v in sorted(_M.items()) if v["tonnes"] > 0]}},
+
+  # ---- explore ----
+  {"h": 26, "p": -27, "r": 3000, "cut": 0.5, "xray": True, "mode": "grade", "dwell": 10,
+   "ground": 0.0, "deposit": "north", "site": False,
+   "section": "Explore", "title": "Explore it yourself",
+   "body": "Twenty-two vein domains, each one isolatable, each with its own grade and tonnage. Open Explore and interrogate the model directly."}
 ]
+
+
+# ---- caption eyebrows and figures ---------------------------------------
+# Every slide carries three numbers under its prose, the way the Williams deck
+# does. They are keyed by title and merged in below rather than written into
+# CHAPTERS, because a chapter dict that already runs to twelve keys stops being
+# readable at fifteen — and because keeping them here means every figure is
+# COMPUTED from the same rollups the readout uses. A caption cannot disagree
+# with the audit trail if neither of them holds a typed-in number.
+_best = max(HIGHLIGHTS, key=lambda h: h["g"] * h["len"]) if HIGHLIGHTS else None
+_south = next((d for d in DEPOSITS if d["key"] == "south"), None)
+_sT = (_south or {}).get("stats", {}).get("total", {})
+_claim_ha = round(sum(c.get("ha", 0) for c in (SITE.get("claims") or [])))
+
+
+def _mt(t):
+    return f"{t/1e6:.2f} Mt"
+
+
+def _koz(o):
+    return f"{o/1e3:,.0f} koz"
+
+
+FIGS = {
+ "On real ground": [
+   ("EPSG:26910", "UTM zone 10N"), (f"{int(EX):,} m", "east-west extent"),
+   (f"{int(ZTOP)} m", "top of model")],
+ "The magnetic picture": [
+   ("Reduced-to-pole", "processing"), ("Fabricated", "this survey"),
+   ("None flown", "real coverage")],
+ "Drilled from surface": [
+   (f"{DRILL_N}", "holes"), (f"{DRILL_M:,.0f} m", "drilled"),
+   (f"{DRILL_MAXD:,.0f} m", "deepest hole")],
+ "The intercepts behind it": [
+   (f"{len(HIGHLIGHTS)}", "intercepts called out"),
+   (f"{_best['len']:.1f} m @ {_best['g']:.2f}" if _best else "—", "best, g/t AuEq"),
+   ("Synthetic", "all drilling")],
+ "The veins as bodies": [
+   (str(len(VEINS)), "domains"), ("NE", "structural trend"),
+   ("68-86\u00b0", "dips")],
+ "A section through it": [
+   ("\u00b145 m", "slab half-width"), ("N-S", "orientation"),
+   ("True scale", "no exaggeration")],
+ "Which orebody gets a pit": [
+   (f"{PIT['ore_mt']:.1f} Mt", "the pit takes"), (f"{PIT['grade']:.2f} g/t", "at"),
+   (f"{PIT['oz']/1e3:,.0f} koz", "contained")],
+ "The starter pit": [
+   (f"{_stg[0]['depth']} m", "first stage"), (str(len(_stg)), "stages in the sequence"),
+   ("Conceptual", "not a mine plan")],
+ "Four stages to the final pit": [
+   (f"{_pit_depth} m", "crest to floor"), (f"{PIT['strip']:.2f} : 1", "strip ratio"),
+   (f"{PIT['moved_mt']:.1f} Mt", "total movement")],
+ "The orebody": [
+   (str(len(VEINS)), "vein domains"), (_mt(_T["tonnes"]), "tonnes"),
+   (_koz(_T["oz"]), "contained AuEq")],
+ "How well is it known?": [
+   (_mt(_M["1"]["tonnes"]), "measured"), (_mt(_M["2"]["tonnes"]), "indicated"),
+   (_mt(_M["3"]["tonnes"]), "inferred")],
+ "A truck for scale": [
+   ("13.5 m", "truck length"), ("27 m", "bench height"),
+   (f"{_pit_depth} m", "crest to floor")],
+ "Explore it yourself": [
+   (str(len(VEINS)), "vein domains"), ("2", "deposits"),
+   ("Fabricated", "every number")],
+}
+
+# The eyebrow says what the slide is about. Where a chapter has nothing more
+# specific to add than its section, the paint falls back to the section name,
+# so only the ones that earn a second line are listed.
+EYEBROWS = {
+ "On real ground": "The land package \u00b7 Coast Mountains, BC",
+ "The magnetic picture": "Geophysics \u00b7 fabricated survey",
+ "Drilled from surface": "The drilling \u00b7 synthetic",
+ "Which orebody gets a pit": "Mine plan \u00b7 why the South Zone",
+ "The starter pit": "Mine plan \u00b7 stage one",
+ "Four stages to the final pit": "Mine plan \u00b7 the cutback sequence",
+ "A truck for scale": "Mine plan \u00b7 13.5 m for scale",
+ "Explore it yourself": "Free navigation \u00b7 the camera is yours",
+}
+
+for _c in CHAPTERS:
+    _k = _c.get("title")
+    if _k in FIGS:
+        _c["fig"] = [list(x) for x in FIGS[_k]]
+    if _k in EYEBROWS:
+        _c["ey"] = EYEBROWS[_k]
+
+# The deck ends by handing the camera over. Every layer is reachable from
+# Explore here; this chapter only decides which are already on. The fabricated
+# sentence stays in the copy — it is the last thing a reader sees and the one
+# statement in the deck that is an obligation rather than an editorial choice.
+CHAPTERS[-1]["explore"] = True
+CHAPTERS[-1]["body"] = (
+    "THE BLOCK MODEL, THE DRILLING, THE CLAIM BOUNDARIES, THE MAGNETICS AND THE "
+    "MINE PLAN IN THIS DECK ARE ALL FABRICATED. No ground was drilled, no sample "
+    "was assayed and no resource was estimated. Every tonne, gram and ounce was "
+    "generated to demonstrate the software.")
 
 HTML = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Elk Gold — Siwash North · Bedrock Present</title>
+<title>Bedrock Demo — North Zone · Bedrock Present</title>
 <!-- Inline, not a file. Without it every load 404s on /favicon.ico — harmless
      but visible in the console of a deck embedded on a customer's site, and a
      separate .ico would break the promise that this page is one artifact you
@@ -665,6 +829,12 @@ HTML = r"""<!DOCTYPE html>
       integrity="sha384-ghEeMdcWWzRv/BPeUcX835vcKDGrxvROXisl/Btpv3GeekBUXTSPVcFJpI1Tcrgp" crossorigin="anonymous">
 <style>__FONTS__</style>
 <style>
+  /* The caption card owns the bottom-right corner. Everything else pinned
+     there — the compass, the scale bar, the fabricated-data banner — is
+     measured off this rather than guessing, because they used to be laid out
+     against an empty corner and the card now covers it: the banner was
+     printing across the first figure of every slide that had one. */
+  :root{--capw:min(440px,calc(100vw - 300px));--capr:30px}
   *{box-sizing:border-box;margin:0}
   html,body,#cesiumContainer{height:100%;width:100%;overflow:hidden;background:#07090A}
   body{font-family:Archivo,system-ui,sans-serif;color:#EDEEEC;-webkit-font-smoothing:antialiased}
@@ -675,21 +845,34 @@ HTML = r"""<!DOCTYPE html>
   #brand .w{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.34em;color:#C99A3A;text-transform:uppercase}
   #brand .n{font-size:17px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;margin-top:5px;line-height:1}
 
-  #rail{position:fixed;left:30px;top:96px;z-index:6;display:flex;flex-direction:column;gap:2px;
-        background:rgba(7,9,10,.72);border:1px solid rgba(255,255,255,.08);border-radius:5px;
-        padding:8px 12px 8px 8px;backdrop-filter:blur(4px);max-height:calc(100vh - 260px);overflow-y:auto}
-  #rail .c{display:flex;align-items:center;gap:10px;padding:6px 4px;min-height:44px;cursor:pointer;opacity:.72;transition:opacity .3s}
+  /* The rail is a contents page, not a filmstrip.
+     It used to carry a 54x32 thumbnail per chapter inside a translucent panel.
+     Thirty of those is a 400 px column of near-identical brown rectangles —
+     every chapter is the same mountain from a slightly different angle, so the
+     pictures distinguished nothing and the panel they sat in covered a third
+     of the scene. Section headings and titles do the same job in a quarter of
+     the width, with the map behind them. */
+  #rail{position:fixed;left:30px;top:112px;bottom:150px;z-index:6;width:212px;
+        overflow-y:auto;scrollbar-width:none;padding-right:6px}
+  #rail::-webkit-scrollbar{display:none}
   #rail .sec{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.24em;
-             text-transform:uppercase;color:#C99A3A;padding:12px 0 5px 4px;opacity:.9}
-  #rail .th{width:54px;height:32px;border-radius:3px;flex:0 0 auto;background-size:cover;background-position:center;
-            border:1px solid rgba(255,255,255,.16);background-color:#11161a}
-  #rail .th.isslide{background-image:linear-gradient(120deg,#1e242a,#0d1114)}
-  #rail .c.on .th{border-color:#C99A3A;box-shadow:0 0 0 1px rgba(201,154,58,.55)}
-  #rail .c:hover{opacity:.85}
-  #rail .c.on{opacity:1}
-  #rail .num{font-family:'JetBrains Mono',monospace;font-size:10px;color:#C99A3A;width:20px}
-  #rail .t{font-size:12px;font-weight:500;letter-spacing:.01em;max-width:150px;line-height:1.25}
-  #rail .c.on .t{color:#fff}
+             text-transform:uppercase;color:#8E948E;margin:16px 0 7px;padding-bottom:5px;
+             border-bottom:1px solid rgba(255,255,255,.09)}
+  #rail .sec:first-child{margin-top:0}
+  /* A <button>, so it is reachable by keyboard and announces itself — but a
+     button brings a border, a background and its own font with it, and thirty
+     of those read as thirty pressable tiles rather than a contents page.
+     Reset all three explicitly. */
+  #rail .c{display:flex;gap:9px;align-items:baseline;width:100%;text-align:left;
+           background:none;border:0;font-family:inherit;
+           padding:6px 0;cursor:pointer;color:#8E948E;font-size:12.5px;line-height:1.3;
+           transition:color .18s}
+  #rail .c:hover{color:#C6CAC5}
+  #rail .c.on{color:#EDEEEC}
+  #rail .c.on .num{color:#C99A3A}
+  #rail .num{font-family:'JetBrains Mono',monospace;font-size:10px;
+             color:rgba(255,255,255,.45);width:18px;flex:none}
+  #rail .t{min-width:0}
 
   /* pointer-events:none matters more than it looks. This bar is full width,
      several hundred pixels tall on a chapter with a long caption, and its top
@@ -699,19 +882,94 @@ HTML = r"""<!DOCTYPE html>
      a block did nothing. Clicking a drill hole did nothing. The controls take
      their events back explicitly; the caption is prose and does not need them,
      and text selection is not worth half the scene. */
-  #bar{position:fixed;left:0;right:0;bottom:0;z-index:6;padding:70px 34px 26px;
-       background:linear-gradient(180deg,rgba(7,9,10,0) 0%,rgba(7,9,10,.72) 44%,rgba(7,9,10,.92) 100%);
-       display:flex;align-items:flex-end;justify-content:space-between;gap:36px;transition:opacity .4s;
+  /* pointer-events:none matters more than it looks. This bar is full width and
+     its top is a fully TRANSPARENT gradient, so it covered part of the scene
+     while appearing to cover nothing and silently ate every click that landed
+     there. The controls take their events back explicitly. */
+  #bar{position:fixed;left:0;right:0;bottom:0;z-index:6;padding:56px 34px 26px;
+       background:linear-gradient(180deg,rgba(7,9,10,0) 0%,rgba(7,9,10,.55) 52%,rgba(7,9,10,.86) 100%);
+       display:flex;align-items:flex-end;gap:36px;transition:opacity .4s;
        pointer-events:none}
-  #bar #nav,#bar #nav *{pointer-events:auto}
+  #bar #nav2,#bar #nav2 *{pointer-events:auto}
+  #nav2{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+  #right{position:fixed;right:var(--capr);bottom:26px;z-index:7;width:var(--capw);
+         display:flex;flex-direction:column;align-items:stretch;gap:9px}
+  #util{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+  #util .btn{padding:8px 12px;font-size:10px;letter-spacing:.1em;color:#8E948E;
+             background:rgba(7,9,10,.82);backdrop-filter:blur(14px)}
+  #util .btn:hover{color:#EDEEEC;background:rgba(20,24,26,.92)}
+
   /* Visible by default — the caption IS the story. The .in class animates a
      transform-only enter on top; it must never be what makes text appear. */
-  #cap{max-width:560px;transform:translateY(14px);opacity:.999;transition:opacity .6s ease,transform .6s ease}
+  #cap{width:100%;background:rgba(7,9,10,.86);backdrop-filter:blur(14px);
+       border:1px solid rgba(255,255,255,.10);border-radius:5px;padding:22px 24px 0;
+       display:flex;flex-direction:column;
+       transform:translateY(10px);opacity:.999;transition:opacity .5s ease,transform .5s ease}
   #cap.in{opacity:1;transform:none}
-  #cap .ey{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.22em;color:#C99A3A;text-transform:uppercase}
-  #cap h2{font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.05;margin:12px 0 12px}
-  #cap p{font-family:Newsreader,Georgia,serif;font-size:18px;line-height:1.55;color:#C6CAC5;text-wrap:pretty}
-  #nav{display:flex;align-items:center;gap:10px;flex:0 0 auto;padding-bottom:4px}
+  #cap .ey{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.22em;
+           color:#C99A3A;text-transform:uppercase}
+  #cap h2{font-size:25px;font-weight:600;letter-spacing:-.022em;line-height:1.14;
+          margin:11px 0 9px;text-wrap:balance}
+  #cap p{font-family:Newsreader,Georgia,serif;font-size:17px;line-height:1.56;
+         color:#C6CAC5;text-wrap:pretty}
+  /* Three numbers, in mono, under a rule. The one thing a caption card can do
+     that loose prose cannot: state the figures the sentence is about without
+     making the reader parse them out of it. Empty on a chapter that has none —
+     the rule goes with them rather than leaving a bare line. */
+  #cap .fig{display:flex;flex-wrap:wrap;gap:0 26px;margin-top:16px;padding-top:14px;
+            border-top:1px solid rgba(255,255,255,.09)}
+  #cap .fig:empty{display:none}
+  #cap .fig div{min-width:0}
+  #cap .fig b{display:block;font-family:'JetBrains Mono',monospace;font-size:15px;
+              font-weight:500;color:#EDEEEC}
+  #cap .fig span{display:block;font-family:'JetBrains Mono',monospace;font-size:9px;
+                 letter-spacing:.16em;text-transform:uppercase;color:#8E948E;margin-top:4px}
+
+  #nav{display:flex;align-items:center;gap:14px;margin-top:18px;padding:12px 0 14px;
+       border-top:1px solid rgba(255,255,255,.11)}
+  #nav .arw{flex:none;width:44px;height:36px;display:flex;align-items:center;
+            justify-content:center;font-size:17px;line-height:1;cursor:pointer;
+            color:#C99A3A;background:rgba(201,154,58,.10);
+            border:1px solid rgba(201,154,58,.42);border-radius:3px;
+            transition:background .16s,color .16s,border-color .16s}
+  #nav #next{background:rgba(201,154,58,.2);border-color:rgba(201,154,58,.66)}
+  #nav .arw:hover{background:#C99A3A;border-color:#C99A3A;color:#12100B}
+  #nav .arw:active{transform:translateY(1px)}
+  #nav .arw[disabled]{opacity:.28;pointer-events:none}
+  #nav .ct{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:7px}
+  #nav .count{font-family:'JetBrains Mono',monospace;font-size:14px;letter-spacing:.16em;
+              color:#EDEEEC;font-weight:500}
+  #nav .count b{color:#C99A3A;font-weight:500}
+  /* One tick per chapter, clickable. Thirty of them at three pixels wide is a
+     legible position indicator and a jump target at the same time; the old
+     single filled bar was only the first. */
+  #nav .prg{display:flex;gap:3px;width:100%}
+  #nav .prg i{flex:1;height:3px;border-radius:1px;background:rgba(255,255,255,.16);
+              cursor:pointer;transition:background .16s}
+  #nav .prg i:hover{background:rgba(255,255,255,.42)}
+  #nav .prg i.done{background:rgba(201,154,58,.42)}
+  #nav .prg i.now{background:#C99A3A;box-shadow:0 0 0 1px rgba(201,154,58,.35)}
+
+  /* ---- explore ----
+     The last chapter hands the camera over, so the card stops being a slide
+     and becomes a footer: the figures first, the obligation to say the model
+     is fabricated second, the nav last. Title and eyebrow go — there is no
+     slide left to head. */
+  body.slidech #cap{padding:13px 17px 0}
+  body.slidech #cap .ey,body.slidech #cap h2,
+  body.slidech #cap p,body.slidech #cap .fig{display:none}
+  body.explore #cap{padding:13px 17px 0}
+  body.explore #cap .ey,body.explore #cap h2{display:none}
+  body.explore #cap .fig{order:1;margin-top:0;padding-top:0;border-top:0}
+  body.explore #cap p{order:2;font-family:'JetBrains Mono',monospace;font-size:9px;
+                      line-height:1.7;letter-spacing:.05em;color:#8E948E;margin-top:12px;
+                      padding-top:11px;border-top:1px solid rgba(255,255,255,.09)}
+  body.explore #cap #nav{order:3;margin-top:12px}
+  /* Explore opens a 296px panel down the right edge, so the caption card and
+     everything measured off it step left by exactly that much. Two numbers in
+     one place beat four positions that have to be kept in agreement. */
+  body.explore{--capw:min(380px,calc(100vw - 700px));--capr:346px}
   .btn{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#EDEEEC;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);border-radius:3px;padding:12px 18px;cursor:pointer;transition:.2s}
   .btn:hover{border-color:#C99A3A;color:#C99A3A}
   .btn:disabled{opacity:.3;cursor:default}
@@ -925,9 +1183,12 @@ HTML = r"""<!DOCTYPE html>
   .ik{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.1em;
       text-transform:uppercase;color:#8E948E}
   .iv{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#EDEEEC;text-align:right}
-  #synwarn{position:fixed;left:50%;transform:translateX(-50%);bottom:118px;z-index:9;display:none;
+  /* Centred in the space the caption card leaves, not in the viewport, and
+     clear of the presenter controls along the bottom. */
+  #synwarn{position:fixed;left:30px;right:calc(var(--capr) + 30px + var(--capw));bottom:88px;z-index:9;display:none;
            font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;
-           color:#0d0f10;background:#D9584A;padding:7px 15px;border-radius:3px;font-weight:600}
+           color:#0d0f10;background:#D9584A;padding:7px 15px;border-radius:3px;font-weight:600;
+           text-align:center;max-width:640px;margin:0 auto}
   #synwarn.on{display:block}
 
   /* Top-centre: the rail owns the left edge and #tools the right, and the
@@ -996,8 +1257,10 @@ HTML = r"""<!DOCTYPE html>
   #loadact{margin-top:16px;display:none;gap:8px;justify-content:center;flex-wrap:wrap}
   #loadact.on{display:flex}
 
-  #compass{position:fixed;right:40px;bottom:118px;z-index:6;width:52px;height:52px;opacity:.75}
-  #scalebar{position:fixed;right:34px;bottom:86px;z-index:6;text-align:right;opacity:.75}
+  #compass{position:fixed;right:calc(var(--capr) + 36px + var(--capw));bottom:34px;z-index:6;
+           width:52px;height:52px;opacity:.75}
+  #scalebar{position:fixed;right:calc(var(--capr) + 30px + var(--capw));bottom:100px;z-index:6;
+            text-align:right;opacity:.75}
   #scalebar .l{height:3px;background:#EDEEEC;margin-left:auto;border-left:1px solid #EDEEEC;border-right:1px solid #EDEEEC}
   #scalebar .t{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#C6CAC5;margin-top:4px;letter-spacing:.08em}
 
@@ -1087,8 +1350,12 @@ HTML = r"""<!DOCTYPE html>
      canonical vestibular trigger. Honour the OS setting: cut the flight to a
      snap, stop autoplay starting itself, and flatten the CSS transitions. */
   @media(prefers-reduced-motion:reduce){
-    #cap,#intro,#prog,#dwell,#bar,.btn,.seg button,.chip,#slide,#rail .c,.isw,#toast,#offline,#recdot
+    #cap,#intro,#prog,#dwell,#bar,.btn,.seg button,.chip,#slide,#rail .c,.isw,#toast,#offline,#recdot,
+    #nav .arw,#nav .prg i,#util .btn
       {transition:none!important;animation:none!important}
+    /* The caption's enter is a transform, so with motion off it has to land in
+       place rather than sit 10px low forever. */
+    #cap{transform:none!important}
     .isw.on{transform:none}
     #dwell{display:none}
   }
@@ -1109,17 +1376,32 @@ HTML = r"""<!DOCTYPE html>
     /* The scene is the product. Cap the caption at a third of the viewport and
        let a long body scroll inside itself rather than push the controls off
        the bottom of the phone. */
-    #bar{padding:26px 14px calc(12px + env(safe-area-inset-bottom));gap:10px;
-         flex-direction:column;align-items:stretch}
-    #cap{max-width:none;max-height:31vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+    /* The card spans the phone rather than hugging a corner that does not
+       exist at this width, and the presenter's cut-off and terrain controls go
+       with the bar above it. */
+    #right{left:14px;right:14px;bottom:calc(14px + env(safe-area-inset-bottom));
+           width:auto;--capw:auto;--capr:14px}
+    #bar{padding:26px 14px 0;gap:10px;flex-direction:column;align-items:stretch}
+    /* Cap the PROSE, not the card. Scrolling the whole card put the arrows and
+       the counter below the fold on a long chapter — a deck you cannot page
+       forward in. Only the body gives, and the eyebrow, title, figures and nav
+       stay on screen at every length. */
+    #cap{padding:16px 17px 0}
     #cap h2{font-size:21px;margin:7px 0 8px}
-    #cap p{font-size:15px;line-height:1.5}
+    #cap p{font-size:15px;line-height:1.5;max-height:31vh;overflow-y:auto;
+           -webkit-overflow-scrolling:touch}
     #cap .ey{font-size:10px}
+    #cap .fig{gap:0 18px;margin-top:12px;padding-top:11px}
+    #cap .fig b{font-size:13px}
+    /* Everything measured off the card's corner has no corner to sit beside
+       once the card is full width. */
+    #synwarn{left:14px;right:14px;bottom:auto;top:calc(96px + env(safe-area-inset-top))}
+    #compass,#scalebar{display:none}
 
-    /* Back, the counter, Next, Play — always reachable, never off the edge.
-       44px because that is the smallest target a thumb hits reliably. */
-    #nav{width:100%;justify-content:space-between;gap:6px;padding-bottom:0}
-    #nav .btn{padding:12px 10px;font-size:10px;min-height:44px;flex:0 1 auto}
+    /* Back, the counter, Next — always reachable, never off the edge. 44px
+       because that is the smallest target a thumb hits reliably. */
+    #nav{width:100%;gap:10px;margin-top:14px;padding:11px 0 12px}
+    #nav .arw{width:52px;height:44px}
 
     /* Fourteen buttons of authoring chrome, unreachable on a phone and beside
        the point for an audience. Leaving them to overflow is how they ended up
@@ -1195,7 +1477,13 @@ HTML = r"""<!DOCTYPE html>
     #cap p{font-size:13.5px}
     #bar{padding-top:12px}
   }
-  @media(max-width:900px){#rail{display:none}#panel{width:auto;left:16px;right:16px}#cap h2{font-size:23px}#cap p{font-size:16px}}
+  /* Below 900px the rail and its scrim go: 212px of contents page out of a
+     narrow viewport is the scene, and the progress strip in the card is a
+     complete jump target on its own. */
+  @media(max-width:900px){#rail,#scrimL{display:none}
+    #panel{width:auto;left:16px;right:16px}
+    body.explore{--capw:min(380px,calc(100vw - 60px));--capr:30px}
+    #cap h2{font-size:23px}#cap p{font-size:16px}}
 </style>
 </head>
 <body>
@@ -1206,8 +1494,9 @@ HTML = r"""<!DOCTYPE html>
 <div id="prog"></div><div id="dwell"></div>
 <div id="toast"></div>
 
-<div id="brand"><div class="w">Bedrock Present</div><div class="n">Elk Gold<br>Siwash North</div></div>
-<div id="rail"></div>
+<div id="brand"><div class="w">Bedrock Present</div><div class="n">Bedrock Demo<br><span id="brandDep">North Zone</span></div></div>
+<div id="scrimL" aria-hidden="true"></div>
+<nav id="rail" aria-label="Chapters"></nav>
 <div id="legend">
   <div id="gradeleg"></div>
   <div id="clsleg"></div>
@@ -1520,9 +1809,41 @@ HTML = r"""<!DOCTYPE html>
 </g></svg>
 <div id="scalebar"><div class="l" id="sbline" style="width:120px"></div><div class="t" id="sbtext">—</div></div>
 
+<!-- The caption is a card in the bottom-right corner, not prose lying on the
+     bottom-left of the scene.
+     It moved for two reasons. The rail is on the left and the caption was
+     under it, so on any chapter with a six-line body the two overlapped and
+     the title read through the chapter list. And a caption with no edge has
+     no room for anything but words — the figures row below, which is where a
+     slide says its three numbers, needs a panel to sit in. This is the same
+     structure the Williams deck uses, down to the progress strip, because a
+     reader who has seen one Bedrock deck should not have to learn the next. -->
+<div id="right">
+  <div id="util">
+    <button id="play" class="btn" title="Autoplay (P)">▶ Play</button>
+    <button id="narr" class="btn sm" title="Narration (N)">Narrate</button>
+  </div>
+  <section id="cap" aria-live="polite">
+    <div class="ey" id="cap_ey"></div>
+    <h2 id="cap_t"></h2>
+    <p id="cap_b"></p>
+    <div class="fig" id="cap_f"></div>
+    <div id="nav">
+      <button class="arw" id="prev" aria-label="Previous chapter">←</button>
+      <div class="ct">
+        <span class="count" id="count">1 / 1</span>
+        <div class="prg" id="prg" role="tablist" aria-label="Chapters"></div>
+      </div>
+      <button class="arw" id="next" aria-label="Next chapter">→</button>
+    </div>
+  </section>
+</div>
+
+<!-- The two controls a presenter reaches for mid-sentence stay on the scene,
+     bottom-left where the caption used to be. They are not chapter content and
+     they do not belong inside the card. -->
 <div id="bar">
-  <div id="cap"><div class="ey" id="cap_ey">01 / 09</div><h2 id="cap_t"></h2><p id="cap_b"></p></div>
-  <div id="nav">
+  <div id="nav2">
     <!-- Cut-off on the presenting chrome, not buried in Explore.
          The question "what if we only mined the good stuff" gets asked out
          loud, mid-presentation, and walking into a settings panel to answer it
@@ -1545,11 +1866,6 @@ HTML = r"""<!DOCTYPE html>
       <span id="pgndv">cut away</span>
       <button id="pgndx" class="btn sm" hidden title="Return to the chapter's terrain">Reset</button>
     </div>
-    <button id="prev" class="btn">‹ Back</button>
-    <span class="count" id="count">1 / 9</span>
-    <button id="next" class="btn">Next ›</button>
-    <button id="play" class="btn" title="Autoplay (P)">▶ Play</button>
-    <button id="narr" class="btn sm" title="Narration (N)">Narrate</button>
   </div>
 </div>
 
@@ -1564,8 +1880,8 @@ HTML = r"""<!DOCTYPE html>
 
 <div id="intro">
   <div class="eyebrow">Bedrock Present · Interactive 3D Story</div>
-  <h1 id="intro_t">Elk Gold<br>Siwash North</h1>
-  <div class="sub" id="intro_s">A high-grade gold system in British Columbia's Nicola region — presented in three dimensions, on real terrain.</div>
+  <h1 id="intro_t">Bedrock Demo<br>North Zone</h1>
+  <div class="sub" id="intro_s">A vein-hosted gold system in British Columbia's Coast Mountains — presented in three dimensions, on real terrain.</div>
   <button id="begin">Begin the walkthrough ▸</button>
 </div>
 <div id="offline"></div>
@@ -1588,7 +1904,7 @@ HTML = r"""<!DOCTYPE html>
 <script>
 // `let`, not `const`, for everything the model determines.
 //
-// This file used to be a hard-coded Elk Gold deck with a chapter list stapled
+// This file used to be a hard-coded Bedrock Demo deck with a chapter list stapled
 // on. A customer could push a block model through the console and still had no
 // way to look at it — the console wrote artifacts nobody read. Opening the deck
 // with ?t=<share token> now replaces every value below from the `deck` edge
@@ -1599,10 +1915,10 @@ let N=__N__,
       ZTOP=__ZTOP__, ZBOT=__ZBOT__;
 let CHAPTERS=__CHAPTERS__, RUNS=__RUNS__, BUCKETS=__BUCKETS__, VEINS=__VEINS__,
       LADDER=__LADDER__, CLASS_LABELS=__CLASS_LABELS__, CLASS_CONFIRMED=__CLASS_CONFIRMED__,
-      PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, REAL_CLAIMS=__REAL_CLAIMS__, CLAIMS_ATTRIB=__CLAIMS_ATTRIB__, CLAIMS_SUBJECT=__CLAIMS_SUBJECT__, HOLDER_LOGOS=__HOLDER_LOGOS__, HOLDER_META=__HOLDER_META__, BRAND=__BRAND__, GEOPHYS=__GEOPHYS__, GEOPHYS_SYNTHETIC=__GEOPHYS_SYNTHETIC__, STATIONS=__STATIONS__, DEPOSITS=__DEPOSITS__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, G_PER_OZ=31.10348;
+      PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, REAL_CLAIMS=__REAL_CLAIMS__, CLAIMS_ATTRIB=__CLAIMS_ATTRIB__, CLAIMS_SYNTHETIC=__CLAIMS_SYNTHETIC__, CLAIMS_SUBJECT=__CLAIMS_SUBJECT__, HOLDER_LOGOS=__HOLDER_LOGOS__, HOLDER_META=__HOLDER_META__, BRAND=__BRAND__, GEOPHYS=__GEOPHYS__, GEOPHYS_SYNTHETIC=__GEOPHYS_SYNTHETIC__, STATIONS=__STATIONS__, DEPOSITS=__DEPOSITS__, PITCUT=__PITCUT__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, PIT_DEM=__PIT_DEM__, G_PER_OZ=31.10348;
 // ---- projections -------------------------------------------------------
-// The viewer used to hard-code EPSG:26910 — NAD83 / UTM 10N, which is Elk
-// Gold's grid and nobody else's. Every project outside one zone of British
+// The viewer used to hard-code EPSG:26910 — NAD83 / UTM 10N, which is this
+// model's grid and nobody else's. Every project outside one zone of British
 // Columbia was refused at the door.
 //
 // Definitions are generated rather than listed: a UTM zone's proj4 string is
@@ -1840,6 +2156,39 @@ function unpackOreb(buf){
   return cols;
 }
 
+// Is a block inside the final pit shell?
+//
+// PITCUT describes one shell in absolute UTM — the ring the site layer draws,
+// a rim elevation, a depth and a wall taper — and this runs it against
+// whichever model is loaded. That is the point of doing it here rather than
+// in the build: the pit sits on the South Zone, which arrives as its own OREB
+// file long after the page was generated, and the North Zone the build can
+// see is 2.6 km away from it. One test, both models, the honest answer for
+// each — for North Zone that answer is "none of it", which is correct, and
+// the reason no North Zone chapter turns the cut on.
+//
+// The wall is a straight 45-degree taper from the rim ring, not a real
+// pit-optimisation shell. It is drawn to be read, not to be mined.
+function pitQ(x,y,z){
+  if(!PITCUT) return 0;
+  if(z>PITCUT.rim || z<PITCUT.rim-PITCUT.depth) return 0;
+  const dx=x-PITCUT.cx, dy=y-PITCUT.cy, pol=PITCUT.pol, n=pol.length;
+  const th=Math.atan2(dy,dx);
+  // Interpolate the ring radius at this bearing. The table is angle-sorted and
+  // wraps, so the last segment spans the seam at +/-pi.
+  let r=pol[0][1];
+  for(let i=0;i<n;i++){
+    let a0=pol[i][0], a1=pol[(i+1)%n][0];
+    if(a1<a0) a1+=2*Math.PI;
+    const tt = th<a0 ? th+2*Math.PI : th;
+    if(tt>=a0 && tt<=a1){
+      const f = a1===a0 ? 0 : (tt-a0)/(a1-a0);
+      r = pol[i][1] + (pol[(i+1)%n][1]-pol[i][1])*f; break; }
+  }
+  const k = 1 - ((PITCUT.rim-z)/PITCUT.depth)*PITCUT.taper;
+  return Math.hypot(dx,dy) <= r*k ? 1 : 0;
+}
+
 // Rebuild the render buckets the Python build precomputes. Same key and same
 // order — (class, grade bin, depth band) — because RUNS are index ranges into
 // F, so the sort here and the runs must agree exactly or every primitive draws
@@ -1866,13 +2215,22 @@ function buildModel(cols, stats, ladder){
   const binOf=g=>{ let b=0; while(b+1<LAD.length&&LAD[b+1]<=g) b++; return b; };
 
   const idx=new Int32Array(n); for(let i=0;i<n;i++) idx[i]=i;
-  const bins=new Uint8Array(n), bands=new Uint8Array(n);
-  for(let i=0;i<n;i++){ bins[i]=binOf(cols.g[i]); bands[i]=band(i); }
+  const bins=new Uint8Array(n), bands=new Uint8Array(n), qs=new Uint8Array(n);
+  for(let i=0;i<n;i++){ bins[i]=binOf(cols.g[i]); bands[i]=band(i);
+    // Absolute UTM: cols.x/y are relative to the file origin, and the pit is
+    // described in ground coordinates.
+    qs[i]=pitQ(cols.x[i]+ox, cols.y[i]+oy, cols.z[i]+oz); }
   // Vein is the last key in the Python sort but does not enter the run key, so
   // it only has to be stable, not ordered — sorting on it anyway keeps a
   // hydrated deck's primitive order reproducible between loads.
+  // In-pit sorts AFTER the three bucket keys and before vein, so a run is
+  // wholly inside the shell or wholly outside it and the cut is a per-
+  // primitive colour rather than a per-block attribute. With no pit — or a pit
+  // this model never reaches — every q is 0 and the order is unchanged, which
+  // is why it can share the build's four-key order.
   const order=Array.prototype.slice.call(idx).sort((a,b)=>
-    cols.c[a]-cols.c[b] || bins[a]-bins[b] || bands[a]-bands[b] || cols.v[a]-cols.v[b]);
+    cols.c[a]-cols.c[b] || bins[a]-bins[b] || bands[a]-bands[b]
+    || qs[a]-qs[b] || cols.v[a]-cols.v[b]);
 
   const f=new Float32Array(n*5), m=new Uint8Array(n*2);
   for(let k=0;k<n;k++){ const i=order[k];
@@ -1886,11 +2244,11 @@ function buildModel(cols, stats, ladder){
 
   const runs=[];
   let s=0;
-  const rk=k=>{ const i=order[k]; return cols.c[i]+'|'+bins[i]+'|'+bands[i]; };
+  const rk=k=>{ const i=order[k]; return cols.c[i]+'|'+bins[i]+'|'+bands[i]+'|'+qs[i]; };
   for(let k=1;k<=n;k++){
     if(k===n||rk(k)!==rk(s)){
       const i=order[s];
-      runs.push({c:cols.c[i], b:bins[i], d:bands[i], lo:LAD[bins[i]],
+      runs.push({c:cols.c[i], b:bins[i], d:bands[i], q:qs[i], lo:LAD[bins[i]],
                  hi:bins[i]+1<LAD.length?LAD[bins[i]+1]:null, s:s, n:k-s});
       s=k; }
   }
@@ -1942,7 +2300,7 @@ function holesFromArtifact(a, floor){
 }
 // Is this registered holder a company or a person?
 //
-// It matters more than it sounds. Of the sixteen holders around Elk Gold, ten
+// It matters more than it sounds. Of the sixteen holders around Bedrock Demo, ten
 // are private individuals — a public register is full of them. "A listed
 // copper company holds the ground along strike" is the fact an investor came
 // for; "RIPPON, DONALD JOHN holds three placer claims" is noise, and putting a
@@ -1998,7 +2356,7 @@ function rollHolders(claims, subjectOwner){
                            corporate:isCorporate(c.owner)});
     h.rings++;
     // COUNT and area both dedupe by tenure. A MultiPolygon claim arrives as
-    // several entries — Elk Gold's 29 registered claims are 30 rings — and
+    // several entries — Bedrock Demo's 29 registered claims are 30 rings — and
     // counting rings put "30 claims" on a card next to a register that says
     // 29. Area was already deduped; the count was not, which is the more
     // visible of the two because it is the number in the caption.
@@ -2236,7 +2594,7 @@ async function hydrate(token){
           datasets:(payload.assets||[]).map(a=>a.kind)};
     BLOCKS_SYNTHETIC=false;
     HOLES=[]; HIGHLIGHTS=[]; SITE={areas:[],roads:[],labels:[],claims:[]};
-    SITE_SYNTHETIC=false; REAL_CLAIMS=[]; CLAIMS_ATTRIB='';
+    SITE_SYNTHETIC=false; REAL_CLAIMS=[]; CLAIMS_ATTRIB=''; CLAIMS_SYNTHETIC=false;
     GEOPHYS={}; GEOPHYS_SYNTHETIC=false; THUMBS=[]; STATIONS=[];
     await loadSideArtifacts(assetsOf(zones[0] && zones[0].id));
 
@@ -2370,10 +2728,10 @@ async function hydrate(token){
   // real ones. It joins the same five paths as the rest.
   BLOCKS_SYNTHETIC=!!blocks.synthetic;
 
-  // Never inherited from the demo — showing Elk Gold's drill holes over
+  // Never inherited from the demo — showing Bedrock Demo's drill holes over
   // someone else's deposit would be the worst bug this viewer could have.
   HOLES=[]; HIGHLIGHTS=[]; SITE={areas:[],roads:[],labels:[],claims:[]};
-  SITE_SYNTHETIC=false; REAL_CLAIMS=[]; CLAIMS_ATTRIB='';
+  SITE_SYNTHETIC=false; REAL_CLAIMS=[]; CLAIMS_ATTRIB=''; CLAIMS_SYNTHETIC=false;
   GEOPHYS={}; GEOPHYS_SYNTHETIC=false; THUMBS=[]; STATIONS=[];
   await loadSideArtifacts(assetsOf(modelled[0].zone.id));
 
@@ -2409,7 +2767,7 @@ async function hydrate(token){
                   bn.appendChild(document.createTextNode(p.name)); } }
     // The opening card is baked marketing copy for the demo. Left alone it
     // greeted a hydrated deck with another company's deposit name and a claim
-    // about a gold system in the Nicola region — over someone else's model.
+    // about a gold system in the Coast Mountains — over someone else's model.
     const it=$('intro_t'), is=$('intro_s');
     if(it) it.textContent=payload.deck.title;
     if(is) is.textContent=payload.deck.subtitle ||
@@ -2469,6 +2827,7 @@ async function loadSideArtifacts(assets){
   const c=await grab('site');
   if(c&&c.json&&c.json.format==='orebody-claims/1'){
     REAL_CLAIMS=claimsFromArtifact(c.json);
+    CLAIMS_SYNTHETIC=!!(c.asset&&c.asset.synthetic);
     CLAIMS_ATTRIB=c.asset.label?('Boundaries as supplied: '+c.asset.label):'';
     SITE_SYNTHETIC=!!c.asset.synthetic;
   }
@@ -2508,7 +2867,7 @@ async function bootData(){
     // Generous: 3.7 MB over a poor cellular link is legitimately slow. But
     // bounded, because "slow" and "never" have to be distinguishable.
     const buf=await withTimeout(
-      fetch('data/elk_blocks.bin').then(r=>{
+      fetch('data/demo_blocks.bin').then(r=>{
         if(!r.ok) throw new Error('the block model could not be downloaded ('+r.status+')');
         return r.arrayBuffer(); }),
       60000, 'downloading the block model');
@@ -2819,6 +3178,8 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
                                alpha:false,stencil:false,powerPreference:'low-power'},
                          webgl1:true, noExport:true},
   ];
+  // Motion is opt-in per chapter: the clock starts still so nothing drifts
+  // through chapters whose copy says nothing about movement.
   const mkViewer=(a)=>new Cesium.Viewer('cesiumContainer',{
     baseLayer:new Cesium.ImageryLayer(imagery),terrainProvider:terrain,
     baseLayerPicker:false,geocoder:false,homeButton:false,sceneModePicker:false,navigationHelpButton:false,
@@ -2918,7 +3279,11 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     return Cesium.Rectangle.fromDegrees(a[0],a[1],b[0],b[1]);
   })();
   viewer.scene.globe.translucency.rectangle=undefined;   // the whole globe
-  viewer.scene.globe.undergroundColor=Cesium.Color.fromCssColorString('#141a1f');
+  // Rock, not a void. This paints whatever shows through a terrain clip, and
+  // the pit's clip prism cannot meet its shell exactly on a slope — so the
+  // few metres that do not line up used to read as a black tear in a lit
+  // hillside. A dark rock tone makes the same gap read as shadowed ground.
+  viewer.scene.globe.undergroundColor=Cesium.Color.fromCssColorString('#3b3630');
   // Colour-pop masking. Two copies of the same imagery: the base stays in full
   // colour, and a desaturated near-black copy sits on top with a hole cut out
   // over the property. The claim block is then the only saturated thing in the
@@ -3011,7 +3376,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
 
   // One geometry per grade tier so the low tiers can be drawn undersized
   // without touching the data. Dimensions come from the model rather than being
-  // fixed at Siwash North's 10 x 5 x 5 m — a 12 m block drawn as a 10 m box
+  // fixed at North Zone's 10 x 5 x 5 m — a 12 m block drawn as a 10 m box
   // leaves a visible lattice of gaps through the whole deposit.
   let BOXES=[];
   function rebuildBoxes(){
@@ -3044,12 +3409,26 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   setStat('building blocks…');
   bootPhase('projecting block positions');
   buildPositions();
+  // Grade colouring runs over the whole model, which cannot answer the one
+  // question a mine plan asks: which of this rock does the pit actually take?
+  // With pitCut on, everything the shell does not reach goes to a flat waste
+  // grey and only the ore inside it keeps its grade colour.
+  let pitCut=false;
+  const WASTE=Cesium.Color.fromCssColorString('#5A5F63').withAlpha(0.55);
+  // ...but only for a model the pit actually reaches. The deck carries two
+  // deposits and the shell is on one of them; asked to cut the other, the
+  // honest answer is "the pit takes none of this", and painting 12,000 blocks
+  // uniform grey renders that as a broken page rather than as an answer. So
+  // the cut engages only where there is something inside it to distinguish.
+  const cuttable=()=>RUNS.some(r=>r.q);
   function buildBase(){
+    const cut=pitCut&&cuttable();
     RUNS.forEach(r=>{
       if(r.prim) viewer.scene.primitives.remove(r.prim);
       const idx=[]; for(let i=r.s;i<r.s+r.n;i++) idx.push(i);
       r.mid=r.hi===null?r.lo*1.4:(r.lo+r.hi)/2;
-      r.prim=makePrim(idx,depthShade(ramp(r.mid,fade),r.d||0),r.mid);
+      const col=(cut && !r.q) ? WASTE : depthShade(ramp(r.mid,fade),r.d||0);
+      r.prim=makePrim(idx,col,r.mid);
       viewer.scene.primitives.add(r.prim);
     });
   }
@@ -3261,7 +3640,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       const type=rec.mimeType||mime||'video/webm';
       const ext=type.indexOf('mp4')>=0?'mp4':'webm';
       const blob=new Blob(recChunks,{type:type});
-      dl('elk-gold-walkthrough.'+ext, URL.createObjectURL(blob));
+      dl('bedrock-demo-walkthrough.'+ext, URL.createObjectURL(blob));
       toast('Saved '+ext.toUpperCase()+' \u2014 '+(blob.size/1e6).toFixed(1)+' MB',5000);
       rec=null; recComp=null;
     };
@@ -3343,7 +3722,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     wrap.dataset.built='1';
     const h=document.createElement('header');
     h.innerHTML='<p class="eyebrow">Bedrock \u00b7 text edition</p>'+
-      '<h1>Elk Gold \u2014 Siwash North</h1>';
+      '<h1>Bedrock Demo \u2014 North Zone</h1>';
     const lead=document.createElement('p'); lead.className='lead';
     lead.textContent='Every chapter of the presentation, with its figures, as text. '+
       'No 3D required. Figures are computed from the same rollups the interactive '+
@@ -3558,7 +3937,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     L.push('');
     L.push('CAVEATS');
     // Only when there are classes to caveat. On an exploration deck this read
-    // "Resource class labels ... UNCONFIRMED against the Nov-2021 technical
+    // "Resource class labels ... FABRICATED along with the
     // report" for a project that has no classes, no resource and no technical
     // report — a caveat about something that does not exist reads as though it
     // does. The second line was also unconditional, so it printed even when the
@@ -3593,7 +3972,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       L.push('  corroborating it. Real gold systems are frequently magnetite-');
       L.push('  destructive and could read as a magnetic LOW over this ground.');
     }
-    // True of the baked Elk Gold export, and of nothing else. It was printed
+    // True of the baked Bedrock Demo export, and of nothing else. It was printed
     // unconditionally, so every hydrated deck inherited a claim about a source
     // file it has never seen.
     if(PROV.silver_absent)
@@ -4012,7 +4391,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
 
     surfLoading=true; setStat('loading vein surfaces…');
     let data;
-    try{ data=await (await fetch('data/elk_surfaces.json')).json(); }
+    try{ data=await (await fetch('data/demo_surfaces.json')).json(); }
     catch(e){ setStat(''); surfLoading=false; toast('Vein surfaces unavailable',4000); return null; }
     const unb=s=>{const b=atob(s);const u=new Uint8Array(b.length);
       for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u.buffer;};
@@ -4274,6 +4653,23 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   // Clamped to terrain rather than floated at a guessed elevation, so they sit
   // on the actual ground the deposit is under.
   let siteEnts=null, siteOn=false, targetsOn=true, sitePitClips=null;
+  // The haul cycle is built after the roads, but its route starts on the
+  // ramp inside the pit — so the pit hands these forward.
+  let rampPath=null, rimZ=0, zfSite=z=>z, truckEnts=[], sitePitEnts=[];
+  // The pit's own geometry, tracked separately: a stage shell has to be
+  // able to hide it, or the two excavations z-fight along every bench.
+  const pitPush=e=>{ siteEnts.push(e); sitePitEnts.push(e); return e; };
+  // Holder cards answer 'who owns this ground'. In a chapter about pit
+  // design that is a different question, asked at the same time, in the
+  // same corner of the screen — which is most of why those frames are
+  // hard to read. Tracked so a chapter can drop them.
+  let holderEnts=[];
+  const cardPush=e=>{ siteEnts.push(e); holderEnts.push(e); return e; };
+  // The facility leader labels. On a mine-plan chapter the pit is the subject
+  // and "Heap Leach Pad (conceptual)" hanging over it is furniture, so they
+  // are tracked separately and a chapter can drop them.
+  let siteLabelEnts=[];
+  const labelPush=e=>{ siteEnts.push(e); siteLabelEnts.push(e); return e; };
   // Holder logos, supplied and never scraped: a company's mark is its
   // trademark, and generating one for a neighbour would put a fake identity on
   // a real map. Decoded once at boot into a cache the card renderer can read
@@ -4317,6 +4713,40 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       .replace(/\bCorp\b\.?/,'Corp.').replace(/\bLtd\b\.?/,'Ltd.')
       .replace(/\bInc\b\.?/,'Inc.');
   }
+
+  // ---- ground under the pit, from a baked DEM --------------------------
+  // Both the pit and the stage shells are seated and trimmed against terrain
+  // height, and both were asking `globe.getHeight()`. That answers from the
+  // tiles currently loaded: nothing at all on a cold open, and a coarse LOD at
+  // range. So the shell you got depended on where the camera had been, which
+  // is why the pit had a one-shot "reseat once the ground arrives" hack that
+  // fired at whatever moment the tile queue first drained — usually while the
+  // camera was still at the intro, nowhere near the pit.
+  //
+  // PIT_DEM is real terrain over the pit site, sampled once at full detail by
+  // tools/sample_pit_dem.mjs and baked in. Same numbers every load, same
+  // numbers as tools/size_pit.py used to compute the tonnages the deck prints.
+  const demAt=(e,n)=>{
+    if(!PIT_DEM || !PIT_DEM.h) return undefined;
+    const H=PIT_DEM.half, S=PIT_DEM.step, W=PIT_DEM.w;
+    const de=e-PIT_DEM.centre[0], dn=n-PIT_DEM.centre[1];
+    if(Math.abs(de)>H || Math.abs(dn)>H) return undefined;
+    const fx=(de+H)/S, fy=(dn+H)/S;
+    const x0=Math.floor(fx), y0=Math.floor(fy);
+    const x1=Math.min(W-1,x0+1), y1=Math.min(W-1,y0+1);
+    const tx=fx-x0, ty=fy-y0, g=PIT_DEM.h, q=(x,y)=>g[y*W+x];
+    const a=q(x0,y0), b=q(x1,y0), c=q(x0,y1), d=q(x1,y1);
+    if(a==null||b==null||c==null||d==null) return undefined;
+    return (a*(1-tx)+b*tx)*(1-ty)+(c*(1-tx)+d*tx)*ty;
+  };
+  // UTM in, terrain height out. Falls back to the globe outside the sampled
+  // box, which is everything that is not the pit.
+  const ghAt=(e,n)=>{
+    const d=demAt(e,n);
+    if(d!==undefined) return d;
+    const ll=proj4(PROJ,'WGS84',[e,n]);
+    return viewer.scene.globe.getHeight(Cesium.Cartographic.fromDegrees(ll[0],ll[1]));
+  };
 
   function buildSite(){
     if(siteEnts||!SITE.areas) return siteEnts;
@@ -4529,14 +4959,14 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       CARD_LOG.push({title:title, sub:sub, note:note||''});
       const base=Cesium.Cartesian3.fromDegrees(lon,lat,ZTOP+GEOID+40);
       const top=Cesium.Cartesian3.fromDegrees(lon,lat,ZTOP+GEOID+140+(lift||0));
-      siteEnts.push(viewer.entities.add({polyline:{positions:[base,top],
+      cardPush(viewer.entities.add({polyline:{positions:[base,top],
         width:1.1, arcType:Cesium.ArcType.NONE,
         material:Cesium.Color.fromCssColorString(hue).withAlpha(0.55)}}));
-      siteEnts.push(viewer.entities.add({position:base,
+      cardPush(viewer.entities.add({position:base,
         point:{pixelSize:6, color:Cesium.Color.fromCssColorString(hue),
                outlineColor:new Cesium.Color(0.04,0.05,0.06,0.9), outlineWidth:1.5,
                disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
-      siteEnts.push(viewer.entities.add({position:top,
+      cardPush(viewer.entities.add({position:top,
         billboard:{image:holderCard(title,sub,hue,img,note),
           verticalOrigin:Cesium.VerticalOrigin.BOTTOM,
           // The card is authored at 1x; the canvas is drawn at devicePixelRatio
@@ -4564,7 +4994,8 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       const k=norm(h.owner), ct=centroids[k];
       if(!ct) return;
       placeCard(ct.x/ct.n, ct.y/ct.n, titleCase(h.owner),
-                h.claims+(h.claims===1?' claim':' claims')+'  ·  '+nf(h.ha)+' ha',
+                h.claims+(h.claims===1?' claim':' claims')+'  ·  '+nf(h.ha)+' ha'
+                  +(CLAIMS_SYNTHETIC?'  ·  conceptual':''),
                 holderStyle[k]||'#7C8792', LOGO_IMG[k]||null, 0,
                 metaOf(h.owner).note);
     });
@@ -4573,7 +5004,8 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     if(me){
       const ct=centroids[norm(me.owner)];
       if(ct) placeCard(ct.x/ct.n, ct.y/ct.n, titleCase(me.owner),
-                       me.claims+(me.claims===1?' claim':' claims')+'  ·  '+nf(me.ha)+' ha',
+                       me.claims+(me.claims===1?' claim':' claims')+'  ·  '+nf(me.ha)+' ha'
+                         +(CLAIMS_SYNTHETIC?'  ·  conceptual':''),
                        '#F2C14E', BRAND_IMG||LOGO_IMG[norm(me.owner)]||null,
                        // Clear of the site furniture, which sits at the
                        // deposit — the same place this card's centroid lands.
@@ -4608,7 +5040,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     }
     // Collected while the areas are walked, applied to the globe once: the
     // clipping collection is global state, not per entity.
-    const pitClips=[];
+    const pitClips=[]; rampPath=null; truckEnts=[]; sitePitEnts.length=0; holderEnts.length=0; siteLabelEnts.length=0;
     (SITE.areas||[]).forEach(a=>{
       // A pit is a hole, not a painted patch. Filling it flat put a pale slab
       // over the exact ground the plan view exists to show, which is the same
@@ -4639,25 +5071,48 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
         // light and the thing has a bottom you can see.
         const mx=a.ring.reduce((s,q)=>s+q[0],0)/a.ring.length;
         const my=a.ring.reduce((s,q)=>s+q[1],0)/a.ring.length;
-        // Benches at a believable height. A 320 m pit in twelve lifts is ~27 m
-        // a bench, which is two 13 m flitches — the shape of the thing a mining
-        // engineer would actually draw, rather than a smooth cone.
-        const NB=12, depth=320, taper=0.82;
+        // Benches at a believable height: ~27 m a bench, two 13 m flitches —
+        // the shape of the thing a mining engineer would actually draw, rather
+        // than a smooth cone. Depth comes from the LAST stage, so the final
+        // shell and the stage timeline cannot drift apart; the stages are the
+        // same excavation cut back four times.
+        const depth=(SITE.stages&&SITE.stages.length)
+          ? SITE.stages[SITE.stages.length-1].depth : 345;
+        const NB=Math.max(2,Math.round(depth/27)), taper=0.82;
         // The rim belongs on the GROUND, not at the top of the block model.
         // ZTOP is the highest modelled block — usually the ridge — so a pit
-        // pinned to it stands proud of the hillside like a bowl set down on
-        // it, which is the one thing an excavation must not look like. Ask the
-        // globe how high the ground is at the pit's own centre.
-        const cll=proj4(PROJ,'WGS84',[mx,my]);
-        const gh=viewer.scene.globe.getHeight(
-          Cesium.Cartographic.fromDegrees(cll[0],cll[1]));
-        // Undefined until the terrain tile under the pit has loaded, which on
-        // a cold open it has not — hence the rebuild below. Sunk slightly, so
-        // the rim cuts in rather than grazing the surface.
-        const rim=(gh===undefined?ZTOP+GEOID:gh+GEOID)-8;
+        // pinned to it stands proud of the hillside like a bowl set down on it,
+        // which is the one thing an excavation must not look like.
         const zf=z=>EXAG===1?z:(CZ+GEOID+(z-CZ-GEOID)*EXAG);
         const ringLL=k=>a.ring.map(c=>proj4(PROJ,'WGS84',
           [mx+(c[0]-mx)*k, my+(c[1]-my)*k]));
+        // The crest goes at the HIGHEST ground on the rim, not the ground at
+        // the centre. The terrain inside the ring is CLIPPED — a vertical
+        // prism punched clean through the hillside — and the shell has to fill
+        // that prism. Seated at the centre's elevation it filled only the part
+        // below it, and on a pit that falls 220 m across its own footprint the
+        // uphill third of the hole opened onto empty space: a black wedge
+        // hanging over the benches, which is what a hole in the world looks
+        // like rather than a hole in the ground.
+        //
+        // Depth is measured from this crest, so the floor lands where the last
+        // stage says it does and the low side of the pit is correspondingly
+        // shallower — which is exactly how a pit on a slope behaves.
+        const ringEN=k=>a.ring.map(c=>[mx+(c[0]-mx)*k, my+(c[1]-my)*k]);
+        // Sampled over the INTERIOR, not just the rim. The crest has to sit at
+        // or above the highest ground the clip prism removes, and on a slope
+        // that high point is often inboard of the ring rather than on it. Any
+        // ground above the crest is cut away with nothing drawn behind it —
+        // a black wedge in a lit hillside, which is what showed on the upper
+        // edge of every stage.
+        let ghMax;
+        [1,0.8,0.6,0.4,0.2].forEach(k=>ringEN(k).forEach(en=>{
+          const h=ghAt(en[0],en[1]);
+          if(h!==undefined && (ghMax===undefined || h>ghMax)) ghMax=h; }));
+        // Undefined until the terrain tiles under the pit have loaded, which on
+        // a cold open they have not — hence the rebuild below. Sunk slightly,
+        // so the rim cuts in rather than grazing the surface.
+        const rim=(ghMax===undefined?ZTOP+GEOID:ghMax+GEOID)-8;
         const at=(lls,z)=>{ const out=[];
           lls.forEach(ll=>out.push(Cesium.Cartesian3.fromDegrees(ll[0],ll[1],zf(z))));
           return out; };
@@ -4665,43 +5120,231 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
         // read as a terrace at a distance — the same reason a contour map does
         // not work as a picture of a pit.
         const FACE='#7E7468', FLOOR='#A79C8C';
+        // Ground at each ring vertex, so a bench can be cut off where the
+        // hillside runs out. Crested on the high side, the upper benches would
+        // otherwise stand in mid-air above the low side of the pit — the same
+        // void as before, mirrored, and just as obviously wrong.
+        const ghRing=k=>ringEN(k).map(en=>{ const h=ghAt(en[0],en[1]);
+          return h===undefined?Infinity:h+GEOID; });
         for(let b=0;b<NB;b++){
           const k0=1-(b/NB)*taper, k1=1-((b+1)/NB)*taper;
           const z0=rim-depth*(b/NB), z1=rim-depth*((b+1)/NB);
           const l0=ringLL(k0), l1=ringLL(k1);
           // The bench face: a vertical wall dropping from this ring to the next
-          // level down.
-          siteEnts.push(viewer.entities.add({name:a.name,
-            wall:{positions:at(l0,z0),
-              minimumHeights:l0.map(()=>zf(z1)),
-              maximumHeights:l0.map(()=>zf(z0)),
-              material:Cesium.Color.fromCssColorString(FACE)
-                .withAlpha(0.98).darken(b*0.03,new Cesium.Color())}}));
+          // level down, topped out at the ground where the ground is lower than
+          // the bench above it. A cut face cannot be taller than the hill it is
+          // cut into.
+          const g0=ghRing(k0);
+          // The TOP bench runs up to the ground, not to the crest. Capped at z0 it
+          // stopped at a single flat elevation while the hillside above it kept
+          // climbing, and the terrain clip had already removed that ground — so
+          // the strip between the two was a void, painted undergroundColor: the
+          // black wedge along the uphill edge of every shell. Letting the first
+          // face reach the real surface closes it exactly, and costs nothing
+          // anywhere the ground is already below the crest.
+          const tops=g0.map(g=>zf(Math.max(z1, b===0 ? g : Math.min(z0,g))));
+          if(tops.some((t,i)=>t>zf(z1)+0.5)){
+            pitPush(viewer.entities.add({name:a.name,
+              wall:{positions:at(l0,z0),
+                minimumHeights:l0.map(()=>zf(z1)),
+                maximumHeights:tops,
+                material:Cesium.Color.fromCssColorString(FACE)
+                  .withAlpha(0.98).darken(b*0.03,new Cesium.Color())}}));
+          }
           // The bench floor: the flat step, as a ring with the next bench
           // punched out of it. A disc would bury every bench below this one.
-          siteEnts.push(viewer.entities.add({name:a.name,
-            polygon:{
-              hierarchy:new Cesium.PolygonHierarchy(at(l0,z1),
-                [new Cesium.PolygonHierarchy(at(l1,z1))]),
-              perPositionHeight:true,
-              material:Cesium.Color.fromCssColorString(FLOOR).withAlpha(0.98)}}));
+          //
+          // Cut to the hillside vertex by vertex, not dropped or kept whole. A
+          // bench on a slope is a crescent — it runs full width into the hill
+          // and pinches out where the ground falls below its own elevation —
+          // and that is what the outer ring collapsing onto the inner one
+          // produces. Testing the ring as a unit was the first thing tried and
+          // it deleted every floor above the lowest ground on the rim, which
+          // left the upper half of the pit as bare wall rings with the void
+          // showing between them.
+          const outer=l0.map((ll,i)=>g0[i]>=z1
+            ? ll
+            : proj4(PROJ,'WGS84',[mx+(a.ring[i][0]-mx)*k1, my+(a.ring[i][1]-my)*k1]));
+          if(g0.some(g=>g>=z1)){
+            pitPush(viewer.entities.add({name:a.name,
+              polygon:{
+                hierarchy:new Cesium.PolygonHierarchy(at(outer,z1),
+                  [new Cesium.PolygonHierarchy(at(l1,z1))]),
+                perPositionHeight:true,
+                material:Cesium.Color.fromCssColorString(FLOOR).withAlpha(0.98)}}));
+          }
         }
         // The floor of the pit.
-        siteEnts.push(viewer.entities.add({name:a.name,
+        pitPush(viewer.entities.add({name:a.name,
           polygon:{hierarchy:new Cesium.PolygonHierarchy(at(ringLL(1-taper),rim-depth)),
             perPositionHeight:true,
             material:Cesium.Color.fromCssColorString(FLOOR).darken(0.25,new Cesium.Color())
               .withAlpha(0.98)}}));
+        // ---- haul ramp -------------------------------------------------
+        // A hole in the ground is not a mine. The ramp is the one thing in
+        // frame with a gradient the eye reads as navigable, and it is what
+        // turns a terraced bowl into somewhere trucks go. Ten per cent over
+        // 320 m is 3.2 km of road, which at this pit's circumference is
+        // about one and a quarter turns of the wall — so it reads as a
+        // spiral rather than a shortcut straight down the face.
+        const RAMP_W = 26, RAMP_GRADE = 0.10, RAMP_TURNS = (depth / RAMP_GRADE) / 2503;
+        // The ring is not a circle, so the ramp has to ask how far the wall
+        // is at each bearing rather than assume a radius.
+        const polar = a.ring.map(c => ({
+            a: Math.atan2(c[1] - my, c[0] - mx),
+            r: Math.hypot(c[0] - mx, c[1] - my) })).sort((p, q) => p.a - q.a);
+        function ringR(th){
+          const t = Math.atan2(Math.sin(th), Math.cos(th));
+          for(let i = 0; i < polar.length; i++){
+            const p = polar[i], q = polar[(i + 1) % polar.length];
+            let a0 = p.a, a1 = q.a; if(a1 < a0) a1 += 2 * Math.PI;
+            let tt = t; if(tt < a0) tt += 2 * Math.PI;
+            if(tt >= a0 && tt <= a1){
+              const f = (a1 - a0) ? (tt - a0) / (a1 - a0) : 0;
+              return p.r + (q.r - p.r) * f; }
+          }
+          return polar[0].r;
+        }
+        const RAMP_TH0 = Math.PI * 0.18, NR = 160;
+        function rampAt(t){                       // t: 0 at the rim, 1 at the floor
+          const th = RAMP_TH0 + t * RAMP_TURNS * 2 * Math.PI;
+          const r = ringR(th) * (1 - t * taper) - RAMP_W * 0.55;
+          return { e: mx + r * Math.cos(th), n: my + r * Math.sin(th), z: rim - depth * t };
+        }
+        const rampPos = [];
+        for(let i = 0; i <= NR; i++){
+          const p = rampAt(i / NR), ll = proj4(PROJ, 'WGS84', [p.e, p.n]);
+          rampPos.push(Cesium.Cartesian3.fromDegrees(ll[0], ll[1], zf(p.z)));
+        }
+        // polylineVolume rather than a polygon: the ramp wraps past a full
+        // turn, and a self-overlapping polygon triangulates into knots.
+        pitPush(viewer.entities.add({name:a.name,
+          polylineVolume:{ positions: rampPos, cornerType: Cesium.CornerType.ROUNDED,
+            shape:[new Cesium.Cartesian2(-RAMP_W/2, -2), new Cesium.Cartesian2(RAMP_W/2, -2),
+                   new Cesium.Cartesian2(RAMP_W/2, 2),  new Cesium.Cartesian2(-RAMP_W/2, 2)],
+            material: Cesium.Color.fromCssColorString('#C2B79F').withAlpha(0.98) }}));
+
+        rampPath = { at: rampAt, n: NR, rim: [rampAt(0).e, rampAt(0).n] };
+        rimZ = rim; zfSite = zf;
+
         // Cut the ground away inside the rim. Without this the pit is behind
         // the hillside rather than in it.
-        pitClips.push(new Cesium.ClippingPolygon({
-          positions:Cesium.Cartesian3.fromDegreesArray(deg(a.ring))}));
+        // The hole in the terrain is the shell's GROUND INTERSECTION, not the
+        // rim ring.
+        //
+        // A ClippingPolygon is a vertical prism through the globe, so clipping
+        // on the rim removes the ground out to the widest part of the pit at
+        // every elevation. On the uphill side that is right — the crest is at
+        // that ground. Downhill, where the hillside falls 220 m below the
+        // crest, the cone has already narrowed by the time it reaches the
+        // surface, and the ring of prism between the cone and the rim was
+        // ground removed with nothing put back: a black collar around half the
+        // pit, through which you saw space.
+        //
+        // The cone's surface passes through elevation z at radius factor
+        // k = 1 - (rim - z)*taper/depth. Evaluating that at each vertex's own
+        // ground height gives the curve where the pit actually daylights, which
+        // is the outline a pit on a slope has when you look down at it: not a
+        // ring, a teardrop pulled out downhill.
+        {
+          const rr=ringLL(1), gg=ghRing(1);
+          const cut=rr.map((ll,i)=>{
+            const g=Math.min(rim, gg[i]);
+            const k=Math.max(0.02, Math.min(1, 1-(rim-g)*taper/depth));
+            return proj4(PROJ,'WGS84',
+              [mx+(a.ring[i][0]-mx)*k, my+(a.ring[i][1]-my)*k]); });
+          const flat=[]; cut.forEach(ll=>{ flat.push(ll[0], ll[1]); });
+          pitClips.push(new Cesium.ClippingPolygon({
+            positions:Cesium.Cartesian3.fromDegreesArray(flat)}));
+        }
       }
     });
     (SITE.roads||[]).forEach(rd=>siteEnts.push(viewer.entities.add({name:rd.name,
       polyline:{positions:Cesium.Cartesian3.fromDegreesArray(deg(rd.path)),
         width:4,clampToGround:true,
         material:Cesium.Color.fromCssColorString('#E8B33C').withAlpha(0.9)}})));
+    // ---- haul cycle -------------------------------------------------------
+    // Two trucks, because the split is the point: ore goes west to the pad,
+    // waste goes east to the dump. A pit that only shows rock coming out
+    // tells you nothing about what the mine is FOR.
+    //
+    // The trucks are modelled at true size — 13.5 m, the length of a CAT 793.
+    // From 2 km that is about four pixels, which is exactly the fact worth
+    // showing: it is what a 320 m pit does to a machine that weighs 250 t.
+    // The leader label is there so you can find it before you can see it.
+    if(rampPath && (SITE.roads||[]).length){
+      const road = SITE.roads[0].path;
+      const near = p => { let bi = 0, bd = Infinity;
+        road.forEach((q, i) => { const d = Math.hypot(q[0]-p[0], q[1]-p[1]);
+          if(d < bd){ bd = d; bi = i; } }); return bi; };
+      const exit = rampPath.rim, ri = near(exit);
+      const areaC = k => { const A = (SITE.areas||[]).find(x => x.kind === k); if(!A) return null;
+        const r = A.ring; return [r.reduce((s,q)=>s+q[0],0)/r.length,
+                                  r.reduce((s,q)=>s+q[1],0)/r.length]; };
+      function leg(kind){
+        const dest = areaC(kind); if(!dest) return null;
+        const pts = [];
+        // up out of the pit, floor to rim
+        for(let i = rampPath.n; i >= 0; i--){ const p = rampPath.at(i / rampPath.n);
+          pts.push([p.e, p.n, p.z + 3]); }
+        // then along the haul road toward whichever end the facility is on
+        const east = dest[0] > exit[0];
+        const idx = []; if(east){ for(let i=ri;i<road.length;i++) idx.push(i); }
+        else { for(let i=ri;i>=0;i--) idx.push(i); }
+        idx.forEach(i => pts.push([road[i][0], road[i][1], null]));
+        pts.push([dest[0], dest[1], null]);
+        return pts;
+      }
+      const SPEED = 8.3;                       // m/s — about 30 km/h, loaded
+      const t0 = Cesium.JulianDate.now();
+      let span = 0;
+      function truck(kind, colour, phase){
+        const pts = leg(kind); if(!pts) return;
+        const prop = new Cesium.SampledPositionProperty();
+        let d = 0;
+        for(let i = 0; i < pts.length; i++){
+          if(i) d += Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]);
+          const ll = proj4(PROJ, 'WGS84', [pts[i][0], pts[i][1]]);
+          // Road points carry no height: ask the globe, so the truck follows
+          // the ground rather than flying at the pit rim's elevation.
+          let z = pts[i][2];
+          if(z === null){ const gh = viewer.scene.globe.getHeight(
+              Cesium.Cartographic.fromDegrees(ll[0], ll[1]));
+            z = (gh === undefined ? rimZ : gh + GEOID) + 3; }
+          prop.addSample(Cesium.JulianDate.addSeconds(t0, phase + d / SPEED, new Cesium.JulianDate()),
+                         Cesium.Cartesian3.fromDegrees(ll[0], ll[1], zfSite(z)));
+        }
+        span = Math.max(span, phase + d / SPEED);
+        prop.setInterpolationOptions({interpolationDegree:1,
+          interpolationAlgorithm:Cesium.LinearApproximation});
+        const ent = viewer.entities.add({
+          position: prop,
+          orientation: new Cesium.VelocityOrientationProperty(prop),
+          box:{ dimensions:new Cesium.Cartesian3(13.5, 7.7, 6.5),
+                material: Cesium.Color.fromCssColorString(colour) },
+          label:{ text: kind === 'dump' ? 'waste → dump' : 'ore → leach pad',
+                  font:'500 11px "JetBrains Mono", monospace',
+                  fillColor: Cesium.Color.fromCssColorString(colour),
+                  showBackground:true, backgroundColor:new Cesium.Color(0.03,0.04,0.05,0.8),
+                  backgroundPadding:new Cesium.Cartesian2(7,4),
+                  pixelOffset:new Cesium.Cartesian2(0,-22),
+                  disableDepthTestDistance:Number.POSITIVE_INFINITY }});
+        siteEnts.push(ent); truckEnts.push(ent);
+      }
+      truck('dump', '#E8B33C', 0);
+      truck('pad',  '#6FC7B0', 40);
+      if(span > 0){
+        const stop = Cesium.JulianDate.addSeconds(t0, span, new Cesium.JulianDate());
+        viewer.clock.startTime = t0.clone();
+        viewer.clock.stopTime = stop;
+        viewer.clock.currentTime = t0.clone();
+        viewer.clock.clockRange = Cesium.ClockRange.LOOP_STOP;
+        // Real haul speed, played fast. A truck at 30 km/h crossing 4 km is a
+        // ten-minute shot; nobody watches that in a deck.
+        viewer.clock.multiplier = 14;
+      }
+    }
+
     // Labels on leader lines, the way a map annotation reads.
     // Every one of these declares its own dz, and from a plan view several of
     // them project to nearly the same point on screen — four captions stacked
@@ -4711,11 +5354,17 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     (SITE.labels||[]).forEach((l,li)=>{
       const ll=proj4(PROJ,'WGS84',l.at);
       const fan=li*70;
-      const base=Cesium.Cartesian3.fromDegrees(ll[0],ll[1],ZTOP+GEOID-40);
-      const tip=Cesium.Cartesian3.fromDegrees(ll[0],ll[1],ZTOP+GEOID+(l.dz||250)+fan);
-      siteEnts.push(viewer.entities.add({polyline:{positions:[base,tip],width:1,
+      // Anchored to the GROUND under the feature. These hung off ZTOP — the
+      // top of the North Zone block model, a ridge 2.6 km away and hundreds of
+      // metres higher — so on the mine-plan chapters they floated above the
+      // frame entirely and landed on the chapter rail and the toolbar.
+      const gh=ghAt(l.at[0],l.at[1]);
+      const anchor=(gh===undefined?ZTOP+GEOID:gh+GEOID);
+      const base=Cesium.Cartesian3.fromDegrees(ll[0],ll[1],anchor+10);
+      const tip=Cesium.Cartesian3.fromDegrees(ll[0],ll[1],anchor+(l.dz||250)+fan);
+      labelPush(viewer.entities.add({polyline:{positions:[base,tip],width:1,
         material:Cesium.Color.WHITE.withAlpha(.42),arcType:Cesium.ArcType.NONE}}));
-      siteEnts.push(viewer.entities.add({position:tip,
+      labelPush(viewer.entities.add({position:tip,
         label:{text:l.name+(SITE_SYNTHETIC?'  (conceptual)':''),
           font:'500 13px Archivo, system-ui, sans-serif',
           fillColor:Cesium.Color.WHITE,showBackground:true,
@@ -4749,14 +5398,35 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     siteEnts=null;
     if(was) showSite(true);
   });
+  // What the current chapter asked for. showSite() runs from the layer system,
+  // which is AFTER a chapter applies its own preferences — so setting
+  // e.show=false on a label and then turning the layer on put it straight back.
+  // The preference lives here so the one function that shows the layer is also
+  // the one that honours them.
+  let holdersWanted=true, siteLabelsWanted=true;
   const showSite=on=>{
     if(on) buildSite();
     if(siteEnts) siteEnts.forEach(e=>e.show=on);
+    if(on){
+      holderEnts.forEach(e=>e.show=holdersWanted);
+      siteLabelEnts.forEach(e=>e.show=siteLabelsWanted);
+      // The site's own pit IS the final shell. showStage() hides it while a
+      // stage is up, and then this function turned it straight back on — so
+      // both mine-plan chapters drew the full 240 m pit over the stage they
+      // were captioned about, and "The starter pit" was measurably identical
+      // to "Four stages to the final pit": 617 m across and 240 m deep, when
+      // the starter is 234 m across and 60 m deep. Same ordering trap as the
+      // labels above; same fix.
+      sitePitEnts.forEach(e=>e.show = stageIdx < 0);
+    }
     // A hole in the terrain is not a property of an entity, so it does not
     // follow entity.show. Applied and removed by hand, or the ground stays
     // punctured on every later chapter.
     try{
-      viewer.scene.globe.clippingPolygons = (on && sitePitClips) ? sitePitClips : undefined;
+      // A stage owns the clip while one is shown; the site toggle would
+      // otherwise hand the globe back to the final pit mid-timeline.
+      if(stageIdx < 0)
+        viewer.scene.globe.clippingPolygons = (on && sitePitClips) ? sitePitClips : undefined;
     }catch(e){
       // Older Cesium, or a device that refuses the extra texture. The pit still
       // draws; it just sits behind the hillside as it used to.
@@ -4959,40 +5629,109 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   const STAGES=(SITE.stages||[]);
   function buildStages(){
     if(stageEnts||!STAGES.length) return stageEnts;
+    const BENCH=27;                     // m — the site pit's own lift height
     stageEnts=STAGES.map(st=>{
-      const deg=st.ring.reduce((acc,c)=>{const ll=proj4(PROJ,'WGS84',c);
-        acc.push(ll[0],ll[1]);return acc;},[]);
-      const ents=[];
-      // benches: concentric rings stepping down, the way a pit actually reads
-      const NB=5;
-      for(let b=1;b<=NB;b++){
-        const z=ZTOP+GEOID-(st.depth*b/NB);
-        const shrink=1-(b/NB)*0.62;
-        const pos=[];
-        const mx=st.ring.reduce((s,q)=>s+q[0],0)/st.ring.length;
-        const my=st.ring.reduce((s,q)=>s+q[1],0)/st.ring.length;
-        for(let i=0;i<st.ring.length;i++){
-          const c=st.ring[i];
-          const ll=proj4(PROJ,'WGS84',[mx+(c[0]-mx)*shrink, my+(c[1]-my)*shrink]);
-          pos.push(Cesium.Cartesian3.fromDegrees(ll[0],ll[1],EXAG===1?z:(CZ+GEOID+(z-CZ-GEOID)*EXAG)));
+      const mx=st.ring.reduce((s,q)=>s+q[0],0)/st.ring.length;
+      const my=st.ring.reduce((s,q)=>s+q[1],0)/st.ring.length;
+      const zf=z=>EXAG===1?z:(CZ+GEOID+(z-CZ-GEOID)*EXAG);
+      // Every stage crests at the same elevation as the final pit — the
+      // highest ground on the FINAL rim, not on its own smaller one. A stage
+      // seated on its own local high would float part-way up the hole the
+      // final shell cuts, and the four of them would step in elevation as well
+      // as in plan, which is not what a cutback sequence is.
+      const finalRing=(SITE.stages&&SITE.stages.length)
+        ? SITE.stages[SITE.stages.length-1].ring : st.ring;
+      // Interior too — see the note on the pit's own crest. A stage nested
+      // inside the final shell clips ground the final ring never sampled.
+      let ghMax;
+      [1,0.8,0.6,0.4,0.2].forEach(k=>finalRing.forEach(c=>{
+        const h=ghAt(mx+(c[0]-mx)*k, my+(c[1]-my)*k);
+        if(h!==undefined && (ghMax===undefined || h>ghMax)) ghMax=h; }));
+      const rim=(ghMax===undefined?ZTOP+GEOID:ghMax+GEOID)-8;
+      const rMean=st.ring.reduce((s,q)=>s+Math.hypot(q[0]-mx,q[1]-my),0)/st.ring.length;
+      // A 45 degree overall slope, which is what puts the floor one depth in
+      // from the rim. The old code shrank every stage by a flat 62% whatever
+      // its depth, so a 70 m starter pit had the same wall angle as a 300 m
+      // final pit — the one number a mining engineer would check first.
+      const taper=Math.min(0.92, st.depth/Math.max(1,rMean));
+      const NB=Math.max(2,Math.round(st.depth/BENCH));
+      const ringLL=k=>st.ring.map(c=>proj4(PROJ,'WGS84',[mx+(c[0]-mx)*k,my+(c[1]-my)*k]));
+      const ringEN=k=>st.ring.map(c=>[mx+(c[0]-mx)*k, my+(c[1]-my)*k]);
+      // Same ground intersection as the final pit — see the note there. A stage
+      // clipped on its own rim leaves the same black collar, just a smaller one.
+      const stageCut=()=>st.ring.map((c,i)=>{
+        const h=ghAt(c[0],c[1]);
+        const g=Math.min(rim, h===undefined?rim:h+GEOID);
+        const k=Math.max(0.02, Math.min(1, 1-(rim-g)*taper/st.depth));
+        return proj4(PROJ,'WGS84',[mx+(c[0]-mx)*k, my+(c[1]-my)*k]); });
+      const at=(lls,z)=>lls.map(ll=>Cesium.Cartesian3.fromDegrees(ll[0],ll[1],zf(z)));
+      const FACE='#6E6A62', FLOOR='#9A9384';
+      const shell=[];
+      for(let b=0;b<NB;b++){
+        const k0=1-(b/NB)*taper, k1=1-((b+1)/NB)*taper;
+        const z0=rim-st.depth*(b/NB), z1=rim-st.depth*((b+1)/NB);
+        const l0=ringLL(k0), l1=ringLL(k1);
+        // Trim to the hillside, vertex by vertex — the same cut the final pit
+        // makes, which the stages were missing entirely. Every stage crests at
+        // the FINAL rim's high point, so on ground 155 m lower than that crest
+        // an untrimmed shell stands 155 m in the air: the four stage chapters
+        // drew a stepped mound sitting ON the mountain rather than a hole cut
+        // into it, and no amount of terrain opacity or clipping could fix a
+        // shell whose geometry was wrong.
+        const g0=ringEN(k0).map(en=>{ const h=ghAt(en[0],en[1]);
+          return h===undefined?Infinity:h+GEOID; });
+        // Same as the pit: the first face reaches the ground, or the clipped
+        // hillside above it shows through as a void.
+        const tops=g0.map(g=>zf(Math.max(z1, b===0 ? (isFinite(g)?g:z0) : Math.min(z0,g))));
+        if(tops.some(t=>t>zf(z1)+0.5)){
+          shell.push(viewer.entities.add({name:st.name,
+            wall:{positions:at(l0,z0),minimumHeights:l0.map(()=>zf(z1)),
+              maximumHeights:tops,
+              material:Cesium.Color.fromCssColorString(FACE).withAlpha(0.97)
+                .darken(b*0.02,new Cesium.Color())}}));
         }
-        ents.push(viewer.entities.add({polyline:{positions:pos,width:2,
-          arcType:Cesium.ArcType.NONE,
-          material:Cesium.Color.fromCssColorString('#C7D0D8').withAlpha(0.85-b*0.09)}}));
+        // A bench on a slope is a crescent: full width into the hill, pinched
+        // out where the ground drops below its own elevation. Collapsing the
+        // outer ring onto the inner one at those vertices is what draws it.
+        const outer=l0.map((ll,i)=>g0[i]>=z1 ? ll : l1[i]);
+        if(g0.some(g=>g>=z1)){
+          shell.push(viewer.entities.add({name:st.name,
+            polygon:{hierarchy:new Cesium.PolygonHierarchy(at(outer,z1),
+                [new Cesium.PolygonHierarchy(at(l1,z1))]),
+              perPositionHeight:true,
+              material:Cesium.Color.fromCssColorString(FLOOR).withAlpha(0.97)}}));
+        }
       }
-      ents.push(viewer.entities.add({
-        polygon:{hierarchy:Cesium.Cartesian3.fromDegreesArray(deg),
-          material:Cesium.Color.fromCssColorString('#AEB9C4').withAlpha(0.30),
-          classificationType:Cesium.ClassificationType.TERRAIN}}));
-      ents.forEach(e=>e.show=false);
-      return ents;
+      shell.push(viewer.entities.add({name:st.name,
+        polygon:{hierarchy:new Cesium.PolygonHierarchy(at(ringLL(1-taper),rim-st.depth)),
+          perPositionHeight:true,
+          material:Cesium.Color.fromCssColorString(FLOOR).darken(0.28,new Cesium.Color())
+            .withAlpha(0.97)}}));
+      // Earlier stages survive as their rim line only. Nested solids would
+      // bury each other — the outer shell hides every one inside it, so a
+      // timeline of solids shows exactly one pit however far you scrub.
+      const rimEnt=viewer.entities.add({name:st.name,
+        polyline:{positions:at(ringLL(1),rim+4),width:2,arcType:Cesium.ArcType.NONE,
+          material:Cesium.Color.fromCssColorString('#E4EAF0').withAlpha(0.55)}});
+      shell.forEach(e=>e.show=false); rimEnt.show=false;
+      return {shell:shell, rim:rimEnt,
+              clip:new Cesium.ClippingPolygon({positions:at(stageCut(),rim)})};
     });
     return stageEnts;
   }
   function showStage(i){
     stageIdx=i; buildStages();
     if(!stageEnts) return;
-    stageEnts.forEach((ents,k)=>ents.forEach(e=>e.show=(i>=0&&k<=i)));
+    stageEnts.forEach((s,k)=>{
+      s.shell.forEach(e=>e.show=(k===i));
+      s.rim.show=(i>=0&&k<i);
+    });
+    // The site's own pit IS the final shell. Leaving it drawn under a stage
+    // put two excavations in the same hole, z-fighting along every bench.
+    sitePitEnts.forEach(e=>e.show=(i<0));
+    viewer.scene.globe.clippingPolygons = i>=0
+      ? new Cesium.ClippingPolygonCollection({polygons:[stageEnts[i].clip]})
+      : ((siteOn&&sitePitClips)?sitePitClips:undefined);
     $('stagev').textContent=i<0?'none':(STAGES[i].year+' — '+STAGES[i].name+
       ' (' + STAGES[i].depth + ' m)');
     syncWarn();
@@ -5062,6 +5801,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     const parts=[];
     if(drills&&DRILL_SYNTHETIC) parts.push('drill data');
     if(siteOn&&SITE_SYNTHETIC) parts.push('site features');
+    if(REAL_CLAIMS.length&&CLAIMS_SYNTHETIC) parts.push('claim boundaries');
     if(stageIdx>=0&&SITE_SYNTHETIC) parts.push('pit stages');
     if(geoKey&&GEOPHYS_SYNTHETIC) parts.push('geophysics');
     // Unconditional: a fabricated block model is not a layer you can switch
@@ -6335,20 +7075,28 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   // vein list and the camera's frame of reference. The teardown below is the
   // same set the vertical-exaggeration rebuild clears, because it is the same
   // question — every one of these bakes model coordinates into static state.
-  // Whatever the first deposit is called — 'siwash' for the baked demo, the
+  // Whatever the first deposit is called — 'north' for the baked demo, the
   // first zone's slug for a hydrated deck. Hard-coding the demo's key meant a
   // hydrated deck started out claiming to be on a deposit that was not in its
   // own list, so the switcher highlighted nothing and switching to the real
   // first zone was a no-op.
-  let depKey=(DEPOSITS[0]&&DEPOSITS[0].key)||'siwash', depBusy=false, bakedSnap=null;
+  let depKey=(DEPOSITS[0]&&DEPOSITS[0].key)||'north', depBusy=false, bakedSnap=null;
   const modelState=()=>({F:F,M:M,RUNS:RUNS,N:N,EMIN:EMIN,NMIN:NMIN,CE:CE,CN:CN,CZ:CZ,
     EX:EX,EY:EY,ZTOP:ZTOP,ZBOT:ZBOT,LADDER:LADDER,BUCKETS:BUCKETS,BY_CB:BY_CB,
     VEINS:VEINS,VGROUP:VGROUP,VGROUP_NAMES:VGROUP_NAMES,PROV:PROV,
     CLASS_LABELS:CLASS_LABELS,CLASS_CONFIRMED:CLASS_CONFIRMED,
     TONNES_PER_BLOCK:TONNES_PER_BLOCK,BLOCK_DIMS:BLOCK_DIMS,BLOCK_DENSITY:BLOCK_DENSITY,
     BLOCKS_SYNTHETIC:BLOCKS_SYNTHETIC,HOLES:HOLES,HIGHLIGHTS:HIGHLIGHTS,
-    SITE:SITE,SITE_SYNTHETIC:SITE_SYNTHETIC,GEOPHYS:GEOPHYS,
+    GEOPHYS:GEOPHYS,
     GEOPHYS_SYNTHETIC:GEOPHYS_SYNTHETIC,STATIONS:STATIONS});
+  // SITE is deliberately NOT in there. The pit, the stages, the haul road and
+  // the facilities are PROPERTY geometry in ground coordinates — one mine on
+  // one piece of land, whichever block model happens to be loaded under it.
+  // Carrying it as model state meant a deposit whose own file declares no site
+  // (which is every deposit but the baked one) overwrote SITE with undefined
+  // on the way in, buildSite() saw no areas and returned, and the mine plan
+  // vanished the moment a chapter named a deposit. The pit lives on the South
+  // Zone now, so that was every chapter that had a pit in it.
   function loadModelState(s){
     F=s.F;M=s.M;RUNS=s.RUNS;N=s.N;EMIN=s.EMIN;NMIN=s.NMIN;CE=s.CE;CN=s.CN;CZ=s.CZ;
     EX=s.EX;EY=s.EY;ZTOP=s.ZTOP;ZBOT=s.ZBOT;LADDER=s.LADDER;BUCKETS=s.BUCKETS;
@@ -6356,7 +7104,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     PROV=s.PROV;CLASS_LABELS=s.CLASS_LABELS;CLASS_CONFIRMED=s.CLASS_CONFIRMED;
     TONNES_PER_BLOCK=s.TONNES_PER_BLOCK;BLOCK_DIMS=s.BLOCK_DIMS;BLOCK_DENSITY=s.BLOCK_DENSITY;
     BLOCKS_SYNTHETIC=s.BLOCKS_SYNTHETIC;HOLES=s.HOLES;HIGHLIGHTS=s.HIGHLIGHTS;
-    SITE=s.SITE;SITE_SYNTHETIC=s.SITE_SYNTHETIC;GEOPHYS=s.GEOPHYS;
+    GEOPHYS=s.GEOPHYS;
     GEOPHYS_SYNTHETIC=s.GEOPHYS_SYNTHETIC;STATIONS=s.STATIONS;
   }
   bakedSnap=modelState();
@@ -6392,7 +7140,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
             total:st.total,by_class:st.by_class||{},class_confirmed:false,
             drills_synthetic:false,site_synthetic:false,geophys_synthetic:false,
             blocks_synthetic:!!d.synthetic},
-      // Drill holes, infrastructure and the magnetics all belong to Siwash
+      // Drill holes, infrastructure and the magnetics all belong to North Zone
       // North. Carrying them onto another deposit would put one orebody's
       // evidence over another's ground, which is worse than showing nothing.
       // The claim boundaries stay: they are real, property-wide tenures, and
@@ -6414,7 +7162,18 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       surfPrims=null; utmCache.clear(); }
     if(depthEnts){ depthEnts.forEach(e=>viewer.entities.remove(e)); depthEnts=null; }
     if(siteEnts){ siteEnts.forEach(e=>viewer.entities.remove(e)); siteEnts=null; }
-    if(stageEnts){ stageEnts.forEach(es=>es.forEach(e=>viewer.entities.remove(e))); stageEnts=null; }
+    // buildStages() returns {shell:[...], rim:entity, clip:ClippingPolygon},
+    // not an array of entities. Treating it as one threw "es.forEach is not a
+    // function" mid-teardown, which switchDeposit caught and reported as
+    // "could not switch deposit" — so a chapter that showed a pit stage AND
+    // named a deposit silently refused to switch, and the pit was drawn over
+    // whichever model happened to be loaded.
+    if(stageEnts){
+      stageEnts.forEach(st=>{ st.shell.forEach(e=>viewer.entities.remove(e));
+                              viewer.entities.remove(st.rim); });
+      stageEnts=null; stageIdx=-1;
+      viewer.scene.globe.clippingPolygons=undefined;
+    }
     if(planLayer){ viewer.imageryLayers.remove(planLayer,true); planLayer=null; planCutBuilt=null; }
     clearSection();
     geoShow('');
@@ -6432,21 +7191,31 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       // Snapshot the CURRENT deposit before overwriting, so the demo's state
       // survives a round trip even though only the baked one starts with a
       // snapshot.
-      const cur=DEPOSITS.find(x=>x.key===depKey);
-      if(cur){ if(cur.baked) bakedSnap=modelState(); else cur._state=modelState(); }
+      // NOT `cur` — that is the current CHAPTER index, and the forChapter
+      // branch below reads CHAPTERS[cur]. Shadowing it there meant indexing
+      // CHAPTERS by a deposit object, so the reframe never ran and every
+      // deposit-change chapter kept the camera it was flying away from.
+      const prevDep=DEPOSITS.find(x=>x.key===depKey);
+      if(prevDep){ if(prevDep.baked) bakedSnap=modelState(); else prevDep._state=modelState(); }
       clearModelGeometry();
       loadModelState(st);
       depKey=key;
       rebuildBoxes(); reframeModel();
       POS=new Array(N); buildPositions(); buildBase();
-      // Surfaces, drills and the magnetics are Siwash-only, so a deposit
+      // Surfaces, drills and the magnetics are North Zone-only, so a deposit
       // without them must not be left holding their controls on.
-      surfOn=''; drills=false; hiOn=false; planOn=false; siteOn=false; stageIdx=-1;
+      surfOn=''; drills=false; hiOn=false; planOn=false;
       paintModelUI(); syncOverlayControls();
       document.querySelectorAll('#depseg button').forEach(b=>
         b.classList.toggle('on',b.dataset.dp===key));
+      // The header names the deposit, so it has to follow the switch. It read
+      // "North Zone" over every South Zone chapter, which on the mine-plan
+      // section meant the deck captioned the pit with the name of the orebody
+      // the pit is deliberately NOT on.
+      { const bd=$('brandDep'); if(bd) bd.textContent=d.name;
+        document.title='Bedrock Demo — '+d.name+' · Bedrock Present'; }
       // Vein surfaces, drill traces, intercepts, the grade map and the
-      // magnetics are all Siwash North artifacts. Dimmed rather than removed,
+      // magnetics are all North Zone artifacts. Dimmed rather than removed,
       // so switching back restores the full control set — and so a presenter
       // can see that the controls exist but have nothing to act on here.
       ['surfseg','drillseg','hiseg','planseg','georow'].forEach(id=>{
@@ -6467,8 +7236,17 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       // angle on the deposit CENTRE and the centre has just moved. So replay
       // the chapter's framing against the new one.
       if(forChapter){
-        const c=CHAPTERS[cur];
-        if(c) frameFor(c,true);
+        // Replay the whole chapter, not just its camera.
+        //
+        // clearModelGeometry() has just removed the site layer and the pit
+        // stages, and the reset above turns their toggles off — both are
+        // right for the surfaces and drill traces that belong to one model,
+        // and both are wrong for the mine plan, which is property geometry in
+        // ground coordinates and does not care which block model is loaded.
+        // The chapter had already applied and finished by the time this fetch
+        // resolved, so re-applying it is what puts the pit back; framing alone
+        // left the mine-plan and haul chapters looking at a bare hillside.
+        if(CHAPTERS[cur]) go(cur,false,true);
       } else {
         viewer.camera.flyToBoundingSphere(
           new Cesium.BoundingSphere(center,RADIUS*1.9),{duration:REDUCED?0:2.0});
@@ -6520,7 +7298,18 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     // These bake EXAG into static Cartesians at build time, so they detach from
     // the stretched terrain unless they are rebuilt too.
     if(siteEnts){ siteEnts.forEach(e=>viewer.entities.remove(e)); siteEnts=null; }
-    if(stageEnts){ stageEnts.forEach(es=>es.forEach(e=>viewer.entities.remove(e))); stageEnts=null; }
+    // buildStages() returns {shell:[...], rim:entity, clip:ClippingPolygon},
+    // not an array of entities. Treating it as one threw "es.forEach is not a
+    // function" mid-teardown, which switchDeposit caught and reported as
+    // "could not switch deposit" — so a chapter that showed a pit stage AND
+    // named a deposit silently refused to switch, and the pit was drawn over
+    // whichever model happened to be loaded.
+    if(stageEnts){
+      stageEnts.forEach(st=>{ st.shell.forEach(e=>viewer.entities.remove(e));
+                              viewer.entities.remove(st.rim); });
+      stageEnts=null; stageIdx=-1;
+      viewer.scene.globe.clippingPolygons=undefined;
+    }
     buildBase(); apply(); if(stageIdx>=0) showStage(stageIdx); setStat('');});
   // Steps rather than a continuous slider: these are the numbers a release
   // actually quotes, and a presenter dragging to 0.37 g/t helps nobody.
@@ -6571,7 +7360,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       .forEach(v=>vs.appendChild(mkOpt(v.i,v.nm+' — '+Math.round(v.oz).toLocaleString()+' oz')));
     vs.value='-1';
     $('caveat').textContent=(CLASS_CONFIRMED?'':
-      'Class labels follow the usual MineSight convention but are unconfirmed against the Nov-2021 technical report. ')+
+      'Class labels are fabricated along with the rest of this model — there is no drilling behind them and no technical report to check them against. ')+
       'Illustrative visualization — not a mineral resource statement.';
   }
   // Built from DEPTH_MIX, which is what actually shades the blocks. It used to
@@ -6605,9 +7394,14 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       'Illustrative visualization, not a mineral resource statement.';
   }
   vsel.onchange=e=>{vein=+e.target.value;setStat(vein===-1?'all veins':'isolating '+VEINS[vein]);apply();};
-  $('xbtn').onclick=()=>{const on=$('panel').classList.toggle('on');
+  // One place that opens and closes Explore, so the button and the last
+  // chapter cannot disagree about whether the panel is up.
+  function setPanel(on){
+    $('panel').classList.toggle('on',on);
     $('xbtn').classList.toggle('on',on); $('xbtn').textContent=on?'Explore ◂':'Explore ▸';
-    $('bar').style.opacity=on?'0':'1'; $('bar').style.pointerEvents=on?'none':'auto';};
+    $('bar').style.opacity=on?'0':'1'; $('bar').style.pointerEvents=on?'none':'auto'; }
+  window.__setPanel=setPanel;
+  $('xbtn').onclick=()=>setPanel(!$('panel').classList.contains('on'));
   // ---- ground-level site view ----
   // The remote-walkthrough equivalent: stand on the ridge above the deposit and
   // look around, rather than always orbiting it from the air. Rendered from the
@@ -6858,17 +7652,24 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       const h=document.createElement('div'); h.className='sec';
       h.textContent=c.section; rail.appendChild(h);
     }
-    const d=document.createElement('div'); d.className='c';
+    const d=document.createElement('button'); d.className='c'; d.type='button';
     const num=document.createElement('span'); num.className='num';
     num.textContent=String(i+1).padStart(2,'0');
-    const th=document.createElement('span'); th.className='th';
-    if(THUMBS[i]) th.style.backgroundImage='url('+THUMBS[i]+')';
-    if(c.slide) th.classList.add('isslide');
     const tt=document.createElement('span'); tt.className='t';
     tt.textContent=(c.slide?c.slide.title:c.title)||('Chapter '+(i+1));
-    d.appendChild(num); d.appendChild(th); d.appendChild(tt);
+    d.appendChild(num); d.appendChild(tt);
     d.onclick=()=>{stop();go(i);}; rail.appendChild(d);});
   const railItems=[].slice.call(rail.querySelectorAll('.c'));
+
+  // One tick per chapter, built once. Clicking one is the same jump the rail
+  // makes, so a reader who has collapsed the rail on a narrow screen still has
+  // a way to move around the deck rather than only forwards and back.
+  const prg=$('prg');
+  CHAPTERS.forEach((c,i)=>{
+    const t=document.createElement('i');
+    t.title=(i+1)+'. '+((c.slide?c.slide.title:c.title)||'');
+    t.onclick=()=>{stop();go(i);}; prg.appendChild(t); });
+  const prgTicks=[].slice.call(prg.children);
 
   // ---- transitions --------------------------------------------------
   // TRACKING.md #11. Getting from one chapter to the next is geometry, not
@@ -6959,20 +7760,53 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     const c=CHAPTERS[cur];
     if(AUTHOR) authPaint();
     paintSlide(c);
+    // Explore is a body class because it changes the whole chrome, not one
+    // element: the card loses its heading, the layer controls come forward,
+    // and the camera stops being the deck's to set.
+    document.body.classList.toggle('explore', !!c.explore);
+    document.body.classList.toggle('slidech', !!c.slide);
+    // The last chapter says the camera is yours, so it opens the controls that
+    // make that true rather than asking the reader to find the button. Leaving
+    // it puts them away again — a deck slide with a layer panel over it is
+    // back to being a tool, which is the state the walkthrough exists to
+    // postpone. setPanel is defined further down; on the very first paint it
+    // does not exist yet and there is nothing to sync.
+    if(window.__setPanel) window.__setPanel(!!c.explore);
     $('cap').classList.remove('in');
     setTimeout(function(){
-      $('cap_ey').textContent=String(cur+1).padStart(2,'0')+' / '+String(CHAPTERS.length).padStart(2,'0');
+      // The eyebrow says what the slide is about. It used to print the chapter
+      // number, which the counter under it already says — two of the three
+      // lines of the caption head were the same fact twice.
+      $('cap_ey').textContent=c.ey||c.section||'';
       $('cap_t').textContent=c.title; $('cap_b').textContent=c.body;
+      const f=$('cap_f'); f.innerHTML='';
+      (c.fig||[]).forEach(function(p){
+        const d=document.createElement('div');
+        const b=document.createElement('b'); b.textContent=p[0];
+        const sp=document.createElement('span'); sp.textContent=p[1];
+        d.appendChild(b); d.appendChild(sp); f.appendChild(d); });
       $('cap').classList.add('in');},160);
-    $('count').textContent=(cur+1)+' / '+CHAPTERS.length;
+    $('count').innerHTML='<b>'+String(cur+1).padStart(2,'0')+'</b> / '+
+      String(CHAPTERS.length).padStart(2,'0');
     $('prev').disabled=cur===0; $('next').disabled=cur===CHAPTERS.length-1;
     $('prog').style.width=(cur/(CHAPTERS.length-1)*100)+'%';
-    railItems.forEach((el,i)=>el.classList.toggle('on',i===cur));
+    prgTicks.forEach((el,i)=>{ el.classList.toggle('done',i<cur);
+                               el.classList.toggle('now',i===cur); });
+    railItems.forEach((el,i)=>{ el.classList.toggle('on',i===cur);
+                                el.setAttribute('aria-current',i===cur?'true':'false'); });
+    // Keep the current chapter in view — with thirty of them the rail scrolls,
+    // and a contents page that does not follow along is one the reader has to
+    // hunt through.
+    if(railItems[cur]&&railItems[cur].scrollIntoView)
+      railItems[cur].scrollIntoView({block:'nearest'});
   }
-  function go(i,initial){
+  // `replay` re-runs a chapter that is already current, after an async
+  // deposit switch has torn its geometry down. It is the same chapter, so
+  // it must not count as a second view.
+  function go(i,initial,replay){
     if(i<0||i>=CHAPTERS.length) return;
     cur=i; const c=CHAPTERS[i];
-    trkChapter(i);
+    if(!replay) trkChapter(i);
     // Unwind any hole view FIRST. It restores the layer state it borrowed, and
     // everything below this line is the new chapter writing that same state —
     // run in the other order the restore lands on top and the chapter loses.
@@ -7071,7 +7905,36 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     // chapter exists, and reaching for a toolbar button mid-sentence is
     // exactly the friction the walkthrough is meant to remove.
     if(!assetOnly && c.drills && HOLES.length && !ledgerOn) setLedger(true);
-    if(stageIdx>=0){ showStage(-1); $('stage').value=-1; }
+    // Pit stages are a fabricated layer, so the rule is the same as for the
+    // rest of the site: a chapter that does not ask for one turns it OFF,
+    // rather than letting the previous chapter's stage leak forward under
+    // copy that says nothing about it. What is new is that a chapter CAN ask
+    // — `stage: 0` is the starter pit, and the mine-plan chapters use it.
+    // The haul cycle only runs where the copy is about it. A truck crawling
+    // through a chapter on resource classification is motion with nothing to
+    // say, and the clock would keep it moving after the chapter had moved on.
+    //
+    // Rewinding matters as much as running. The clock starts when the site
+    // layer is first built, so by the time a reader reaches the mine-process
+    // chapters the trucks are already out on the road and the pit is empty —
+    // the one shot the chapter exists for has been and gone. Rewinding puts
+    // them back on the pit floor, so the climb up the ramp happens while
+    // someone is actually watching it.
+    // Land tenure and pit design are different questions. Asking both at
+    // once, in the same corner of the frame, is most of why the mine
+    // chapters were hard to read.
+    holdersWanted = (c.holders !== false);
+    siteLabelsWanted = (c.siteLabels !== false);
+    holderEnts.forEach(e=>e.show = holdersWanted);
+    siteLabelEnts.forEach(e=>e.show = siteLabelsWanted);
+    // Recolouring is a geometry rebuild, so only do it when the answer changes.
+    { const wantCut = !assetOnly && !!c.pitCut;
+      if(wantCut !== pitCut){ pitCut = wantCut; buildBase(); } }
+    if(!assetOnly && c.haul) viewer.clock.currentTime = viewer.clock.startTime.clone();
+    viewer.clock.shouldAnimate = !assetOnly && !!c.haul;
+    { const wantStage = (!assetOnly && c.stage !== undefined) ? c.stage : -1;
+      if(wantStage !== stageIdx){ showStage(wantStage);
+        const sl = $('stage'); if(sl) sl.value = wantStage; } }
     // Navigating away ends the ground view; leaving the flag set made the Site
     // button jump the user to a chapter they never asked for.
     if(ground3d){ ground3d=false; $('sitebtn').classList.remove('on');
@@ -7306,7 +8169,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
   $('expPng').onclick=async()=>{
-    try{ dl('elk-gold-'+(cur+1)+'.png',await grab()); toast('PNG saved'); }
+    try{ dl('bedrock-demo-'+(cur+1)+'.png',await grab()); toast('PNG saved'); }
     catch(e){ toast('Export aborted: '+e.message,5000); }
   };
 
@@ -7353,7 +8216,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   // Recomputed per export rather than fixed at load: the footer has to describe
   // what is actually on the slide, not what might be.
   // The deck's own name, for exported files. This was hard-coded to
-  // "Elk-Gold-Siwash-North", so every customer's PowerPoint arrived named
+  // "Bedrock-Demo-North-Zone", so every customer's PowerPoint arrived named
   // after the demo property — on a document they are about to send to an
   // investor.
   function deckName(){
@@ -7820,6 +8683,7 @@ for k, v in {
     "__CN__": f"{cN:.1f}", "__CZ__": f"{cZ:.1f}", "__EX__": f"{EX:.0f}", "__EY__": f"{EY:.0f}",
     "__ZTOP__": f"{ZTOP:.0f}", "__ZBOT__": f"{ZBOT:.0f}",
     "__CHAPTERS__": js(CHAPTERS),
+    "__PITCUT__": js(PITCUT),
     "__RUNS__": js([{k2: r[k2] for k2 in ("c", "b", "d", "lo", "hi", "s", "n")} for r in RUNS]),
     "__BUCKETS__": js(BUCKETS),
     "__BY_CB__": js(BY_CB),
@@ -7852,8 +8716,10 @@ for k, v in {
     "__HOLES__": js(HOLES),
     "__HIGHLIGHTS__": js(HIGHLIGHTS),
     "__SITE__": js(SITE),
+    "__PIT_DEM__": js(PIT_DEM),
     "__SITE_SYNTHETIC__": "true" if SITE_SYNTHETIC else "false",
     "__REAL_CLAIMS__": js(REAL_CLAIMS),
+    "__CLAIMS_SYNTHETIC__": js(CLAIMS_SYNTHETIC),
     # Logos are supplied, never scraped. A company's mark is its trademark, and
     # inventing one for a neighbour would put a fake identity on a real map.
     # Absent, the viewer draws a monogram instead.
@@ -7897,12 +8763,14 @@ async function trim(){
 }
 // What this cache must NOT touch.
 //
-// The worker is registered at the site root, so its scope is everything —
-// including the authoring console at /dashboard/ and every API call the console
-// makes. Cache-first over that scope is actively harmful: the console would
-// serve users the JavaScript from whichever deploy they first visited, forever,
-// and authenticated Supabase GETs would be stored and replayed as though the
-// data had never changed. Tiles are the only thing here worth caching
+// The worker now ships at /pit/, so its scope is the deck alone and the
+// authoring console at /dashboard/ is out of reach by construction. The bypass
+// list is kept anyway: scope is a function of where this file is served from,
+// and a future move back up would silently re-expose the console to a
+// cache-first worker. Cache-first over the console is actively harmful — it
+// would serve users the JavaScript from whichever deploy they first visited,
+// forever, and authenticated Supabase GETs would be stored and replayed as
+// though the data had never changed. Tiles are the only thing worth caching
 // aggressively, so everything else is passed straight to the network.
 function bypass(r){
   const u=new URL(r.url);
@@ -7958,6 +8826,7 @@ self.addEventListener('message',e=>{
 """
 import hashlib
 SWVER = hashlib.sha1(HTML.encode()).hexdigest()[:10]
+OUT_DIR.mkdir(parents=True, exist_ok=True)
 OUT_SW.write_text(SW.replace("__SWVER__", SWVER))
 
 OUT.write_text(HTML)

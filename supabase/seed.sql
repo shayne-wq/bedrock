@@ -23,7 +23,7 @@ on conflict (id) do nothing;
 insert into projects (id, org_id, name, slug, commodity, location, epsg) values
   ('aaaaaaaa-0000-0000-0000-000000000002',
    'aaaaaaaa-0000-0000-0000-000000000001',
-   'Elk Gold', 'elk-gold', 'Au', 'Nicola region, British Columbia', 26910)
+   'Bedrock Demo', 'bedrock-demo', 'Au', 'Coast Mountains, British Columbia', 26910)
 on conflict (id) do nothing;
 
 -- Exactly ONE dataset, deliberately.
@@ -59,7 +59,7 @@ on conflict (id) do nothing;
 insert into decks (id, project_id, title, subtitle, status) values
   ('aaaaaaaa-0000-0000-0000-000000000003',
    'aaaaaaaa-0000-0000-0000-000000000002',
-   'Siwash North', 'Nicola region, British Columbia', 'published')
+   'North Zone', 'Coast Mountains, British Columbia', 'published')
 on conflict (id) do nothing;
 
 -- Two chapters, and the suite checks they come back in `ord` order with

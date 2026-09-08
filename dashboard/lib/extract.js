@@ -9,7 +9,7 @@
 //
 // Environment-agnostic on purpose: it consumes an async iterable of lines, so
 // the same code runs inside a Web Worker and inside Node, which is how it gets
-// verified against the Python's known-good rollups on the real 1.2 GB model.
+// verified against the Python's known-good rollups on the generated demo model.
 //
 // THE THING NOT TO GET WRONG — a block is not owned by one domain. Where a
 // model carries per-domain share columns, a block straddling two veins belongs

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Bedrock — block-model extractor (v2).
 
-Reads the native MineSight export and emits the two files the viewer needs:
+Reads a native-shape block-model export and emits the two files the viewer needs:
 
-  data/elk_blocks_v2.csv   x,y,z,aueq,penv,cls,vein   (one row per mineralized block)
-  data/elk_stats.json      exact grade-tonnage rollups, per vein and per class
-  data/elk_buckets.json    share-weighted (vein, class, grade-bin) rollups
+  data/demo_blocks_v2.csv   x,y,z,aueq,penv,cls,vein   (one row per mineralized block)
+  data/demo_stats.json      exact grade-tonnage rollups, per vein and per class
+  data/demo_buckets.json    share-weighted (vein, class, grade-bin) rollups
 
 v1 carried only AuEq and Percent_Env — two columns out of ~280. This also carries
 the block's **resource classification** and its **vein domain**, which is what
@@ -22,7 +22,7 @@ is therefore split by each vein's own share.
 
 The `vein` column in the CSV is the block's DOMINANT domain and exists only so
 the viewer has one colour and one position per block. It is a rendering hint.
-Never roll tonnage up from it — use elk_buckets.json, which is share-weighted.
+Never roll tonnage up from it — use demo_buckets.json, which is share-weighted.
 
 Tonnage is real, not a proxy: blocks are 10 x 5 x 5 m on a uniform 2.7 t/m3
 density, so a whole block is 675 t and a block's ore tonnage is 675 * Percent_Env.
@@ -36,10 +36,10 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT.parent / "Siwash_North_BM_Nov_2021.csv"
-OUT_CSV = ROOT / "data" / "elk_blocks_v2.csv"
-OUT_JSON = ROOT / "data" / "elk_stats.json"
-OUT_BUCKETS = ROOT / "data" / "elk_buckets.json"
+SRC = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "data" / "demo_model_source.csv"
+OUT_CSV = ROOT / "data" / "demo_blocks_v2.csv"
+OUT_JSON = ROOT / "data" / "demo_stats.json"
+OUT_BUCKETS = ROOT / "data" / "demo_buckets.json"
 
 # Block geometry + density, read off the source grid (x steps 10 m, y/z 5 m) and
 # the FixedDensity column (uniform 2.7 across all 495,074 blocks).
@@ -48,13 +48,14 @@ DENSITY = 2.7
 TONNES_PER_BLOCK = BLOCK_M3 * DENSITY          # 675 t
 G_PER_TROY_OZ = 31.10348
 
-# MineSight classification codes. 0 = unclassified/waste.
-# NOTE: the 1/2/3 -> Measured/Indicated/Inferred mapping follows the usual
-# MineSight convention but has NOT been confirmed against the Nov-2021 NI 43-101.
-# Among mineralized blocks the split is 53,380 / 111,317 / 1,209 plus 2,107
-# unclassified — an odd shape for a normal resource (an Inferred category that
-# small, and running 10.7 g/t, is unusual), so treat these labels as provisional
-# until someone checks them against the technical report.
+# Classification codes. 0 = unclassified/waste.
+# These are FABRICATED, like everything else in the demo model: the generator
+# assigns them by how well tested a block would notionally be — a drilled core,
+# a step out, then depth — and there is no drilling behind any of it. So there
+# is no technical report to reconcile them against and nothing to confirm. They
+# exist to exercise the viewer's class colouring and class filters, and the
+# labels below are Measured/Indicated/Inferred only because those are the words
+# the control has to show.
 CLASS_LABELS = {0: "Unclassified", 1: "Measured", 2: "Indicated", 3: "Inferred"}
 CLASS_CONFIRMED = False
 
@@ -213,8 +214,8 @@ def main():
     print(f"wrote {OUT_CSV.relative_to(ROOT)}, {OUT_JSON.relative_to(ROOT)}, "
           f"{OUT_BUCKETS.relative_to(ROOT)}")
     if not CLASS_CONFIRMED:
-        print("  WARNING: class 1/2/3 -> Measured/Indicated/Inferred is UNCONFIRMED "
-              "— verify against the Nov-2021 NI 43-101 before publishing")
+        print("  NOTE: Measured/Indicated/Inferred here are FABRICATED categories "
+              "on a fabricated model — they state nothing about any real resource")
 
 
 if __name__ == "__main__":

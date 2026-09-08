@@ -235,7 +235,7 @@ function newProject() {
     <p class="sub">A project holds one or more zones — add the first after it
        is created.</p>
     <div class="field"><label for="pn">Name</label>
-      <input type="text" id="pn" placeholder="Siwash North"></div>
+      <input type="text" id="pn" placeholder="North Zone"></div>
     <div class="grid two">
       <div class="field"><label for="pc">Commodity</label>
         <input type="text" id="pc" placeholder="Gold"></div>
@@ -622,7 +622,7 @@ function addZone(p) {
     <p class="sub">One deposit — its own block model, drills, surfaces, property
        and geophysics. A single deck flies across every zone in the project.</p>
     <div class="field"><label for="zn">Zone name</label>
-      <input type="text" id="zn" placeholder="Siwash North"></div>
+      <input type="text" id="zn" placeholder="North Zone"></div>
     <div class="row-actions" style="margin-top:16px">
       <button class="btn primary" id="zgo">Add zone</button>
       <button class="btn" id="zcancel">Cancel</button>
@@ -1048,7 +1048,7 @@ function editProject(p) {
         <input type="text" id="epc" value="${esc(p.commodity || "")}" placeholder="Gold"></div>
       <div class="field"><label for="epl">Location</label>
         <input type="text" id="epl" value="${esc(p.location || "")}"
-               placeholder="Nicola, British Columbia">
+               placeholder="Coast Mountains, British Columbia">
         <p class="hintline">Used in the opening slide's own title, so it is read
           aloud as often as the project name.</p></div>
     </div>

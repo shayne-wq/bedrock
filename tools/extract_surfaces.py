@@ -14,7 +14,7 @@ does not contain, which matters for a tool whose whole claim is that it does not
 embellish. The result is faceted at block scale, which is honest: that IS the
 resolution of the data.
 
-Emits data/elk_surfaces.json:
+Emits data/demo_surfaces.json:
   {vein_name: {v: [x,y,z, ...], i: [a,b,c, ...], blocks, tonnes, oz}}
 Coordinates stay in UTM 10N; the viewer reprojects, caching per unique easting
 /northing pair.
@@ -26,9 +26,9 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "data" / "elk_blocks_v2.csv"
-STATS = ROOT / "data" / "elk_stats.json"
-OUT = ROOT / "data" / "elk_surfaces.json"
+SRC = ROOT / "data" / "demo_blocks_v2.csv"
+STATS = ROOT / "data" / "demo_stats.json"
+OUT = ROOT / "data" / "demo_surfaces.json"
 N_VEINS = int(sys.argv[1]) if len(sys.argv) > 1 else 8
 
 # Grade shells, CUMULATIVE: each is the hull of everything at or above its

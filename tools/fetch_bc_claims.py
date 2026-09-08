@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Clip REAL BC mineral tenures to the Elk Gold extent.
+"""Clip REAL BC mineral tenures to the Bedrock Demo extent.
 
     python3 tools/fetch_bc_claims.py [path/to/bc-mineral-tenures.geojson]
 
-Writes data/bc_tenures_elk.geojson.
+Writes data/demo_tenures.geojson.
 
 This is the one layer in the deck that is NOT fabricated, and that is the whole
 point of it. Claims are the most checkable thing in a mining deck — a reader can
@@ -30,8 +30,8 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC_DEFAULT = (ROOT.parent.parent / "SmallCapContent" / "data"
                / "bc-mineral-tenures.geojson")
 SRC = Path(sys.argv[1]) if len(sys.argv) > 1 else SRC_DEFAULT
-BLOCKS = ROOT / "data" / "elk_blocks_v2.csv"
-OUT = ROOT / "data" / "bc_tenures_elk.geojson"
+BLOCKS = ROOT / "data" / "demo_blocks_v2.csv"
+OUT = ROOT / "data" / "demo_tenures.geojson"
 MARGIN = 1500.0     # m beyond the model extent — the subject property
 NEIGHBOUR = 6000.0  # m — the ground around it, held by other people
 
@@ -39,7 +39,7 @@ NEIGHBOUR = 6000.0  # m — the ground around it, held by other people
 # a company does not own its neighbours' tenure data and has no standing to
 # assert it. Only the public register can say who holds the ground next door,
 # and "a listed company holds the claims along strike" is often the most
-# interesting fact on the map. Within 6 km of Elk Gold the register returns
+# interesting fact on the map. Within 6 km of Bedrock Demo the register returns
 # 45 tenures — 29 the issuer's, the rest split between Vizsla Copper, Barranco
 # Gold and four individual prospectors.
 

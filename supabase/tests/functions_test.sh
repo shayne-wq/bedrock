@@ -26,10 +26,10 @@ code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
 echo "== deck: happy path"
 BODY=$(curl -s "$BASE/deck?t=$TOK")
 check "200 for a live token"      "200" "$(code "$BASE/deck?t=$TOK")"
-check "returns the deck title"    "Siwash North" "$(jq -r .deck.title <<<"$BODY")"
+check "returns the deck title"    "North Zone" "$(jq -r .deck.title <<<"$BODY")"
 check "returns both chapters"     "2" "$(jq -r '.chapters|length' <<<"$BODY")"
 check "chapters are ordered"      "Opening" "$(jq -r '.chapters[0].title' <<<"$BODY")"
-check "carries project metadata"  "Elk Gold" "$(jq -r .project.name <<<"$BODY")"
+check "carries project metadata"  "Bedrock Demo" "$(jq -r .project.name <<<"$BODY")"
 check "flags fabricated data"     "drills" "$(jq -r '.fabricated[0]' <<<"$BODY")"
 check "synthetic note travels"    "Fabricated demo holes" \
       "$(jq -r '.assets[0].synthetic_note' <<<"$BODY")"
@@ -93,7 +93,7 @@ sql "update share_links set domains='{}' where token='$TOK';" >/dev/null
 echo "== track: sessions"
 sql "delete from view_events; delete from view_sessions;" >/dev/null
 R1=$(curl -s -X POST "$BASE/track" -H 'content-type: application/json' -d "{
-  \"t\":\"$TOK\",\"embed\":true,\"ref\":\"https://ir.example.com/elk?utm_source=x\",
+  \"t\":\"$TOK\",\"embed\":true,\"ref\":\"https://ir.example.com/demo?utm_source=x\",
   \"watch_ms\":5000,\"chapters_seen\":1,
   \"events\":[{\"kind\":\"open\",\"t_ms\":0},{\"kind\":\"chapter\",\"t_ms\":0,\"chapter_ord\":0,\"dwell_ms\":5000}]}")
 SID=$(jq -r .s <<<"$R1")
@@ -103,7 +103,7 @@ check "two events stored"         "2" "$(sql 'select count(*) from view_events;'
 check "records the embed flag"    "t" "$(sql 'select is_embed from view_sessions;')"
 check "records referrer host"     "ir.example.com" "$(sql 'select referrer_host from view_sessions;')"
 # The query string is where tracking parameters and stray PII live.
-check "drops the query string"    "/elk" "$(sql 'select referrer_path from view_sessions;')"
+check "drops the query string"    "/demo" "$(sql 'select referrer_path from view_sessions;')"
 check "stores no ip column"       "0" \
       "$(sql "select count(*) from information_schema.columns where table_name='view_sessions' and column_name ilike '%ip%';")"
 

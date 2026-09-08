@@ -28,12 +28,22 @@ function lift(name) {
 }
 
 const LADDER = [0,0.1,0.2,0.3,0.5,0.75,1.0,1.5,2.0,3.0,5.0,8.0,12.0,20.0,50.0];
-const src = lift("unpackOreb") + "\n" + lift("buildModel") +
-            "\nreturn {unpackOreb, buildModel};";
-const { unpackOreb, buildModel } = new Function("LADDER", src)(LADDER);
+// PITCUT is a generated literal, not a function, so it is read off the same
+// declaration the viewer uses rather than lifted as source. buildModel calls
+// pitQ against it on every block, which is the whole reason the pit flag can
+// describe a deposit the Python build never sees.
+const PITCUT = (() => {
+  const m = html.match(/PITCUT=(\{.*?\}),\s*[A-Z_]+=/s);
+  if (!m) throw new Error("PITCUT not found in index.html");
+  return JSON.parse(m[1]);
+})();
+const src = lift("unpackOreb") + "\n" + lift("pitQ") + "\n" + lift("buildModel") +
+            "\nreturn {unpackOreb, buildModel, pitQ};";
+const { unpackOreb, buildModel, pitQ } =
+  new Function("LADDER", "PITCUT", src)(LADDER, PITCUT);
 
 const dir = path.join(REPO, "data", "synthetic");
-const man = JSON.parse(readFileSync(path.join(dir, "SYNTHETIC_nicola_south.json"), "utf8"));
+const man = JSON.parse(readFileSync(path.join(dir, "SYNTHETIC_south_zone.json"), "utf8"));
 const bin = readFileSync(path.join(dir, man.blocks_file));
 const bj = JSON.parse(readFileSync(path.join(dir, man.buckets_file), "utf8"));
 
@@ -81,13 +91,53 @@ let covered = 0, prev = -1, contiguous = true, ordered = true;
 for (const r of m.RUNS) {
   if (r.s !== covered) contiguous = false;
   covered += r.n;
-  const key = r.c * 1e6 + r.b * 1e3 + r.d;
+  // In-pit is the last key, after the three bucket keys and before vein — the
+  // same order build_present.py sorts its own rows in. Leave it out of this
+  // comparison and two runs that differ only by the pit flag read as equal,
+  // which is a failure the ordering check would then report on every model.
+  const key = ((r.c * 1e3 + r.b) * 1e3 + r.d) * 2 + (r.q ? 1 : 0);
   if (key <= prev) ordered = false;
   prev = key;
 }
 eq("runs tile the model exactly", cols.n, covered);
 eq("runs are contiguous", true, contiguous);
-eq("runs are strictly ordered by (class,bin,band)", true, ordered);
+eq("runs are strictly ordered by (class,bin,band,in-pit)", true, ordered);
+
+// ---- the pit flag -------------------------------------------------------
+// The pit is on THIS deposit, so the flag has to actually split it. Both of
+// the ways it can be silently useless are failures: all-out means the shell
+// and the orebody are no longer in the same place (which is what happened
+// when the pit was still sited on North Zone), and all-in means the cut
+// distinguishes nothing and the mine-plan chapters colour the whole model ore.
+const inPit = m.RUNS.filter(r => r.q).reduce((a, r) => a + r.n, 0);
+eq("some of the deposit is inside the pit shell", true, inPit > 0);
+eq("some of it is outside", true, inPit < cols.n);
+eq("the shell holds most of the body", true, inPit / cols.n > 0.6);
+
+// A run is one colour, so it must be wholly in or wholly out.
+let mixed = 0;
+for (const r of m.RUNS) {
+  for (let i = r.s; i < r.s + r.n; i++) {
+    const q = pitQ(m.F[i*5] + cols.origin[0], m.F[i*5+1] + cols.origin[1], m.F[i*5+2]);
+    if (q !== (r.q ? 1 : 0)) { mixed++; break; }
+  }
+}
+eq("no run straddles the shell boundary", 0, mixed);
+
+// And the flag has to mean what it says: nothing outside the rim, nothing
+// below the floor.
+let stray = 0;
+for (const r of m.RUNS) {
+  if (!r.q) continue;
+  for (let i = r.s; i < r.s + r.n; i++) {
+    const z = m.F[i*5+2];
+    const d = Math.hypot(m.F[i*5] + cols.origin[0] - PITCUT.cx,
+                         m.F[i*5+1] + cols.origin[1] - PITCUT.cy);
+    const maxR = Math.max(...PITCUT.pol.map(p => p[1]));
+    if (z > PITCUT.rim + 1e-6 || z < PITCUT.rim - PITCUT.depth - 1e-6 || d > maxR + 1e-6) stray++;
+  }
+}
+eq("every in-pit block is inside the rim and above the floor", 0, stray);
 eq("every run has a ladder low", true, m.RUNS.every(r => bj.ladder[r.b] === r.lo));
 
 // Every block must sit in the bin its run claims.

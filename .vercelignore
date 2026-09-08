@@ -1,0 +1,13 @@
+# Vercel falls back to .gitignore when this file is absent, which coupled two
+# unrelated decisions: keeping the Williams build out of git also removed it
+# from the deployment, and production 404'd on /williams. Deployment contents
+# and repository contents are now stated separately.
+.DS_Store
+.vercel
+node_modules
+*.log
+.env
+.env.*
+*_BM_*.csv
+Siwash_North_BM_Nov_2021.csv
+.fixtures/

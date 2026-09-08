@@ -3,7 +3,7 @@
 
 ============================ READ THIS FIRST ============================
 EVERY HOLE THIS SCRIPT PRODUCES IS FABRICATED. No drilling happened. These
-are not Elk Gold drill results, they are not derived from any assay
+are not Bedrock Demo drill results, they are not derived from any assay
 certificate, and they must never be presented as real. They exist only so
 the viewer's drill-trace feature can be built and demonstrated before real
 collar/survey/assay data is obtained.
@@ -33,7 +33,7 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "data" / "elk_blocks_v2.csv"
+SRC = ROOT / "data" / "demo_blocks_v2.csv"
 OUTDIR = ROOT / "data" / "synthetic"
 N_HOLES = int(sys.argv[1]) if len(sys.argv) > 1 else 40
 SEED = 20211130                      # fixed so rebuilds are reproducible

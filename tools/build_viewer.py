@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Pack the Elk Gold ore blocks into a self-contained Three.js viewer HTML."""
+"""Pack the Bedrock Demo ore blocks into a self-contained Three.js viewer HTML."""
 import csv, struct, base64, statistics
 
-SRC = "elk_ore_blocks.csv"
-OUT = "elk-viewer.html"
+SRC = "demo_ore_blocks.csv"
+OUT = "demo-viewer.html"
 BX, BY, BZ = 10.0, 10.0, 5.0          # block size: X(E), Y(N), Z(elev)
 DENS = 2.7
 T_PER_BLOCK = BX * BY * BZ * DENS      # tonnes per block = 500 m3 * 2.7 = 1350 t
@@ -46,7 +46,7 @@ HTML = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Elk Gold — Siwash North · 3D Block Model</title>
+<title>Bedrock Demo — North Zone · 3D Block Model</title>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   *{box-sizing:border-box;margin:0}
@@ -82,7 +82,7 @@ HTML = """<!DOCTYPE html>
 
 <div id="hud" class="panel">
   <div class="eyebrow">CSE&nbsp;·&nbsp;Resource Model</div>
-  <h1>Elk Gold<br>Siwash North</h1>
+  <h1>Bedrock Demo<br>North Zone</h1>
   <div class="sub">3D Block Model · __N__ blocks<br>10 × 10 × 5 m · UTM 10N NAD83<br>Envelope __EX__ × __EY__ × __EZ__ m</div>
 </div>
 

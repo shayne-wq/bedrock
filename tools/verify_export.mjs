@@ -31,7 +31,7 @@ await pg.waitForFunction(() => window.__api && document.querySelectorAll("#rail 
 await pg.waitForTimeout(9000);
 
 const chapters = (await pg.evaluate(() => window.__api.titles())).length;
-// The export filename used to be the string "Elk-Gold-Siwash-North", so every
+// The export filename used to be the string "Bedrock-Demo-North-Zone", so every
 // customer's PowerPoint arrived named after our demo property — on a document
 // they were about to send to an investor. It is derived from the deck now, and
 // the only way to prove derivation is to change the deck and look.

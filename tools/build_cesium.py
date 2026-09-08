@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Georeferenced Cesium viewer: Elk Gold blocks on real BC terrain (token-free).
+"""Georeferenced Cesium viewer: Bedrock Demo blocks on real BC terrain (token-free).
 Adds cutoff slider (grade-bucketed primitives), orbit-around-deposit + preset
 views, live grade-tonnage stats."""
 import csv, struct, base64
 
-SRC = "elk_ore_blocks.csv"
-OUT = "elk-terrain.html"
+SRC = "demo_ore_blocks.csv"
+OUT = "demo-terrain.html"
 TOPN = 45000
 DENS = 2.7
 T_PER_BLOCK = 10 * 10 * 5 * DENS
@@ -42,7 +42,7 @@ HTML = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Elk Gold — Siwash North · Georeferenced Block Model</title>
+<title>Bedrock Demo — North Zone · Georeferenced Block Model</title>
 <script>window.CESIUM_BASE_URL='https://cdn.jsdelivr.net/npm/cesium@1.120/Build/Cesium/';</script>
 <link href="https://cdn.jsdelivr.net/npm/cesium@1.120/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -84,8 +84,8 @@ HTML = """<!DOCTYPE html>
 
 <div id="hud" class="panel">
   <div class="eyebrow">CSE · Georeferenced Model</div>
-  <h1>Elk Gold<br>Siwash North</h1>
-  <div class="sub">Block model on real BC terrain<br>UTM 10N NAD83 · Nicola region, BC<br>Terrain: Esri World Elevation</div>
+  <h1>Bedrock Demo<br>North Zone</h1>
+  <div class="sub">Block model on real BC terrain<br>UTM 10N NAD83 · Coast Mountains, BC<br>Terrain: Esri World Elevation</div>
 </div>
 
 <div id="stats" class="panel">

@@ -46,12 +46,12 @@ await pg.locator('#epe').fill('26911');
 await pg.waitForTimeout(400);
 ok('changing EPSG warns that data will move', await pg.locator('#epsgwarn').isVisible());
 await pg.locator('#epe').fill('26910');
-await pg.locator('#epl').fill('Nicola Valley, British Columbia');
+await pg.locator('#epl').fill('Coast Mountains Valley, British Columbia');
 await pg.locator('#epc').fill('Gold, Silver');
 await pg.locator('#epgo').click();
 await pg.waitForTimeout(6000);
 const proj = await read('projects',{id:PRJ, sel:'name,commodity,location,epsg'});
-ok('location saves', proj.location==='Nicola Valley, British Columbia', proj.location);
+ok('location saves', proj.location==='Coast Mountains Valley, British Columbia', proj.location);
 ok('commodity saves', proj.commodity==='Gold, Silver', proj.commodity);
 ok('EPSG unchanged when set back', proj.epsg===26910, String(proj.epsg));
 
@@ -60,7 +60,7 @@ await pg.waitForSelector('[data-renamezone]',{timeout:60000}).catch(()=>{});
 const rn = pg.locator('[data-renamezone]').first();
 ok('zones can be renamed', await rn.count()>0);
 if (await rn.count()) {
-  promptWith = 'Siwash North Extension';
+  promptWith = 'North Zone Extension';
   await rn.click();
   await pg.waitForTimeout(6000);
   const z = await pg.evaluate(async ([url,key])=>{
@@ -69,8 +69,8 @@ if (await rn.count()) {
     const {data}=await c.from('zones').select('name,slug').eq('project_id','dddddddd-0000-0000-0000-000000000002');
     return data;
   },[API,ANON]);
-  ok('the new zone name persists', z[0].name==='Siwash North Extension', JSON.stringify(z[0]));
-  ok('and its slug follows', z[0].slug==='siwash-north-extension', z[0].slug);
+  ok('the new zone name persists', z[0].name==='North Zone Extension', JSON.stringify(z[0]));
+  ok('and its slug follows', z[0].slug==='north-north-extension', z[0].slug);
 }
 
 // ---- deck subtitle ---------------------------------------------------------
@@ -80,11 +80,11 @@ ok('the deck subtitle is editable', await pg.locator('#dsub').count()>0);
 if (await pg.locator('#dsub').count()) {
   await pg.locator('#dsub').click();
   await pg.locator('#dsub').fill('');
-  await pg.keyboard.type('Nicola, British Columbia — August 2026');
+  await pg.keyboard.type('Coast Mountains, British Columbia — August 2026');
   await pg.locator('#dtitle').click();
   await pg.waitForTimeout(5000);
   const d = await read('decks',{id:DECK, sel:'subtitle'});
-  ok('the subtitle persists', d.subtitle==='Nicola, British Columbia — August 2026', String(d.subtitle));
+  ok('the subtitle persists', d.subtitle==='Coast Mountains, British Columbia — August 2026', String(d.subtitle));
 }
 
 console.log('\npage errors:', errs.length?errs.slice(0,4):'none');

@@ -57,10 +57,10 @@ const boot = await page.evaluate(() => ({
 }));
 ok("deck booted without a fatal", boot.fatal !== "fatal", boot.status);
 ok("viewer exists", boot.hasViewer);
-ok("25 chapters", boot.chapters === 25, `got ${boot.chapters}`);
+ok("30 chapters", boot.chapters === 30, `got ${boot.chapters}`);
 ok("deposit switcher is populated", boot.deposits.length === 2, JSON.stringify(boot.deposits));
 ok("switcher tags the fabricated deposit",
-   boot.deposits.some((t) => /Nicola South/.test(t) && /synthetic/i.test(t)),
+   boot.deposits.some((t) => /South Zone/.test(t) && /synthetic/i.test(t)),
    JSON.stringify(boot.deposits));
 ok("no page errors during boot", errors.length === 0, errors.slice(0, 3).join(" | "));
 
@@ -165,7 +165,7 @@ const propRes = await page.evaluate(() => ({
   legend: getComputedStyle(document.getElementById("propleg")).display,
   legendText: document.getElementById("propleg").textContent,
   labels: window.__viewer.entities.values.filter(
-    (e) => e.label && /Siwash North|Nicola South/.test(e.label.text?.getValue?.() ?? "")).length,
+    (e) => e.label && /North Zone|South Zone/.test(e.label.text?.getValue?.() ?? "")).length,
   warn: document.getElementById("synwarn").textContent,
   warnOn: document.getElementById("synwarn").classList.contains("on"),
   prims: window.__viewer.scene.primitives.length,
@@ -179,7 +179,9 @@ ok("banner flags the fabricated deposit in the property view",
 console.log("\n== deposit switch");
 const sw = await page.evaluate(async () => {
   const btns = [...document.querySelectorAll("#depseg button")];
-  const nic = btns.find((b) => /Nicola/.test(b.textContent));
+  const nic = btns.find((b) => /South Zone/.test(b.textContent));
+  if (!nic) throw new Error('no South Zone button in the deposit switcher — '
+    + btns.map(b => b.textContent.trim()).join(' | '));
   nic.click();
   await new Promise((r) => setTimeout(r, 16000));
   const audit = (() => {
@@ -202,7 +204,7 @@ ok("banner condemns the whole block model",
    sw.warnOn && /block model/i.test(sw.warn), sw.warn);
 ok("audit says every number is invented",
    /BLOCK MODEL ITSELF IS FABRICATED/.test(sw.audit));
-ok("audit reports Nicola South tonnage",
+ok("audit reports South Zone tonnage",
    /38,815,26\d|38,815,2/.test(sw.audit.replace(/\s+/g, " ")),
    (sw.audit.match(/DEPOSIT TOTAL[\s\S]{0,80}/) || [""])[0]);
 ok("vein list repopulated for the new deposit", sw.veins === 7,
@@ -210,16 +212,20 @@ ok("vein list repopulated for the new deposit", sw.veins === 7,
 ok("class chips repopulated", sw.chips === 3, `chips=${sw.chips}`);
 
 const back = await page.evaluate(async () => {
-  [...document.querySelectorAll("#depseg button")].find((b) => /Siwash/.test(b.textContent)).click();
+  [...document.querySelectorAll("#depseg button")].find((b) => /North Zone/.test(b.textContent)).click();
   await new Promise((r) => setTimeout(r, 14000));
   document.getElementById("provbtn").click();
   const t = document.getElementById("provbody").textContent;
   document.getElementById("provclose").click();
   return { veins: document.getElementById("vsel").options.length, audit: t };
 });
-ok("switching back restores 46 vein domains", back.veins === 47, `options=${back.veins}`);
-ok("switching back restores the real tonnage",
-   /8,985,428/.test(back.audit.replace(/\s+/g, " ")));
+ok("switching back restores 22 vein domains", back.veins === 23, `options=${back.veins}`);
+ok("switching back restores the primary deposit's tonnage",
+   // The audit prints the exact figure, 6,336,971.5 t — the build's own
+   // summary line is what rounds it. Matching the rounded number here
+   // failed on a deposit that had restored perfectly.
+   /6,336,971\.5/.test(back.audit.replace(/\s+/g, " ")),
+   (back.audit.replace(/\s+/g, " ").match(/DEPOSIT TOTAL[\s\S]{0,60}/) || [""])[0]);
 ok("no BLOCKS_SYNTHETIC caveat on the real deposit",
    !/BLOCK MODEL ITSELF IS FABRICATED/.test(back.audit));
 

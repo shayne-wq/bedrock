@@ -15,7 +15,7 @@ JWT="${3:-$ANON}"
 pass=0; fail=0
 ok(){ if [ "$2" = "1" ]; then pass=$((pass+1)); echo "  ok   $1"; else fail=$((fail+1)); echo "  FAIL $1 ${3:-}"; fi }
 
-# Elk Gold, Nicola BC.
+# Bedrock Demo, Coast Mountains BC.
 BBOX="-120.40,49.80,-120.25,49.90"
 OUT=$(curl -s --max-time 90 -H "apikey: $ANON" -H "Authorization: Bearer $JWT" \
   "$BASE/tenure?bbox=$BBOX")
@@ -25,7 +25,7 @@ HAS=$(printf '%s' "$OUT" | python3 -c "
 import sys,json
 d=json.load(sys.stdin)
 own={(f.get('properties') or {}).get('OWNER_NAME','') for f in d.get('features',[])}
-print(1 if any('ELK GOLD' in o for o in own) else 0)" 2>/dev/null || echo 0)
+print(1 if any('BEDROCK DEMO' in o for o in own) else 0)" 2>/dev/null || echo 0)
 ok "the axis order is right (the issuer is in the window)" "$HAS"
 SYN=$(printf '%s' "$OUT" | python3 -c "import sys,json;print(0 if json.load(sys.stdin).get('synthetic') else 1)" 2>/dev/null || echo 0)
 ok "not flagged synthetic — this is a real register" "$SYN"

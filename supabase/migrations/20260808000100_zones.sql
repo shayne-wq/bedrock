@@ -2,7 +2,7 @@
 --
 -- A project used to hold exactly one deposit: datasets attached straight to the
 -- project, keyed (project_id, kind), and the app deleted-then-inserted to keep
--- one of each. Real properties have more than one zone (Siwash North, Siwash
+-- one of each. Real properties have more than one zone (North Zone, North Zone
 -- South, …), and the viewer already carries a deposit switcher — so the data
 -- model is what was one-deposit-shaped, not the product.
 --

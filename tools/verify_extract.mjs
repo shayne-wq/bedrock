@@ -2,20 +2,20 @@
 //
 // The client-side ingest is only trustworthy if it lands on the same numbers as
 // the reference implementation that produced the shipped demo. This drives the
-// exact module the dashboard uses, over the real 1.2 GB MineSight export, and
-// diffs every rollup against data/elk_stats.json.
+// exact module the dashboard uses, over the generated demo model, and
+// diffs every rollup against data/demo_stats.json.
 //
 //   node tools/verify_extract.mjs [path/to/source.csv]
 
-import { createReadStream } from "node:fs";
+import { createReadStream, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { detect, probe, extract, pack, linesOf } from "../dashboard/lib/extract.js";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const SRC = process.argv[2] || path.join(ROOT, "..", "Siwash_North_BM_Nov_2021.csv");
-const REF = JSON.parse(await readFile(path.join(ROOT, "data", "elk_stats.json"), "utf8"));
+const SRC = process.argv[2] || path.join(ROOT, "data", "demo_model_source.csv");
+const REF = JSON.parse(await readFile(path.join(ROOT, "data", "demo_stats.json"), "utf8"));
 
 let pass = 0, fail = 0;
 const eq = (name, want, got, tol = 0) => {
@@ -38,7 +38,7 @@ eq("finds a uniform density", true, probed.densityUniform);
 eq("reads that density as 2.7", 2.7, probed.densityMedian, 1e-9);
 eq("detects the grade column", "AuEq", probed.mapping.grade);
 eq("detects the ore-fraction column", "Percent_Env", probed.mapping.oreFraction);
-eq("detects 46 domain share columns", 46, probed.mapping.domainShare.length);
+eq("detects 22 domain share columns", 22, probed.mapping.domainShare.length);
 
 // ---- full pass ------------------------------------------------------------
 console.log("\n== extract");
@@ -69,7 +69,7 @@ eq("same dropped count", REF.dropped_blocks, out.stats.dropped_blocks);
 // the ordering difference is deliberate and the membership must still be exact.
 eq("same domain set", [...REF.veins].sort().join(","),
    [...out.stats.veins].sort().join(","));
-eq("domains are naturally ordered", "950E,975,1000", out.stats.veins.slice(0, 3).join(","));
+eq("domains are naturally ordered", "DZ-01,DZ-02,DZ-03", out.stats.veins.slice(0, 3).join(","));
 eq("rollups reconcile", true, out.reconciled.ok);
 
 console.log("\n== by class");
@@ -107,8 +107,9 @@ eq("header block count", out.stats.total.blocks, head.n);
 eq("payload is 16-byte aligned", 0, base % 16);
 eq("seven columns", 7, head.arrays.length);
 const mb = buf.byteLength / 1e6;
-console.log(`  ${mb.toFixed(1)} MB packed, from ${(1175108895 / 1e6).toFixed(0)} MB of source`);
-eq("compresses by at least 100x", true, 1175108895 / buf.byteLength > 100);
+const srcBytes = statSync(SRC).size;
+console.log(`  ${mb.toFixed(1)} MB packed, from ${(srcBytes / 1e6).toFixed(0)} MB of source`);
+eq("compresses by at least 5x", true, srcBytes / buf.byteLength > 5);
 
 // Positions are stored relative to the origin; confirm one round-trips.
 const xs = new Float32Array(buf, base + head.arrays[0].offset, head.n);

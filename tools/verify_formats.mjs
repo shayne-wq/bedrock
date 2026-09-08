@@ -37,13 +37,13 @@ ok("an unknown extension still advises", /Supported/.test(F.sniff({ name: "x.zzz
 console.log("\n== claims");
 const gj = JSON.stringify({
   type: "FeatureCollection",
-  features: [{ type: "Feature", properties: { CLAIM_NAME: "ELK06F", OWNER_NAME: "Elk Gold" },
+  features: [{ type: "Feature", properties: { CLAIM_NAME: "DEMO06F", OWNER_NAME: "Bedrock Demo" },
     geometry: { type: "Polygon", coordinates: [[[-120.31, 49.85], [-120.30, 49.85], [-120.30, 49.86], [-120.31, 49.85]]] } }],
 });
 const g1 = F.readGeoJSON(gj);
 ok("GeoJSON: one ring", g1.length === 1, `got ${g1.length}`);
 ok("GeoJSON: coordinates survive", near(g1[0].ring[0][0], -120.31, 1e-9));
-ok("GeoJSON: properties survive", g1[0].props.OWNER_NAME === "Elk Gold");
+ok("GeoJSON: properties survive", g1[0].props.OWNER_NAME === "Bedrock Demo");
 ok("GeoJSON: MultiPolygon splits into rings",
    F.readGeoJSON(JSON.stringify({ type: "Feature", properties: {}, geometry: { type: "MultiPolygon",
      coordinates: [[[[0,0],[1,0],[1,1],[0,0]]], [[[5,5],[6,5],[6,6],[5,5]]]] } })).length === 2);

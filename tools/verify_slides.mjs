@@ -12,14 +12,14 @@ const ok = (n, c, d = "") => c ? (pass++, console.log(`  ok   ${n}`))
                                : (fail++, console.log(`  FAIL ${n}${d ? " — " + d : ""}`));
 
 const ds = (zone, kind, extra = {}) => ({ zone_id: zone, kind, ...extra });
-const PROJ = { name: "Elk Gold", location: "Nicola, BC" };
+const PROJ = { name: "Bedrock Demo", location: "Coast Mountains, BC" };
 const BLOCKS = {
   total: { tonnes: 8985428, grade_gt: 3.8, oz: 1097747 },
   by_class: { "1": { tonnes: 1e6 }, "2": { tonnes: 2e6 }, "3": { tonnes: 3e6 } },
 };
 
 console.log("== exploration: no block model");
-const zEx = [{ id: "z1", name: "Siwash North" }];
+const zEx = [{ id: "z1", name: "North Zone" }];
 const dEx = [ds("z1", "site"), ds("z1", "geochem", { stats: { element: "Au_ppb", samples: 900 } }),
              ds("z1", "geophysics", { stats: { products: [
                { key: "tmi", label: "Total field" }, { key: "rtp", label: "Reduced to pole" }] } })];
@@ -34,7 +34,7 @@ ok("the default deck is short enough to present", sEx.order.length <= 14, String
 ok("the second product is still reachable", sEx.extra >= 1, String(sEx.extra));
 
 console.log("\n== resource: one zone with a model");
-const zR = [{ id: "z1", name: "Siwash North" }];
+const zR = [{ id: "z1", name: "North Zone" }];
 const dR = [ds("z1", "site"), ds("z1", "drills"), ds("z1", "surfaces"),
             ds("z1", "blocks", { stats: BLOCKS })];
 const cR = projectCandidates(PROJ, zR, dR);
@@ -72,14 +72,14 @@ ok("zones stay contiguous rather than interleaving", (() => {
 })(), s2.order.filter((c) => c.zone_id).map((c) => c.zone_id).join(","));
 
 console.log("\n== the opening, which is not optional");
-const SITE_STATS = { rings: 6, subject_owner: "ELK GOLD MINING CORP.", owners: [
-  { owner: "ELK GOLD MINING CORP.", claims: 29, ha: 18688 },
+const SITE_STATS = { rings: 6, subject_owner: "BEDROCK DEMO", owners: [
+  { owner: "BEDROCK DEMO", claims: 29, ha: 18688 },
   { owner: "BARRANCO GOLD MINING CORP.", claims: 5, ha: 2228 },
   { owner: "RIPPON, DONALD JOHN", claims: 3, ha: 3519 },
 ]};
-const zO = [{ id: "z1", name: "Siwash North" }];
+const zO = [{ id: "z1", name: "North Zone" }];
 const dO = [ds("z1", "site", { stats: SITE_STATS }), ds("z1", "drills")];
-const PO = { name: "Elk Gold", location: "Nicola, BC", commodity: "Gold",
+const PO = { name: "Bedrock Demo", location: "Coast Mountains, BC", commodity: "Gold",
              brand: { summary: "A past-producing high-grade gold property." } };
 const open = openingChapters(PO, zO, dO);
 // One zone: two opening slides, because a "the zones" slide and that zone's

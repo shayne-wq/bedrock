@@ -1,25 +1,27 @@
 #!/usr/bin/env python3
-"""Generate a FABRICATED second deposit, sited inside the real Elk Gold tenures.
+"""Generate a FABRICATED second deposit, sited inside the real Bedrock Demo tenures.
 
     python3 tools/make_synthetic_deposit.py [n_blocks]
 
-Writes data/synthetic/SYNTHETIC_nicola_south.{bin,buckets.json,json}
+Writes data/synthetic/SYNTHETIC_south_zone.{bin,buckets.json,json}
 
 WHAT THIS IS
 ------------
-An invented orebody. There is no Nicola South deposit. No drilling, no
+An invented orebody. There is no South Zone deposit. No drilling, no
 sampling, no resource — the grades below come from a random number generator
 seeded with a date, shaped into a body by a few ellipsoids.
 
 It exists to make the multi-deposit path real: the viewer holds one model at a
-time, and until there was a second model there was nothing to switch to. The
-tenure it sits in IS real (516750, Elk Gold Mining Corp, ~2.5 km south of
-Siwash North), because putting a fabricated deposit on fabricated ground would
-have tested nothing about how the two coexist.
+time, and until there was a second model there was nothing to switch to. It
+sits ~2.6 km south of the North Zone, inside the demo claim block.
 
-That is also the risk. A fabricated deposit drawn on a real claim, next to a
-real deposit, at a believable grade, is the most misleading artifact in this
-repository. It is why:
+That siting used to be the sharpest risk in this repository. The tenure was a
+REAL one and the deposit next door was a real company's resource, so a
+fabricated body at a believable grade sat on ground somebody actually held.
+That is no longer true of anything here — the deposit north of it, the claims
+under it and the holders around it are all invented now. The labelling below
+survives that change anyway, because a fabricated model is misleading on its
+own terms whether or not the ground beneath it is real:
 
   * every filename carries SYNTHETIC_
   * the manifest sets synthetic:true and data_source:"SYNTHETIC"
@@ -31,13 +33,13 @@ repository. It is why:
 
 Do not remove any of those to make a screenshot look cleaner.
 
-WHY IT IS DELIBERATELY UNLIKE SIWASH NORTH
+WHY IT IS DELIBERATELY UNLIKE NORTH ZONE
 ------------------------------------------
-Siwash North is 46 narrow high-grade vein domains: 9.0 Mt @ 3.80 g/t. This is
-a bulk-tonnage disseminated body on a coarser lattice — more tonnes, a third
-of the grade, a handful of broad zones. Two deposits of the same shape would
+The North Zone is 22 narrow vein domains: 6.3 Mt @ 2.59 g/t. This is a
+bulk-tonnage disseminated body on a coarser lattice — more tonnes, a lower
+grade, a handful of broad zones. Two deposits of the same shape would
 have proved nothing; the coarser block size in particular exercises the
-viewer's stats.block_dims path, which was hard-coded to Siwash North's
+viewer's stats.block_dims path, which was hard-coded to North Zone's
 10 x 5 x 5 m until the hydration work.
 
 FORMAT
@@ -49,18 +51,51 @@ own upload takes, rather than through a private back door that could rot
 without anyone noticing.
 """
 import json, math, random, struct, sys
+import csv, os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUTDIR = ROOT / "data" / "synthetic"
-NAME = "nicola_south"
+NAME = "south_zone"
 SEED = 20260807
 
-# Inside real tenure 516750 (E 690540-695019, N 5520672-5524075), clear of the
-# Siwash North model (N 5524922-5526308) by roughly 850 m at the closest point.
-CE, CN = 692800.0, 5522400.0
-CZ = 1180.0                     # m, roughly the local ridge elevation
-DX, DY, DZ = 12.0, 12.0, 8.0    # coarser than Siwash North, on purpose
+# Inside the demo claim block, ~2.6 km south of the North Zone model so the
+# two never overlap in the property view. Matches the origin in
+# tools/make_demo_model.py (E 270000 / N 5833000).
+# Sited by sampling Cesium terrain over the southern half of the claim block
+# and taking the ground with the least relief. It matters because the pit is
+# here, and the first attempt got this wrong: a 480 m pit was put on ground
+# that falls 290 m across its own footprint, so the shell — crested at the
+# highest point on its rim, which is what the renderer does — stood a third of
+# its height in mid-air and read as a stepped mound sitting ON the mountain.
+#
+# The ground here is steep and no amount of moving fixes that: the flattest
+# 300 m disc within 400 m of this centre still falls 144 m. So the pit shrank
+# to fit the ground instead. tools/size_pit.py is the measurement.
+CE, CN = 269950.0, 5830650.0
+# Elevation is set by the pit, because this is the body the pit is on.
+#
+# Cesium terrain sampled over the pit's own footprint — now a 300 x 264 m
+# ellipse centred here — runs 1,465 m to 1,620 m: 155 m of relief, measured by
+# tools/sample_pit_dem.mjs and written to data/synthetic/pit_site_dem.json
+# rather than derived by hand and forgotten.
+#
+# 1,454 puts the body's top at 1,510 m and its floor at 1,318 m. That is about
+# 45 m under the middle of the pit and outcropping on its low side.
+#
+# THE BODY WAS LIFTED 40 m TO MAKE THE PIT WORK, and that is worth saying
+# plainly because it is the kind of change that quietly flatters a deck. At
+# the old 1,414 m a 300 m pit reached so little of the body that it stripped
+# at 3.7 : 1 for 7.8 Mt; lifting it 40 m gives 15.7 Mt at 1.33 : 1. Lifting it
+# 80 m would have given 0.58 : 1 — a better number and a worse picture, since
+# almost nothing on a hillside strips at half a tonne of waste per tonne of
+# ore. 40 m is the smallest lift that makes this an open pit at all.
+#
+# Every one of those figures comes from tools/size_pit.py, against this DEM
+# and these block centroids. Change the pit or this elevation and re-run it;
+# do not retype the numbers.
+CZ = 1454.0
+DX, DY, DZ = 12.0, 12.0, 8.0    # coarser than North Zone, on purpose
 DENSITY = 2.68
 TARGET = int(sys.argv[1]) if len(sys.argv) > 1 else 34000
 
@@ -70,12 +105,12 @@ random.seed(SEED)
 # The two smaller bodies are richer, so raising the cut-off leaves something
 # behind rather than emptying the screen.
 ZONES = [
-    {"name": "NS Main",   "c": (0, 0, -60),      "r": (340, 230, 165), "g": 0.97, "az": 32},
-    {"name": "NS North",  "c": (90, 330, -30),   "r": (225, 195, 120), "g": 1.33, "az": 20},
-    {"name": "NS South",  "c": (-130, -350, -95), "r": (250, 180, 140), "g": 0.83, "az": 44},
-    {"name": "NS Deep",   "c": (45, -60, -260),  "r": (180, 145, 130), "g": 1.66, "az": 32},
-    {"name": "NS West",   "c": (-300, 90, -70),  "r": (165, 225, 105), "g": 0.65, "az": 10},
-    {"name": "NS Halo",   "c": (0, 0, -90),      "r": (470, 380, 230), "g": 0.40, "az": 32},
+    {"name": "SZ Main",   "c": (0, 0, -60),      "r": (340, 230, 165), "g": 0.97, "az": 32},
+    {"name": "SZ North",  "c": (90, 330, -30),   "r": (225, 195, 120), "g": 1.33, "az": 20},
+    {"name": "SZ South",  "c": (-130, -350, -95), "r": (250, 180, 140), "g": 0.83, "az": 44},
+    {"name": "SZ Deep",   "c": (45, -60, -260),  "r": (180, 145, 130), "g": 1.66, "az": 32},
+    {"name": "SZ West",   "c": (-300, 90, -70),  "r": (165, 225, 105), "g": 0.65, "az": 10},
+    {"name": "SZ Halo",   "c": (0, 0, -90),      "r": (470, 380, 230), "g": 0.40, "az": 32},
 ]
 VEINS = [z["name"] for z in ZONES]
 
@@ -136,6 +171,19 @@ if len(rows) > TARGET:
 
 if not rows:
     raise SystemExit("no blocks generated — check the zone geometry")
+
+# Block centroids, on request, for tools that have to answer questions about
+# WHERE the ore is rather than how much of it there is — pit sizing is the one
+# that matters, because a shell that reaches the body and a shell that misses
+# it produce the same tonnage in the rollups above and completely different
+# mines. Off by default: this is a debug dump, not a published dataset.
+_dump = os.environ.get("BEDROCK_DUMP_ROWS")
+if _dump:
+    with open(_dump, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["x", "y", "z", "grade", "penv", "cls", "vein"])
+        w.writerows(rows)
+    print(f"block centroids -> {_dump} ({len(rows):,} rows)")
 
 BLOCK_M3 = DX * DY * DZ
 T_PER_BLOCK = BLOCK_M3 * DENSITY
@@ -263,15 +311,15 @@ blob, origin = pack(rows)
 (OUTDIR / f"SYNTHETIC_{NAME}.json").write_text(json.dumps({
     "synthetic": True,
     "data_source": "SYNTHETIC",
-    "warning": "FABRICATED DEPOSIT — Nicola South does not exist. No drilling, "
+    "warning": "FABRICATED DEPOSIT — South Zone does not exist. No drilling, "
                "no sampling, no resource. Every tonne and gram below was "
-               "generated by tools/make_synthetic_deposit.py. It is sited in a "
-               "real mineral tenure (516750) so the multi-deposit view could be "
+               "generated by tools/make_synthetic_deposit.py. It is sited in "
+               "the demo claim block so the multi-deposit view could be "
                "built and tested; that does not make any of it real.",
     "generator": "tools/make_synthetic_deposit.py",
     "seed": SEED,
-    "name": "Nicola South",
-    "tenure_context": "Sited within real BC tenure 516750 (Elk Gold Mining Corp)",
+    "name": "South Zone",
+    "tenure_context": "Sited within the fabricated demo claim block",
     "crs": "EPSG:26910",
     "format": "orebody-blocks/1",
     "origin": origin,
@@ -281,7 +329,7 @@ blob, origin = pack(rows)
 }, indent=2))
 
 t = stats["total"]
-print(f"FABRICATED deposit 'Nicola South'")
+print(f"FABRICATED deposit 'South Zone'")
 print(f"  {t['blocks']:,} blocks on a {DX:g} x {DY:g} x {DZ:g} m lattice "
       f"@ {DENSITY} t/m3 ({T_PER_BLOCK:,.0f} t/block)")
 print(f"  {t['tonnes']:,.0f} t @ {t['grade_gt']} g/t = {t['oz']:,} oz")

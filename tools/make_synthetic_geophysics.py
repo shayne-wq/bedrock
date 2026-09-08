@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a FABRICATED airborne magnetic survey over the Elk Gold extent.
+"""Generate a FABRICATED airborne magnetic survey over the Bedrock Demo extent.
 
     python3 tools/make_synthetic_geophysics.py [grid]
 
@@ -7,7 +7,7 @@ Writes data/synthetic/SYNTHETIC_geophys_{tmi,rtp,1vd}.png and a manifest.
 
 WHAT THIS IS NOT
 ----------------
-This is not a magnetic survey. No magnetometer was flown over Siwash North for
+This is not a magnetic survey. No magnetometer was flown over North Zone for
 this, and no published geophysical data was used. It is a plausible-looking
 field synthesised from the block model itself: the modelled grade shells are
 treated as magnetic sources, smoothed, and given a regional gradient and some
@@ -28,7 +28,7 @@ import csv, json, math, random, struct, sys, zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "data" / "elk_blocks_v2.csv"
+SRC = ROOT / "data" / "demo_blocks_v2.csv"
 OUTDIR = ROOT / "data" / "synthetic"
 SEED = 20260807
 MARGIN = 600.0            # m of padding beyond the model extent
