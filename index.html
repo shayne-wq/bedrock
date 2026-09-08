@@ -336,9 +336,16 @@ footer { position: relative; z-index: 1; background: #fff;
   .sh-fallback { width: 88%; top: 46%; }
 }
 
-/* Reduced motion keeps every word and the machines, and drops only the
-   ride: the stage unpins and the four beats become a list. */
-@media (prefers-reduced-motion: reduce) {
+/* Reduced motion keeps every word and the machines, and drops only the ride:
+   the stage unpins and the four beats become a list.
+   PHONES GET THE SAME TREATMENT. The pinned scrub is a desktop gesture: on a
+   390x844 screen it became 3,629px of mostly-empty white that the visitor has
+   to scroll past before the page starts, with the title block sitting over the
+   render because the two are stacked layers meant to cross-fade. The unpinned
+   layout below was already written and already correct — it was only ever
+   reachable by asking the OS for reduced motion. The height condition catches
+   a phone held sideways, which is short rather than narrow. */
+@media (prefers-reduced-motion: reduce), (max-width: 820px), (max-height: 620px) {
   .scroll-hero { height: auto; }
   .sh-stage { position: static; height: auto; display: flex; flex-direction: column;
     padding: calc(var(--nav-h) + 26px) var(--edge) 60px; }
@@ -1043,7 +1050,10 @@ if (renderer) {
     dirty = true;
   }
 
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  // Same condition as the stylesheet: when the stage is not pinned there is
+  // no runway to scrub, so the machines hold a single composed pose instead
+  // of tracking a scroll position that no longer means anything.
+  const reduce = matchMedia('(prefers-reduced-motion: reduce), (max-width: 820px), (max-height: 620px)');
   function progress() {
     if (reduce.matches) return 0.22;
     const runway = hero.offsetHeight - innerHeight;
