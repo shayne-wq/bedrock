@@ -60,6 +60,7 @@ a:hover { color: color-mix(in srgb, var(--accent-deep) 80%, black); }
    `cover` rather than `contain`: these are wide captures and letterboxing them
    inside an already-wide frame reads as a broken image. */
 figure img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+figure video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .stat { padding: 26px 28px; }
@@ -118,12 +119,30 @@ figure img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit
 .split { padding: 76px 0; border-top: 1px solid var(--border); }
 .split-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 28px clamp(24px, 5vw, 96px); align-items: center; }
 .split.rev .split-figure { order: -1; }
+/* The recording is the one figure on this page anyone watches rather than
+   glances at, so it runs 20% wider than the stills. That width comes from two
+   places instead of all from the copy: the column split shifts from 5:7 to
+   11:20, and the figure reaches into the right-hand page gutter. Taking the
+   full 20% out of the copy column alone would have cut it from 470px to 337px,
+   which wraps every spec row onto two lines to buy a bigger video. */
+.split.is-video-lead .split-grid { grid-template-columns: minmax(0, 11fr) minmax(0, 20fr);
+  column-gap: clamp(20px, 3vw, 44px); margin-right: calc(-1 * var(--edge)); }
 .split-title { font-family: var(--heading); font-weight: 600; font-size: 28px; line-height: 1.2; letter-spacing: -0.02em; margin: 0; }
 .split-copy .note { font-size: 15.5px; line-height: var(--leading); color: var(--ink-dim); margin: 16px 0 0; max-width: 44ch; }
 .specs { list-style: none; margin: 22px 0 0; padding: 0; display: flex; flex-direction: column; gap: 0; font-family: var(--mono); font-size: 12.5px; max-width: 42ch; }
 .specs li { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); color: var(--ink-mute); }
 .specs li:last-child { border-bottom: 1px solid var(--border); }
 .specs b { color: var(--ink); font-weight: 500; }
+.split-figure.is-video { aspect-ratio: 16/9; }
+/* The mine-plan sequence, mirrored from the investor block above it: same
+   20:11 split and same reach into a page gutter, flipped so the film leads on
+   the left and the numbers stack on the right. The figure comes first in the
+   DOM, so the reading order matches the visual order and no `order` shuffle is
+   needed — which also means it stacks film-then-copy on a phone. */
+.split.is-film .split-grid { grid-template-columns: minmax(0, 20fr) minmax(0, 11fr);
+  column-gap: clamp(20px, 3vw, 44px); margin-left: calc(-1 * var(--edge)); }
+@media (max-width: 720px) {
+  .split.is-film .split-grid { grid-template-columns: 1fr; margin-left: 0; } }
 .split-figure { position: relative; margin: 0; aspect-ratio: 16/10; border: 1px solid var(--border); background: var(--bg-2); overflow: hidden; }
 .fig-tag { position: absolute; z-index: 2; top: 12px; left: 12px; font-family: var(--mono); font-size: 11px; color: var(--ink-dim); border: 1px solid var(--border); border-radius: 3px; padding: 4px 8px; background: color-mix(in srgb, var(--bg) 80%, transparent); white-space: nowrap; }
 
@@ -337,7 +356,8 @@ footer { position: relative; z-index: 1; background: #fff;
 }
 
 @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } .col:nth-child(odd) { border-right: none; padding-left: 0; } .col:nth-child(even) { padding-left: 0; } .stats { grid-template-columns: 1fr; } .stat + .stat { border-left: none; border-top: 1px solid var(--border); } }
-@media (max-width: 720px) { .split-grid { grid-template-columns: 1fr; } .split-figure, .split.rev .split-figure { order: -1; } }
+@media (max-width: 720px) { .split-grid { grid-template-columns: 1fr; } .split-figure, .split.rev .split-figure { order: -1; }
+  .split.is-video-lead .split-grid { grid-template-columns: 1fr; margin-right: 0; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 @media (prefers-reduced-motion: reduce) {
   .exch-marquee { -webkit-mask-image: none; mask-image: none; }
@@ -575,26 +595,58 @@ footer { position: relative; z-index: 1; background: #fff;
 
 <div class="wrap">
 
-  <section class="split" id="how-it-works">
+  <section class="split is-video-lead" id="how-it-works">
     <div class="split-grid">
       <div class="split-copy">
         <span class="kicker">INVESTOR MEETINGS</span>
-        <h2 class="split-title">Lead with the asset, not the report</h2>
-        <p class="note">Move between project economics and an interactive 3D view of the asset in the same conversation.</p>
+        <h2 class="split-title">Visualize your asset, not a table of it</h2>
+        <p class="note">Fly to any hole and read its assays down the hole, or highlight the ground a target sits on — live, while the question is being asked, rather than reading an intercept table out of a news release.</p>
         <ul class="specs">
-          <li><span>Rotate / section / drill into the block model</span><b>LIVE</b></li>
-          <li><span>Asset categories &amp; cut-off grade</span><b>TOGGLE</b></li>
+          <li><span>Fly to any hole, assays read down the hole</span><b>LIVE</b></li>
+          <li><span>Key holes &amp; regions of the property</span><b>HIGHLIGHTED</b></li>
           <li><span>Source of every figure shown</span><b>TRACED</b></li>
         </ul>
       </div>
-      <figure class="split-figure">
-        <img src="img/model.jpg" alt="Twenty-two vein domains drawn as solid bodies inside the mountain, terrain made translucent so the modelled shells are visible in place." width="1600" height="900" loading="lazy" decoding="async">
-        <span class="fig-tag">FIG. 01 — ASSET MODEL</span>
+      <figure class="split-figure is-video">
+        <video id="fly-to-hole" poster="video/fly-to-hole.jpg" width="1280" height="720"
+               autoplay muted loop playsinline preload="metadata"
+               aria-label="Flying to drill hole WM22-02 on the Williams property. The hole is selected, the camera moves to it, and its 339 downhole gold assays open alongside, with the 96.92 m at 2.16 g/t intercept highlighted.">
+          <source src="video/fly-to-hole.webm" type="video/webm">
+          <source src="video/fly-to-hole.mp4" type="video/mp4">
+          <img src="video/fly-to-hole.jpg" alt="A drill hole selected in the 3D view with its downhole gold assays open alongside." width="1280" height="720">
+        </video>
+        <span class="fig-tag">FIG. 01 — FLY TO A DRILL HOLE</span>
       </figure>
     </div>
   </section>
 
-  <section class="split rev">
+  <section class="split is-film" id="mine-plan">
+    <div class="split-grid">
+      <figure class="split-figure is-video">
+        <video id="mine-plan-film" poster="video/mine-plan.jpg" width="1142" height="640"
+               autoplay muted loop playsinline preload="none"
+               aria-label="The mine plan sequence: the grade shell on the South Zone, then the 60 m starter pit cut into the hillside, then four stages down to the 240 m final pit, then a haul truck at true size on the ramp.">
+          <source src="video/mine-plan.mp4" type="video/mp4">
+          <img src="video/mine-plan.jpg" alt="A terraced open pit cut into a mountainside, with a haul truck on the ramp." width="1142" height="640">
+        </video>
+        <span class="fig-tag">FIG. 02 — MINE PLAN SEQUENCE</span>
+      </figure>
+      <div class="split-copy">
+        <span class="kicker">MINE PLAN</span>
+        <h2 class="split-title">Bring your mine development to life</h2>
+        <p class="note">A resource statement says how much metal is in the ground. It cannot show
+          which of it you reach in year one and which waits behind three cutbacks.</p>
+        <ul class="specs">
+          <li><span>Where the grade actually is</span><b>THE SHELL</b></li>
+          <li><span>Starter pit, cut into the ground</span><b>60 M</b></li>
+          <li><span>Four cutbacks to the final shell</span><b>240 M</b></li>
+          <li><span>A CAT 793 against 27 m benches</span><b>13.5 M</b></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="split rev" id="company">
     <div class="split-grid">
       <div class="split-copy">
         <span class="kicker">BOARD &amp; CAPITAL MARKETS</span>
@@ -608,21 +660,7 @@ footer { position: relative; z-index: 1; background: #fff;
       </div>
       <figure class="split-figure">
         <img src="img/neighbours.jpg" alt="The land package seen in plan, each surrounding holder's tenure dissolved into a single outline and named on its own ground." width="1600" height="900" loading="lazy" decoding="async">
-        <span class="fig-tag">FIG. 02 — LAND PACKAGE &amp; NEIGHBOURS</span>
-      </figure>
-    </div>
-  </section>
-
-  <section class="split" id="company">
-    <div class="split-grid">
-      <div class="split-copy">
-        <span class="kicker">CONFERENCES &amp; SITE TOURS</span>
-        <h2 class="split-title">Bring the asset to the room</h2>
-        <p class="note">Not every investor can visit the site. Bedrock brings the project's geology and layout to a conference stage or a boardroom, at the scale and detail a static image can't carry.</p>
-      </div>
-      <figure class="split-figure">
-        <img src="img/pit.jpg" alt="A benched open pit cut into a mountainside, four nested stages down to the floor, with the orebody exposed in the bottom of it." width="1600" height="900" loading="lazy" decoding="async">
-        <span class="fig-tag">FIG. 03 — SITE LAYOUT</span>
+        <span class="fig-tag">FIG. 03 — LAND PACKAGE &amp; NEIGHBOURS</span>
       </figure>
     </div>
   </section>
@@ -1249,6 +1287,45 @@ if (renderer) {
     if (e.target.id) setError(e.target.id, '');
     if (e.target.name === 'category') setError('category', '');
   });
+})();
+</script>
+
+<script>
+// A looping autoplay clip is motion the viewer did not ask for, and CSS cannot
+// switch autoplay off — `prefers-reduced-motion` can hide an animation but not
+// stop a <video>. So it is done here: if the visitor has asked their system for
+// reduced motion, the clip holds on its poster frame and grows a play control,
+// which is the same information at their own pace rather than none.
+(function () {
+  var vids = ['fly-to-hole', 'mine-plan-film']
+    .map(function (id) { return document.getElementById(id); })
+    .filter(Boolean);
+  if (!vids.length) return;
+  var q = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
+  function apply() {
+    if (!q || !q.matches) return;
+    vids.forEach(function (v) {
+      v.autoplay = false; v.loop = false; v.controls = true; v.pause();
+    });
+  }
+  apply();
+  if (q && q.addEventListener) q.addEventListener('change', apply);
+
+  // Play only while it is on screen. `autoplay` alone is at the mercy of each
+  // browser's heuristics for off-screen media — the clip sits well below the
+  // fold, and a visitor who scrolls to it should find it running rather than
+  // parked on frame zero. Pausing on the way out keeps a looping 3D render off
+  // the CPU of everyone reading the rest of the page.
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (q && q.matches) return;                 // reduced motion: leave it alone
+        if (e.isIntersecting) { var r = e.target.play(); if (r && r.catch) r.catch(function () {}); }
+        else e.target.pause();
+      });
+    }, { threshold: 0.25 });
+    vids.forEach(function (v) { io.observe(v); });
+  }
 })();
 </script>
 </body>

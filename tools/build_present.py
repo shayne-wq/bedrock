@@ -567,6 +567,50 @@ def _pin(dx=0.0, dy=0.0):
 
 _T = stats["total"]
 _M = stats["by_class"]
+# ---- locked slide cameras ------------------------------------------------
+# Hand-tuned chapter cameras rot. Slide 13's was solved by hand against a 480 m
+# pit, and resizing the pit left it framing a hillside with no truck in it —
+# twelve rounds of nudge, rebuild, look is a workflow problem, not a taste one.
+#
+# So cameras are placed IN the deck now and written here. The editor emits this
+# file; the build bakes it. Keyed by chapter title rather than by index, so
+# reordering the deck does not silently move every locked camera one slide.
+_CAMF = ROOT / "data" / "slide_cameras.json"
+CAM_FIXED = json.loads(_CAMF.read_text()) if _CAMF.exists() else {}
+
+
+def _cam_key(c, i):
+    return c.get("title") or (c.get("slide") or {}).get("title") or f"#{i}"
+
+
+# ---- the deposit the pit sits on -----------------------------------------
+# The pit is a South Zone feature, and Explore opens on the North Zone 2.3 km
+# north of it. Turning the site layer on there drew a pit hanging over ground
+# with no orebody under it — reported as "the pit has no mineralization, it's
+# just off to the side", which is exactly what it looked like.
+#
+# Derived rather than declared, so re-siting the pit cannot leave a stale
+# answer here: whichever deposit's own bounds contain the pit centre owns it.
+def _pit_home_deposit():
+    pit = next((a for a in (SITE.get("areas") or []) if a.get("kind") == "pit"), None)
+    if not pit or not pit.get("ring"):
+        return None
+    ring = pit["ring"]
+    cx = sum(c[0] for c in ring) / len(ring)
+    cy = sum(c[1] for c in ring) / len(ring)
+    hits = [d["key"] for d in DEPOSITS
+            if (d.get("stats") or {}).get("bounds")
+            and d["stats"]["bounds"]["x"][0] <= cx <= d["stats"]["bounds"]["x"][1]
+            and d["stats"]["bounds"]["y"][0] <= cy <= d["stats"]["bounds"]["y"][1]]
+    if len(hits) == 1:
+        return hits[0]
+    # Ambiguous or unplaceable: gate nothing rather than gate wrongly, and say so.
+    print(f"  NOTE: pit centre matches {len(hits)} deposits — pit/deposit gating off")
+    return None
+
+
+PIT_DEPOSIT = _pit_home_deposit()
+
 # ---- ground under the pit ------------------------------------------------
 # The DEM the pit is seated and trimmed against, baked in so the shell does not
 # depend on which terrain tiles the camera has pulled. Row-major by northing
@@ -717,6 +761,11 @@ CHAPTERS = [
 ]
 
 
+# The stable name of each chapter, for the camera locks above.
+CAM_KEYS = [_cam_key(c, i) for i, c in enumerate(CHAPTERS)]
+if len(set(CAM_KEYS)) != len(CAM_KEYS):
+    raise SystemExit("two chapters share a camera key — titles must be unique")
+
 # ---- caption eyebrows and figures ---------------------------------------
 # Every slide carries three numbers under its prose, the way the Williams deck
 # does. They are keyed by title and merged in below rather than written into
@@ -836,7 +885,20 @@ HTML = r"""<!DOCTYPE html>
      printing across the first figure of every slide that had one. */
   :root{--capw:min(440px,calc(100vw - 300px));--capr:30px}
   *{box-sizing:border-box;margin:0}
-  html,body,#cesiumContainer{height:100%;width:100%;overflow:hidden;background:#07090A}
+  html,body{height:100%;width:100%;overflow:hidden;background:#000}
+  #cesiumContainer{height:100%;width:100%;overflow:hidden;background:#07090A}
+  /* A slide has ONE shape. Filling the window meant every deck was whatever
+     aspect the presenter's browser happened to be, so a screen recording came
+     out 1.39:1 on one machine and 16:9 on another, and hand-framed cameras
+     were composed against a viewport nobody else had.
+     The stage is the largest 16:9 box that fits, centred, with the rest of the
+     window left black. `transform` is not decoration here: it makes the stage
+     the containing block for its position:fixed children, so the whole UI
+     lands inside the slide instead of floating out over the letterbox. */
+  #slidestage{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:min(100vw, calc(100vh * 16 / 9));
+    height:min(100vh, calc(100vw * 9 / 16));
+    overflow:hidden;background:#07090A;z-index:0}
   body{font-family:Archivo,system-ui,sans-serif;color:#EDEEEC;-webkit-font-smoothing:antialiased}
   .cesium-widget-credits,.cesium-viewer-bottom{display:none!important}
   .cesium-viewer,.cesium-widget,.cesium-widget canvas{cursor:grab}
@@ -852,6 +914,43 @@ HTML = r"""<!DOCTYPE html>
      pictures distinguished nothing and the panel they sat in covered a third
      of the scene. Section headings and titles do the same job in a quarter of
      the width, with the map behind them. */
+  /* The rail and the bottom controls are light text straight on the globe, and
+     the globe is not a constant: over a lit snowfield the chapter list all but
+     disappears. `#scrimL` has been in the markup all along with NO rule to its
+     name — an empty invisible div — so the gradient it was meant to carry never
+     existed. Same gradients as the Williams deck, which solved this once.
+     Under the UI (z 6+) and over the canvas, and transparent to the mouse so
+     the globe still drags through them. */
+  /* Slide editor. Off unless asked for — ?edit=1 or shift+E — because it is an
+     authoring tool living in the shipped deck, not a feature of the deck. */
+  #admin{position:fixed;right:22px;top:120px;z-index:60;width:264px;display:none;
+    flex-direction:column;gap:0;background:rgba(9,11,12,.96);backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,.16);border-radius:5px;padding:12px 13px 13px;
+    font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#C6CAC5;
+    max-height:calc(100vh - 150px);overflow-y:auto}
+  body.editing #admin{display:flex}
+  body.editing #tools{display:flex}
+  #admin .hd{display:flex;align-items:center;justify-content:space-between;
+    font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#EDEEEC;
+    padding-bottom:9px;border-bottom:1px solid rgba(255,255,255,.12)}
+  #admin .hd button{background:none;border:0;color:#8A908C;cursor:pointer;font-size:13px}
+  #admin .sec{margin:11px 0 6px;font-size:8.5px;letter-spacing:.2em;text-transform:uppercase;color:#8A908C}
+  #admin .ro{white-space:pre-line;line-height:1.55;color:#A8AEA9;
+    background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+    border-radius:3px;padding:7px 8px}
+  #admin .bt{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  #admin .bt button{flex:1 1 auto;background:rgba(255,255,255,.07);
+    border:1px solid rgba(255,255,255,.13);border-radius:3px;color:#EDEEEC;
+    cursor:pointer;padding:7px 8px;font-family:inherit;font-size:10px;
+    letter-spacing:.06em;text-transform:uppercase}
+  #admin .bt button:hover{background:rgba(255,255,255,.16)}
+  #admin #ad_lock{border-color:rgba(201,154,58,.55);color:#E8C87A}
+  #admin .st{margin-top:10px;line-height:1.6;color:#8A908C;font-size:9.5px}
+  #scrimL,#scrimB{position:fixed;z-index:3;pointer-events:none}
+  #scrimL{top:0;left:0;width:300px;height:100%;
+    background:linear-gradient(90deg,rgba(7,9,10,.88) 0%,rgba(7,9,10,.62) 46%,transparent 100%)}
+  #scrimB{left:0;right:0;bottom:0;height:210px;
+    background:linear-gradient(0deg,rgba(7,9,10,.72) 0%,transparent 100%)}
   #rail{position:fixed;left:30px;top:112px;bottom:150px;z-index:6;width:212px;
         overflow-y:auto;scrollbar-width:none;padding-right:6px}
   #rail::-webkit-scrollbar{display:none}
@@ -983,6 +1082,32 @@ HTML = r"""<!DOCTYPE html>
   @keyframes recpulse{0%,100%{opacity:1}50%{opacity:.35}}
   #nav .count{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:#8E948E;min-width:52px;text-align:center}
 
+  /* Tilt is the control nobody finds. Orbit is one drag and everyone tries it;
+     changing the ANGLE you look from needs a modifier no one guesses, and on a
+     trackpad the middle button does not exist — so Explore was "very hard to
+     control". The two rotations, the tilt and the zoom get buttons, in the
+     bottom-centre band the caption on one side and the readout on the other
+     leave empty. Ported from the Williams deck, where this was solved once. */
+  #cam{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);z-index:41;display:none;flex-direction:column;
+    align-items:center;gap:6px;background:rgba(7,9,10,.88);backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,.14);border-radius:4px;padding:9px 12px 8px}
+  body.explore #cam{display:flex}
+  #cam .pad{display:flex;align-items:center;gap:5px}
+  #cam .pad .sep{width:1px;height:20px;background:rgba(255,255,255,.14);margin:0 5px;flex:none}
+  #cam .pad button{width:32px;height:29px;background:rgba(255,255,255,.06);
+    border:1px solid rgba(255,255,255,.10);border-radius:2px;cursor:pointer;
+    font-size:13px;line-height:1;color:#C6CAC5;display:flex;align-items:center;
+    justify-content:center;transition:background .15s,color .15s}
+  #cam .pad button:hover{background:rgba(255,255,255,.15);color:#EDEEEC}
+  #cam .pad button:active{transform:translateY(1px)}
+  #cam [data-a="reset"]{color:#C99A3A}
+  #cam .lg{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.18em;
+    text-transform:uppercase;color:#8A908C;display:flex;width:100%;
+    justify-content:space-between;padding:0 6px}
+  #cam .hint{margin:0;font-family:'JetBrains Mono',monospace;font-size:7.5px;line-height:1.6;
+    letter-spacing:.04em;color:rgba(142,148,142,.85);text-align:center;
+    padding-top:5px;border-top:1px solid rgba(255,255,255,.08);width:100%}
+  @media (max-width:900px){ #cam{left:50%;bottom:auto;top:calc(100px + env(safe-area-inset-top))} }
   #legend{position:fixed;right:34px;top:28px;z-index:6;display:flex;align-items:center;gap:9px;
           background:rgba(7,9,10,.82);border:1px solid rgba(255,255,255,.10);border-radius:4px;
           padding:8px 12px;backdrop-filter:blur(6px)}
@@ -1029,6 +1154,13 @@ HTML = r"""<!DOCTYPE html>
   .sw{width:10px;height:10px;border-radius:2px}
 
   #tools{position:fixed;right:34px;top:64px;z-index:9;display:flex;gap:8px}
+  /* The toolbar is for someone driving the deck, not someone being shown it.
+     Fourteen slides of Rec / Asset / Text / Audit / Site / Draw / Areas /
+     Holes / Calls / Black / Property / Link / Embed sitting across the top of
+     the frame is a tool with a story in it; the walkthrough is a story with a
+     tool behind it. It comes back on the last chapter, which is the one that
+     hands the camera over and where every one of those buttons is the point. */
+  body.presenting #tools{display:none}
   #panel{position:fixed;right:34px;top:108px;width:296px;z-index:9;background:rgba(12,15,16,.93);
          border:1px solid rgba(255,255,255,.13);border-radius:5px;padding:18px 18px 16px;display:none;
          backdrop-filter:blur(9px);max-height:calc(100vh - 150px);overflow-y:auto}
@@ -1496,6 +1628,7 @@ HTML = r"""<!DOCTYPE html>
 
 <div id="brand"><div class="w">Bedrock Present</div><div class="n">Bedrock Demo<br><span id="brandDep">North Zone</span></div></div>
 <div id="scrimL" aria-hidden="true"></div>
+<div id="scrimB" aria-hidden="true"></div>
 <nav id="rail" aria-label="Chapters"></nav>
 <div id="legend">
   <div id="gradeleg"></div>
@@ -1530,6 +1663,43 @@ HTML = r"""<!DOCTYPE html>
   <button id="sharebtn" class="btn sm" title="Copy a link to this exact view">Link</button>
   <button id="embedbtn" class="btn sm" title="Put this deck on your own website">Embed</button>
   <button id="xbtn" class="btn">Explore ▸</button>
+</div>
+
+<div id="admin" aria-label="Slide editor">
+  <div class="hd"><span>Slide <span id="ad_ch"></span></span>
+    <button id="ad_close" title="Close the editor">&#10005;</button></div>
+  <div class="sec">Camera now</div>
+  <div class="ro" id="ad_now">—</div>
+  <div class="bt">
+    <button id="ad_lock">Lock this view</button>
+    <button id="ad_clear">Unlock</button>
+  </div>
+  <div class="sec">Locked</div>
+  <div class="ro" id="ad_have">nothing locked yet</div>
+  <div class="bt">
+    <button id="ad_save">Download JSON</button>
+    <button id="ad_copy">Copy</button>
+  </div>
+  <div class="bt"><button id="ad_reset">Reset all</button></div>
+  <div class="st" id="ad_msg">Fly the view, then Lock. Locks live in this browser
+    until you save data/slide_cameras.json into the repo and rebuild.</div>
+</div>
+
+<div id="cam" aria-label="Camera controls">
+  <div class="pad">
+    <button data-a="rot-l"   title="Rotate left"  aria-label="Rotate left">&#8634;</button>
+    <button data-a="rot-r"   title="Rotate right" aria-label="Rotate right">&#8635;</button>
+    <span class="sep"></span>
+    <button data-a="tilt-up" title="Look from higher — steeper, more overhead" aria-label="Look from higher">&#9650;</button>
+    <button data-a="tilt-dn" title="Look from lower — flatter, more side-on" aria-label="Look from lower">&#9660;</button>
+    <span class="sep"></span>
+    <button data-a="out"     title="Zoom out" aria-label="Zoom out">&#8722;</button>
+    <button data-a="in"      title="Zoom in"  aria-label="Zoom in">+</button>
+    <span class="sep"></span>
+    <button data-a="reset"   title="Back to the opening view" aria-label="Reset the view">&#9210;</button>
+  </div>
+  <div class="lg"><span>rotate</span><span>tilt</span><span>zoom</span><span>reset</span></div>
+  <p class="hint">drag to move · shift-drag or right-drag to tilt · scroll to zoom</p>
 </div>
 
 <div id="panel">
@@ -1915,7 +2085,7 @@ let N=__N__,
       ZTOP=__ZTOP__, ZBOT=__ZBOT__;
 let CHAPTERS=__CHAPTERS__, RUNS=__RUNS__, BUCKETS=__BUCKETS__, VEINS=__VEINS__,
       LADDER=__LADDER__, CLASS_LABELS=__CLASS_LABELS__, CLASS_CONFIRMED=__CLASS_CONFIRMED__,
-      PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, REAL_CLAIMS=__REAL_CLAIMS__, CLAIMS_ATTRIB=__CLAIMS_ATTRIB__, CLAIMS_SYNTHETIC=__CLAIMS_SYNTHETIC__, CLAIMS_SUBJECT=__CLAIMS_SUBJECT__, HOLDER_LOGOS=__HOLDER_LOGOS__, HOLDER_META=__HOLDER_META__, BRAND=__BRAND__, GEOPHYS=__GEOPHYS__, GEOPHYS_SYNTHETIC=__GEOPHYS_SYNTHETIC__, STATIONS=__STATIONS__, DEPOSITS=__DEPOSITS__, PITCUT=__PITCUT__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, PIT_DEM=__PIT_DEM__, G_PER_OZ=31.10348;
+      PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, REAL_CLAIMS=__REAL_CLAIMS__, CLAIMS_ATTRIB=__CLAIMS_ATTRIB__, CLAIMS_SYNTHETIC=__CLAIMS_SYNTHETIC__, CLAIMS_SUBJECT=__CLAIMS_SUBJECT__, HOLDER_LOGOS=__HOLDER_LOGOS__, HOLDER_META=__HOLDER_META__, BRAND=__BRAND__, GEOPHYS=__GEOPHYS__, GEOPHYS_SYNTHETIC=__GEOPHYS_SYNTHETIC__, STATIONS=__STATIONS__, DEPOSITS=__DEPOSITS__, PITCUT=__PITCUT__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, PIT_DEM=__PIT_DEM__, PIT_DEPOSIT=__PIT_DEPOSIT__, CAM_FIXED=__CAM_FIXED__, CAM_KEYS=__CAM_KEYS__, G_PER_OZ=31.10348;
 // ---- projections -------------------------------------------------------
 // The viewer used to hard-code EPSG:26910 — NAD83 / UTM 10N, which is this
 // model's grid and nobody else's. Every project outside one zone of British
@@ -3180,6 +3350,33 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   ];
   // Motion is opt-in per chapter: the clock starts still so nothing drifts
   // through chapters whose copy says nothing about movement.
+  // ---- the 16:9 stage ----------------------------------------------------
+  // Done here rather than in the markup: the slide UI is forty-odd top-level
+  // elements interleaved with full-page overlays, and moving them by hand in
+  // the template is a far bigger risk than naming the handful that stay out.
+  // Everything else becomes a child of the stage, in its existing order.
+  //
+  // OUT stays at window scale on purpose: the text edition has to scroll a
+  // whole page, and a modal that covered only the slide would leave the black
+  // bars live behind it.
+  const ST=(function(){
+    const st=document.createElement('div'); st.id='slidestage';
+    document.body.insertBefore(st, document.body.firstChild);
+    const OUT=new Set(['slidestage','datamode','emb','prov','offline']);
+    Array.prototype.slice.call(document.body.children).forEach(el=>{
+      if(el===st || el.tagName==='SCRIPT') return;
+      if(el.id && OUT.has(el.id)) return;
+      st.appendChild(el);
+    });
+    return st;
+  })();
+  // Slide-space size, for everything that used to measure the window. A fixed
+  // child of the stage is positioned against the stage, but innerWidth still
+  // reports the browser's, and mixing the two puts overlays off by the width
+  // of a letterbox bar.
+  const SW=()=>ST.clientWidth, SH=()=>ST.clientHeight;
+  const stageBox=()=>ST.getBoundingClientRect();
+
   const mkViewer=(a)=>new Cesium.Viewer('cesiumContainer',{
     baseLayer:new Cesium.ImageryLayer(imagery),terrainProvider:terrain,
     baseLayerPicker:false,geocoder:false,homeButton:false,sceneModePicker:false,navigationHelpButton:false,
@@ -3227,6 +3424,19 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     toast('Running in reduced-memory mode — image export is off',7000);
   }
   viewer.scene.screenSpaceCameraController.enableCollisionDetection=false;
+  // Cesium ships right-drag as a SECOND zoom and puts tilt on the middle button —
+  // which a trackpad does not have — or on ctrl-drag, which nobody guesses. Orbit
+  // is one drag and everybody finds it; the angle you are looking from is the one
+  // people give up on. So right-drag and shift-drag both tilt, and the wheel keeps
+  // zoom to itself. Same mapping as the Williams deck.
+  {
+    const E=Cesium.CameraEventType, K=Cesium.KeyboardEventModifier;
+    const ssc=viewer.scene.screenSpaceCameraController;
+    ssc.tiltEventTypes=[E.MIDDLE_DRAG, E.RIGHT_DRAG, E.PINCH,
+                        {eventType:E.LEFT_DRAG, modifier:K.SHIFT},
+                        {eventType:E.RIGHT_DRAG, modifier:K.CTRL}];
+    ssc.zoomEventTypes=[E.WHEEL, E.PINCH];
+  }
   // Chapters ran with depthTestAgainstTerrain off, which paints the deposit ON
   // TOP of the mountain — the single biggest reason it never read as buried.
   // A translucent globe keeps the surface visible while letting the subsurface
@@ -3605,7 +3815,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       cx.drawImage(src,0,0);
       // presenter ink, scaled from CSS pixels into the capture buffer
       if(strokes.length){
-        const sx=recComp.width/innerWidth, sy=recComp.height/innerHeight;
+        const sx=recComp.width/SW(), sy=recComp.height/SH();
         cx.lineCap='round'; cx.lineJoin='round';
         for(const s of strokes){ if(s.pts.length<2) continue;
           cx.strokeStyle=s.c; cx.lineWidth=s.w*sx; cx.beginPath();
@@ -4751,6 +4961,13 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   function buildSite(){
     if(siteEnts||!SITE.areas) return siteEnts;
     siteEnts=[];
+    // Emptied HERE, before anything is drawn — not half way down where the
+    // areas loop starts. The holder cards are placed by placeCard() during the
+    // claims section, which runs first, so a reset further down threw away the
+    // only handle on entities that were already on screen. They could not then
+    // be hidden by anything: `holders:false` was set on four chapters and did
+    // nothing, because the array it addressed was empty by the time it ran.
+    sitePitEnts.length=0; holderEnts.length=0; siteLabelEnts.length=0;
     const deg=r=>r.reduce((acc,c)=>{const ll=proj4(PROJ,'WGS84',c);acc.push(ll[0],ll[1]);return acc;},[]);
     // Claims are REAL public BC tenures, so they are drawn solid while every
     // fabricated site feature stays dashed. The dash is the tell across this
@@ -5040,7 +5257,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     }
     // Collected while the areas are walked, applied to the globe once: the
     // clipping collection is global state, not per entity.
-    const pitClips=[]; rampPath=null; truckEnts=[]; sitePitEnts.length=0; holderEnts.length=0; siteLabelEnts.length=0;
+    const pitClips=[]; rampPath=null; truckEnts=[];
     (SITE.areas||[]).forEach(a=>{
       // A pit is a hole, not a painted patch. Filling it flat put a pale slab
       // over the exact ground the plan view exists to show, which is the same
@@ -5053,7 +5270,12 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
             material:Cesium.Color.fromCssColorString(a.color).withAlpha(0.30),
             classificationType:Cesium.ClassificationType.TERRAIN}}));
       }
-      siteEnts.push(viewer.entities.add({name:a.name,
+      // The pit's ground outline belongs to the PIT, not to the site layer at
+      // large: tracked with the shell it outlines, it follows the same rules —
+      // hidden under a stage, and hidden over a deposit the pit is not on.
+      // Left in siteEnts it was the one piece that still drew a pit rim around
+      // empty ground 2.3 km from the orebody.
+      (isPit?pitPush:(e=>{siteEnts.push(e); return e;}))(viewer.entities.add({name:a.name,
         polyline:{positions:Cesium.Cartesian3.fromDegreesArray(deg(a.ring)),
           width:isPit?2.6:1.6,clampToGround:true,
           material:Cesium.Color.fromCssColorString(isPit?'#E4EAF0':a.color)
@@ -5317,11 +5539,67 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
         span = Math.max(span, phase + d / SPEED);
         prop.setInterpolationOptions({interpolationDegree:1,
           interpolationAlgorithm:Cesium.LinearApproximation});
+        const ori = new Cesium.VelocityOrientationProperty(prop);
+        // A haul truck is a silhouette long before it is a shape, and a single
+        // 13.5 x 7.7 x 6.5 box is a brick: no tyres, no canopy, nothing that
+        // says which end is the front. Built from parts instead — the dump body
+        // riding high at the back, a canopy over the cab, and dark tyres under
+        // it, which is what reads as a truck at 300 m and still reads at 30.
+        //
+        // Cesium entities do not nest, so each part re-derives its own world
+        // position every frame from the truck's position and heading. Local
+        // axes follow VelocityOrientationProperty: +x forward, +y left, +z up,
+        // origin at the centre of the old box, about 3 m above the road.
+        const partPos = off => new Cesium.CallbackProperty(time => {
+          const base = prop.getValue(time);
+          const q = ori.getValue(time);
+          if(!base || !q) return base;
+          const m = Cesium.Matrix3.fromQuaternion(q, new Cesium.Matrix3());
+          const d = Cesium.Matrix3.multiplyByVector(
+            m, new Cesium.Cartesian3(off[0], off[1], off[2]), new Cesium.Cartesian3());
+          return Cesium.Cartesian3.add(base, d, new Cesium.Cartesian3());
+        }, false);
+        const DARK = Cesium.Color.fromCssColorString('#24211E');
+        const STEEL = Cesium.Color.fromCssColorString('#3A3833');
+        const BODY = Cesium.Color.fromCssColorString(colour);
+        // Tyres are cylinders, not cubes. A Cesium cylinder stands on its local
+        // Z, so each wheel carries the truck's heading turned a quarter turn
+        // about X — which lays the axis across the machine, where an axle goes.
+        const AXLE = Cesium.Quaternion.fromAxisAngle(Cesium.Cartesian3.UNIT_X, Math.PI/2);
+        const wheelOri = new Cesium.CallbackProperty(time => {
+          const q = ori.getValue(time);
+          return q ? Cesium.Quaternion.multiply(q, AXLE, new Cesium.Quaternion()) : q;
+        }, false);
+        // [offset, dimensions, colour] — the boxes: body, chassis, canopy, cab.
+        const PARTS = [
+          [[-1.8, 0,    1.7], [9.6, 7.6, 3.3], BODY],   // dump body, high at the rear
+          [[ 0.6, 0,   -0.4], [12.6, 5.4, 1.1], STEEL], // chassis rail
+          [[ 5.2, 0,    2.5], [2.8, 7.0, 0.45], BODY],  // canopy over the cab
+          [[ 4.3, 2.1,  1.2], [2.1, 1.9, 2.0], STEEL],  // cab
+        ];
+        PARTS.forEach(([off, dim, col]) => {
+          const pe = viewer.entities.add({
+            position: partPos(off), orientation: ori,
+            box:{ dimensions:new Cesium.Cartesian3(dim[0], dim[1], dim[2]), material: col }});
+          siteEnts.push(pe); truckEnts.push(pe);
+        });
+        // A 793 runs singles on the steer axle and duals on the drive axle —
+        // six tyres, 3.4 m tall, which is most of why the machine reads as big.
+        const TYRES = [
+          [[ 4.4,  3.2, -1.3], 0.85], [[ 4.4, -3.2, -1.3], 0.85],
+          [[-2.6,  3.3, -1.3], 0.62], [[-2.6,  2.1, -1.3], 0.62],
+          [[-2.6, -3.3, -1.3], 0.62], [[-2.6, -2.1, -1.3], 0.62],
+        ];
+        TYRES.forEach(([off, halfW]) => {
+          const pe = viewer.entities.add({
+            position: partPos(off), orientation: wheelOri,
+            cylinder:{ length: halfW*2, topRadius:1.7, bottomRadius:1.7,
+                       slices:16, material: DARK }});
+          siteEnts.push(pe); truckEnts.push(pe);
+        });
         const ent = viewer.entities.add({
           position: prop,
-          orientation: new Cesium.VelocityOrientationProperty(prop),
-          box:{ dimensions:new Cesium.Cartesian3(13.5, 7.7, 6.5),
-                material: Cesium.Color.fromCssColorString(colour) },
+          orientation: ori,
           label:{ text: kind === 'dump' ? 'waste → dump' : 'ore → leach pad',
                   font:'500 11px "JetBrains Mono", monospace',
                   fillColor: Cesium.Color.fromCssColorString(colour),
@@ -5403,7 +5681,9 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   // e.show=false on a label and then turning the layer on put it straight back.
   // The preference lives here so the one function that shows the layer is also
   // the one that honours them.
-  let holdersWanted=true, siteLabelsWanted=true;
+  let holdersWanted=true, siteLabelsWanted=true, haulWanted=false;
+  // True when the orebody the pit is on is the one currently loaded.
+  const pitDepositLoaded=()=>!PIT_DEPOSIT || depKey===PIT_DEPOSIT;
   const showSite=on=>{
     if(on) buildSite();
     if(siteEnts) siteEnts.forEach(e=>e.show=on);
@@ -5417,7 +5697,15 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       // to "Four stages to the final pit": 617 m across and 240 m deep, when
       // the starter is 234 m across and 60 m deep. Same ordering trap as the
       // labels above; same fix.
-      sitePitEnts.forEach(e=>e.show = stageIdx < 0);
+      // ...and only over the deposit it is on. Drawn while another deposit is
+      // loaded it is a mine plan floating over barren ground, which reads as a
+      // bug in the model rather than a mismatch in what is switched on.
+      sitePitEnts.forEach(e=>e.show = stageIdx < 0 && pitDepositLoaded());
+      // The haul cycle belongs to the chapter that is about it. `c.haul` only
+      // ever started the CLOCK, so on every other chapter carrying site
+      // features the two trucks were still drawn — parked on the ramp, in
+      // frame, with nothing in the copy referring to them.
+      truckEnts.forEach(e=>e.show = haulWanted);
     }
     // A hole in the terrain is not a property of an entity, so it does not
     // follow entity.show. Applied and removed by hand, or the ground stays
@@ -5722,9 +6010,10 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   function showStage(i){
     stageIdx=i; buildStages();
     if(!stageEnts) return;
+    const onDep=pitDepositLoaded();
     stageEnts.forEach((s,k)=>{
-      s.shell.forEach(e=>e.show=(k===i));
-      s.rim.show=(i>=0&&k<i);
+      s.shell.forEach(e=>e.show=(k===i && onDep));
+      s.rim.show=(i>=0&&k<i&&onDep);
     });
     // The site's own pit IS the final shell. Leaving it drawn under a stage
     // put two excavations in the same hole, z-fighting along every bench.
@@ -6108,26 +6397,28 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   let strokes=[], drawing=null, inkColor='#FF6A1F', inking=false;
   function inkResize(){
     const dpr=devicePixelRatio||1;
-    ink.width=innerWidth*dpr; ink.height=innerHeight*dpr;
-    ink.style.width=innerWidth+'px'; ink.style.height=innerHeight+'px';
+    ink.width=SW()*dpr; ink.height=SH()*dpr;
+    ink.style.width=SW()+'px'; ink.style.height=SH()+'px';
     ictx.setTransform(dpr,0,0,dpr,0,0); inkRedraw();
   }
   function inkRedraw(){
-    ictx.clearRect(0,0,innerWidth,innerHeight);
+    ictx.clearRect(0,0,SW(),SH());
     ictx.lineCap='round'; ictx.lineJoin='round';
     for(const s of strokes){
       if(s.pts.length<2) continue;
       ictx.strokeStyle=s.c; ictx.lineWidth=s.w;
       ictx.shadowColor='rgba(0,0,0,.55)'; ictx.shadowBlur=4;
       ictx.beginPath();
-      ictx.moveTo(s.pts[0][0]*innerWidth,s.pts[0][1]*innerHeight);
-      for(let i=1;i<s.pts.length;i++) ictx.lineTo(s.pts[i][0]*innerWidth,s.pts[i][1]*innerHeight);
+      ictx.moveTo(s.pts[0][0]*SW(),s.pts[0][1]*SH());
+      for(let i=1;i<s.pts.length;i++) ictx.lineTo(s.pts[i][0]*SW(),s.pts[i][1]*SH());
       ictx.stroke();
     }
     ictx.shadowBlur=0;
   }
   addEventListener('resize',inkResize); inkResize();
-  const inkPt=e=>[e.clientX/innerWidth, e.clientY/innerHeight];
+  // clientX/Y are the window's; the canvas is the stage's. Subtract the bar.
+  const inkPt=e=>{ const b=stageBox();
+    return [(e.clientX-b.left)/b.width, (e.clientY-b.top)/b.height]; };
   ink.addEventListener('pointerdown',e=>{ if(!inking) return;
     ink.setPointerCapture(e.pointerId);
     drawing={c:inkColor,w:4,pts:[inkPt(e)]}; strokes.push(drawing);});
@@ -6153,6 +6444,156 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   $('provclose').onclick=()=>$('prov').classList.remove('on');
   $('provcopy').onclick=()=>navigator.clipboard.writeText(provText())
     .then(()=>toast('Audit trail copied'),()=>toast('Copy failed'));
+  // The pad sits in the band the rail leaves on one side and the caption card
+  // on the other. Solved from those two rectangles rather than from the centre
+  // of the viewport, which is not the centre of what is actually free — at
+  // 1500px the difference put the cluster 120px off, under the rail's edge.
+  function placeCam(){
+    const cam=$('cam');
+    if(!cam || !document.body.classList.contains('explore')) return;
+    const rail=$('rail'), cap=$('cap');
+    const sb=stageBox();
+    const l=(rail?rail.getBoundingClientRect().right:sb.left+24)+20;
+    const r=(cap?cap.getBoundingClientRect().left:sb.right-24)-20;
+    const w=cam.offsetWidth||290;
+    cam.style.left=Math.round(((r-l>=w)?(l+r)/2:sb.left+sb.width/2)-sb.left)+'px';
+    // The fabricated-data banner holds the same bottom band and is the one
+    // thing on screen that must never be covered — it is an obligation, not a
+    // caption. If the pad would sit over it, the pad moves up.
+    // `offsetParent` is null for a position:fixed element, so it cannot be the
+    // visibility test here — the banner is fixed, the guard never passed and
+    // the pad stayed on top of it.
+    const warn=$('synwarn');
+    const warnShown=warn && getComputedStyle(warn).display!=='none'
+                    && warn.getBoundingClientRect().width>0;
+    if(warnShown){
+      const wb=warn.getBoundingClientRect(), cb=cam.getBoundingClientRect();
+      const overlaps = cb.left < wb.right && cb.right > wb.left;
+      cam.style.bottom = overlaps
+        ? Math.round(sb.bottom - wb.top + 12) + 'px'
+        : '26px';
+    } else cam.style.bottom='26px';
+  }
+  addEventListener('resize',()=>{
+    // The stage resizes with the window, so the canvas and every measured
+    // overlay have to be told. Cesium re-reads its container on its own, but
+    // only reliably once the new size has actually been laid out.
+    try{ viewer.resize(); }catch(e){}
+    placeCam(); try{ inkResize(); }catch(e){}
+  });
+
+  // ---- slide editor ------------------------------------------------------
+  // Placing a camera by editing numbers in the build script and rebuilding is
+  // the loop this removes. Fly the view, Lock it, download the JSON, drop it in
+  // data/ and rebuild — the deck then ships with what you framed.
+  {
+    const A=id=>document.getElementById(id);
+    const saveCam=()=>{ try{ localStorage.setItem(CAM_KEY,JSON.stringify(CAM_LOCK)); }catch(e){} };
+    const named=()=>Object.keys(CAM_LOCK).map(k=>{
+      const i=CAM_KEYS.indexOf(k); return (i<0?'?':String(i+1).padStart(2,'0'))+' '+k;
+    }).sort();
+    let editing=false;
+    function refreshAdmin(){
+      if(!editing) return;
+      const c=CHAPTERS[cur]; if(!c) return;
+      const key=camKey(c), cam=readCamera();
+      A('ad_ch').textContent=(cur+1)+'/'+CHAPTERS.length+(CAM_LOCK[key]?' · locked':'');
+      A('ad_now').textContent=
+        cam.lat.toFixed(4)+', '+cam.lon.toFixed(4)+'\n'+
+        cam.height.toLocaleString()+' m · hdg '+cam.heading.toFixed(0)+'° · pitch '+cam.pitch.toFixed(0)+'°';
+      // What is pending, always in view: an editor that will not say what you
+      // have changed is one you have to remember for.
+      const n=named();
+      A('ad_have').textContent=n.length?n.join('\n'):'nothing locked yet';
+    }
+    const setEditing=v=>{ editing=v; document.body.classList.toggle('editing',v);
+                          if(v) refreshAdmin(); };
+    A('ad_close').onclick=()=>setEditing(false);
+    A('ad_lock').onclick=()=>{
+      const key=camKey(CHAPTERS[cur]); if(!key) return;
+      CAM_LOCK[key]=readCamera(); saveCam(); refreshAdmin();
+      A('ad_msg').textContent='Slide '+(cur+1)+' locked in this browser. Download the JSON to ship it.';
+    };
+    A('ad_clear').onclick=()=>{
+      const key=camKey(CHAPTERS[cur]); delete CAM_LOCK[key]; saveCam(); refreshAdmin(); go(cur,false,true);
+      A('ad_msg').textContent='Slide '+(cur+1)+' back to its built-in camera.';
+    };
+    A('ad_reset').onclick=()=>{
+      if(!confirm('Discard every camera lock?')) return;
+      CAM_LOCK={}; saveCam(); refreshAdmin(); go(cur,false,true);
+      A('ad_msg').textContent='All locks discarded.';
+    };
+    const json=()=>JSON.stringify(CAM_LOCK,null,2)+'\n';
+    A('ad_copy').onclick=()=>{ navigator.clipboard.writeText(json()).then(
+      ()=>{ A('ad_msg').textContent='Copied — save as data/slide_cameras.json and rebuild.'; },
+      ()=>{ A('ad_msg').textContent='Clipboard refused; use Download instead.'; }); };
+    A('ad_save').onclick=()=>{
+      const b=new Blob([json()],{type:'application/json'});
+      const u=URL.createObjectURL(b), a=document.createElement('a');
+      a.href=u; a.download='slide_cameras.json'; a.click();
+      setTimeout(()=>URL.revokeObjectURL(u),4000);
+      A('ad_msg').textContent='Saved. Put it in data/ and run tools/build_present.py.';
+    };
+    // Live readout while you fly, without fighting anything else on screen.
+    viewer.camera.changed.addEventListener(refreshAdmin);
+    viewer.camera.moveEnd.addEventListener(refreshAdmin);
+    window.__editSlides=()=>setEditing(!editing);
+    addEventListener('keydown',e=>{
+      if(e.key==='E'&&e.shiftKey&&!/INPUT|TEXTAREA/.test((e.target||{}).tagName||'')){
+        e.preventDefault(); setEditing(!editing); }
+    });
+    // Deferred by a tick: this block evaluates BEFORE `camKey` and friends are
+    // initialised further down, so opening the panel inline threw a temporal
+    // dead zone error and took the whole boot with it. By the next task the
+    // rest of the script has run.
+    if(QS.get('edit')==='1') setTimeout(()=>setEditing(true),0);
+    window.__adminRefresh=refreshAdmin;
+  }
+
+  // ---- camera nudges -----------------------------------------------------
+  // An orbit control has to find WHAT you are looking at before it can turn
+  // around it: rotating about the camera swings the subject out of frame. So
+  // the centre of the screen is picked against the globe first, the ellipsoid
+  // second — over the horizon, or with terrain not yet loaded, globe.pick
+  // returns nothing and the button would be silently dead.
+  const RADC=Cesium.Math.toRadians;
+  function orbitState(){
+    const sc=viewer.scene, c=sc.camera;
+    const mid=new Cesium.Cartesian2(sc.canvas.clientWidth/2, sc.canvas.clientHeight/2);
+    const ray=c.getPickRay(mid);
+    let target=ray && sc.globe.pick(ray, sc);
+    if(!target) target=c.pickEllipsoid(mid, sc.globe.ellipsoid);
+    if(!target) return null;
+    return {target, heading:c.heading, pitch:c.pitch,
+            range:Cesium.Cartesian3.distance(c.positionWC, target)};
+  }
+  function nudgeCamera({dh=0, dp=0, k=1}){
+    const st=orbitState(); if(!st) return;
+    // Clamped short of vertical and of the horizon: past -89 degrees heading
+    // stops meaning anything, past -6 you are looking at sky.
+    const pitch=Cesium.Math.clamp(st.pitch+dp, RADC(-89), RADC(-6));
+    const range=Cesium.Math.clamp(st.range*k, 400, 4e5);
+    viewer.camera.flyToBoundingSphere(new Cesium.BoundingSphere(st.target,1),
+      {offset:new Cesium.HeadingPitchRange(st.heading+dh, pitch, range),
+       duration:REDUCED?0:0.42, easingFunction:Cesium.EasingFunction.QUADRATIC_OUT});
+  }
+  {
+    const A={
+      // "Up" is the viewpoint, not the horizon: the arrow pointing up takes you
+      // higher, which is a steeper look down.
+      'tilt-up':()=>nudgeCamera({dp:RADC(-11)}),
+      'tilt-dn':()=>nudgeCamera({dp:RADC(11)}),
+      'rot-l':()=>nudgeCamera({dh:RADC(-20)}),
+      'rot-r':()=>nudgeCamera({dh:RADC(20)}),
+      'in':()=>nudgeCamera({k:0.6}),
+      'out':()=>nudgeCamera({k:1.65}),
+      // Reset re-runs the chapter, so it re-arms the layers and re-flies the
+      // framing rather than keeping a second copy of where the chapter starts.
+      'reset':()=>go(cur,false,true),
+    };
+    document.querySelectorAll('#cam .pad button').forEach(b=>{ b.onclick=A[b.dataset.a]; });
+  }
+
   addEventListener('keydown',e=>{ if(e.key==='Escape'){$('prov').classList.remove('on');
     $('emb').classList.remove('on');
     $('inspect').classList.remove('on');
@@ -6218,7 +6659,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   function calloutPaint(){
     if(!calloutsOn||!HIGHLIGHTS.length||!hiOn){ calloutClear(); return; }
     const host=$('callouts'), svg=$('calloutsvg');
-    const W=innerWidth, H=innerHeight;
+    const W=SW(), H=SH();
     svg.setAttribute('viewBox','0 0 '+W+' '+H);
     svg.setAttribute('width',W); svg.setAttribute('height',H);
     // Project first, then lay out — a card's side depends on where its
@@ -7705,7 +8146,32 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     const arc=metres>900?Math.min(4200,metres*0.55):undefined;
     return {dur:dur, arc:arc, metres:metres};
   }
+  // Locks live in localStorage while you author and in data/slide_cameras.json
+  // once you save, so the deck ships with them rather than depending on one
+  // browser's storage.
+  const CAM_KEY='bedrock.demo.cams';
+  let CAM_LOCK={};
+  try{ CAM_LOCK=Object.assign({},CAM_FIXED,JSON.parse(localStorage.getItem(CAM_KEY)||'{}')); }
+  catch(e){ CAM_LOCK=Object.assign({},CAM_FIXED); }
+  const camKey=c=>{ const i=CHAPTERS.indexOf(c); return i<0?null:(CAM_KEYS[i]||('#'+i)); };
+  const readCamera=()=>{
+    const cam=viewer.camera, g=cam.positionCartographic;
+    // Cesium reports a level camera's roll as ~360 degrees, and flying to that
+    // spins the camera through a full turn on arrival. Normalise to (-180,180].
+    const norm=d=>{ d%=360; return d>180?d-360:(d<=-180?d+360:d); };
+    return { lon:+DEG(g.longitude).toFixed(6), lat:+DEG(g.latitude).toFixed(6),
+             height:Math.round(g.height), heading:+DEG(cam.heading).toFixed(2),
+             pitch:+DEG(cam.pitch).toFixed(2), roll:+norm(DEG(cam.roll)).toFixed(2) };
+  };
+
   function frameFor(c,animate){
+    // A locked camera stores the FINAL position and orientation and bypasses
+    // everything below — no bounding sphere, no scale-jump guard. Storing a
+    // target and re-deriving the camera means what the author framed and what
+    // the deck flies to are computed by different code, which is the entire
+    // class of bug this exists to remove.
+    const lk=CAM_LOCK[camKey(c)];
+    if(lk){ frameFree(lk,animate); return; }
     // A property chapter frames the land package, not the orebody — `center`
     // and RADIUS belong to whichever deposit is loaded and would put the
     // camera inside one corner of the view.
@@ -7745,7 +8211,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   function frameFree(f,animate){
     viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
     const dest=Cesium.Cartesian3.fromDegrees(f.lon,f.lat,f.height);
-    const orient={heading:rad(f.heading),pitch:rad(f.pitch),roll:0};
+    const orient={heading:rad(f.heading),pitch:rad(f.pitch),roll:rad(f.roll||0)};
     // lastRange is the guard's memory of how far out we were. A free shot has
     // no comparable range, and leaving a stale one behind would have the next
     // orbit chapter compute a jump ratio against a number that means something
@@ -7788,6 +8254,12 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       $('cap').classList.add('in');},160);
     $('count').innerHTML='<b>'+String(cur+1).padStart(2,'0')+'</b> / '+
       String(CHAPTERS.length).padStart(2,'0');
+    // Presenting until the last chapter. Keyboard still reaches everything —
+    // 'e' opens Explore — so this hides the furniture without locking anyone
+    // out of the tool behind it.
+    document.body.classList.toggle('presenting', cur < CHAPTERS.length-1);
+    placeCam();
+    if(window.__adminRefresh) window.__adminRefresh();
     $('prev').disabled=cur===0; $('next').disabled=cur===CHAPTERS.length-1;
     $('prog').style.width=(cur/(CHAPTERS.length-1)*100)+'%';
     prgTicks.forEach((el,i)=>{ el.classList.toggle('done',i<cur);
@@ -7923,10 +8395,18 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     // Land tenure and pit design are different questions. Asking both at
     // once, in the same corner of the frame, is most of why the mine
     // chapters were hard to read.
-    holdersWanted = (c.holders !== false);
-    siteLabelsWanted = (c.siteLabels !== false);
+    // Holder cards ("Bedrock Demo · 13 claims", "Privately held") and the
+    // facility leader labels are callouts, and they answer a question nobody
+    // asked on a slide about magnetics. Hidden through the walkthrough unless
+    // a chapter asks for them by name, and back on the last one with the rest
+    // of the chrome.
+    const lastCh = (cur >= CHAPTERS.length-1);
+    holdersWanted = (c.holders === true) || lastCh;
+    siteLabelsWanted = (c.siteLabels === true) || lastCh;
+    haulWanted = !assetOnly && !!c.haul;
     holderEnts.forEach(e=>e.show = holdersWanted);
     siteLabelEnts.forEach(e=>e.show = siteLabelsWanted);
+    truckEnts.forEach(e=>e.show = haulWanted);
     // Recolouring is a geometry rebuild, so only do it when the answer changes.
     { const wantCut = !assetOnly && !!c.pitCut;
       if(wantCut !== pitCut){ pitCut = wantCut; buildBase(); } }
@@ -8095,7 +8575,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
         // Presenter ink lives on its own canvas, so composite it in or an
         // exported still would silently drop what was drawn on screen.
         if(strokes.length){
-          const sx=c.width/innerWidth, sy=c.height/innerHeight;
+          const sx=c.width/SW(), sy=c.height/SH();
           x.lineCap='round'; x.lineJoin='round';
           for(const s of strokes){ if(s.pts.length<2) continue;
             x.strokeStyle=s.c; x.lineWidth=s.w*sx; x.beginPath();
@@ -8717,6 +9197,9 @@ for k, v in {
     "__HIGHLIGHTS__": js(HIGHLIGHTS),
     "__SITE__": js(SITE),
     "__PIT_DEM__": js(PIT_DEM),
+    "__PIT_DEPOSIT__": js(PIT_DEPOSIT),
+    "__CAM_FIXED__": js(CAM_FIXED),
+    "__CAM_KEYS__": js(CAM_KEYS),
     "__SITE_SYNTHETIC__": "true" if SITE_SYNTHETIC else "false",
     "__REAL_CLAIMS__": js(REAL_CLAIMS),
     "__CLAIMS_SYNTHETIC__": js(CLAIMS_SYNTHETIC),
