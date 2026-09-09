@@ -349,13 +349,15 @@ footer { position: relative; z-index: 1; background: #fff;
   .scroll-hero { height: auto; }
   .sh-stage { position: static; height: auto; display: flex; flex-direction: column;
     padding: calc(var(--nav-h) + 26px) var(--edge) 60px; }
-  .sh-canvas, .sh-fallback { position: relative; height: clamp(300px, 46vh, 520px);
-    order: 2; margin-top: 26px; }
+  .sh-canvas, .sh-fallback { position: relative; order: 2; margin-top: 26px; }
+  .sh-canvas { height: clamp(300px, 46vh, 520px); }
   /* The still replaces the canvas, so it re-flows with it. Left absolute in
      a stage that is no longer positioned, it escaped the column and landed
      on top of the title block — an image under the buttons. */
-  .sh-fallback { top: auto; left: auto; width: 100%; object-fit: contain;
-    transform: none; }   /* the centring translate goes with the absolute */
+  /* The still carries its own 16:9, so it sizes to that rather than being
+     letterboxed inside the canvas's fixed height. The centring translate
+     goes with the absolute it was centring against. */
+  .sh-fallback { top: auto; left: auto; width: 100%; height: auto; transform: none; }
   .sh-titleblock { order: 1; }
   .sh-panel { order: 3; }
   .sh-titleblock { position: static; }
