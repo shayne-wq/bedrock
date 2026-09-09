@@ -228,6 +228,16 @@
     width:min(100vw, calc(100vh * 16 / 9));
     height:min(100vh, calc(100vw * 9 / 16));
     overflow:hidden;background:#07090A;z-index:0}
+  /* ...except on a phone held upright, where 16:9 is 390x219 — a quarter of
+     the screen and three quarters black bars. The fixed shape exists so a
+     RECORDING has one aspect and a locked camera means the same thing on
+     every machine; nobody records a deck from a portrait phone, and the
+     reader needs the glass. So portrait fills the screen and landscape keeps
+     the shape. The transform stays either way: it is what makes the stage the
+     containing block for the fixed UI, not decoration. */
+  @media (orientation:portrait) and (max-width:820px){
+    #slidestage{width:100vw;height:100dvh}
+  }
   body{font-family:Archivo,system-ui,sans-serif;color:#EDEEEC;-webkit-font-smoothing:antialiased}
   .cesium-widget-credits,.cesium-viewer-bottom{display:none!important}
   .cesium-viewer,.cesium-widget,.cesium-widget canvas{cursor:grab}
@@ -945,6 +955,34 @@
     #panel{width:auto;left:16px;right:16px}
     body.explore{--capw:min(380px,calc(100vw - 60px));--capr:30px}
     #cap h2{font-size:23px}#cap p{font-size:16px}}
+
+  /* ---- portrait phone ---------------------------------------------------
+     The model is the product; the caption is a caption. Measured on a 390x844
+     phone the card was taking 55% of the glass and the pit it describes was a
+     strip behind it, half of it under the fabricated-data banner.
+     So the card is capped and its BODY scrolls inside it, while the title,
+     the figures and the pager stay put — those are what you read at a glance
+     and what you navigate by. Nothing is removed; the long prose is one
+     thumb-scroll away instead of occupying the screen the deck exists for. */
+  @media(orientation:portrait) and (max-width:820px){
+    #cap{max-height:46dvh;padding:14px 16px 0}
+    #cap h2{font-size:20px;line-height:1.18}
+    /* min-height:0 or the flex child refuses to shrink and scroll. */
+    #cap p{font-size:15px;line-height:1.5;max-height:15dvh;min-height:0;
+           overflow-y:auto;-webkit-overflow-scrolling:touch;padding-right:6px}
+    #cap .fig{margin-top:10px;padding-top:10px;gap:0 14px}
+    #cap .fig b{font-size:13px}
+    #cap .fig span{font-size:8.5px}
+    /* The banner is an obligation, not a headline. Two small lines, not a block. */
+    #synwarn{font-size:8.5px;line-height:1.4;padding:5px 9px}
+    /* One scrolling row rather than a stack that eats the top of the frame.
+       The wrap happens INSIDE the legend's groups, so nowrap has to reach
+       them too — setting it on the container alone left two rows. */
+    #legend,#legend>div{flex-wrap:nowrap}
+    #legend{overflow-x:auto;max-width:100%}
+    /* 32x29 is below every touch-target guideline. */
+    #cam .pad button{width:40px;height:40px}
+  }
 </style>
 </head>
 <body>
