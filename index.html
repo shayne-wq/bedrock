@@ -333,7 +333,13 @@ footer { position: relative; z-index: 1; background: #fff;
     border-radius: 16px 16px 0 0; padding: 22px var(--edge) 16px; }
   .sh-cards { min-height: 178px; }
   .sh-hint { display: none; }
-  .sh-fallback { width: 88%; top: 46%; }
+  /* Anchored to the BOTTOM of the stage, not to a percentage of its height.
+     The title block is pinned near the top in fixed pixels; a still at
+     `top: 46%` walks up into it as the stage shortens, and an iPhone with
+     the address bar showing is ~760px — exactly where they meet. Measured:
+     clear at 844, colliding at every height from 760 down. From the bottom
+     the gap is constant whatever the viewport does. */
+  .sh-fallback { width: 88%; top: auto; bottom: 7%; transform: translateX(-50%); }
 }
 
 /* Reduced motion keeps every word and the machines, and drops only the ride:
