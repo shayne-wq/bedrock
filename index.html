@@ -381,6 +381,16 @@ footer { position: relative; z-index: 1; background: #fff;
 }
 
 @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } .col:nth-child(odd) { border-right: none; padding-left: 0; } .col:nth-child(even) { padding-left: 0; } .stats { grid-template-columns: 1fr; } .stat + .stat { border-left: none; border-top: 1px solid var(--border); } }
+/* On a phone the wordmark measured 197px against a 350px button row, so the
+   brand was the smallest thing in its own hero. It leads now — but both live
+   inside the same --edge block, so the mark can only out-measure the row if
+   the row also comes in. The buttons lose padding and a point of type; they
+   are still 44px tall, which is what matters for a thumb. */
+@media (max-width: 720px) {
+  .sh-title { font-size: clamp(52px, 17vw, 72px); }
+  .sh-titleblock .row { gap: 10px; }
+  .sh-titleblock .row .btn { padding: 14px 13px; font-size: 11px; letter-spacing: 0.04em; }
+}
 @media (max-width: 720px) { .split-grid { grid-template-columns: 1fr; } .split-figure, .split.rev .split-figure { order: -1; }
   .split.is-video-lead .split-grid { grid-template-columns: 1fr; margin-right: 0; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
@@ -708,7 +718,10 @@ footer { position: relative; z-index: 1; background: #fff;
            on its title or on its controls. -->
       <p class="showcase-head">
         <span class="fig-tag">FIG. 04 — WILLIAMS, LIVE</span>
-        <a class="showcase-open" href="/williams/?embed&amp;autoplay=0" target="_blank" rel="noopener">OPEN FULL SCREEN &#8599;</a>
+        <!-- The full deck, not the embed build: this link says full screen, and
+     ?embed strips the rail and the chrome the full experience has. Matches
+     where the widget's own Launch button now goes. -->
+        <a class="showcase-open" href="/williams/?cover=0" target="_blank" rel="noopener">OPEN FULL SCREEN &#8599;</a>
       </p>
     </div>
   </div>
