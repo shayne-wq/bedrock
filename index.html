@@ -858,10 +858,36 @@ const easeInOut = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
 
 const canvas = document.createElement('canvas');
 canvas.className = 'sh-canvas';
-let renderer = null;
-try {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
-} catch (e) { renderer = null; }
+/* One attempt at a high-quality context, then progressively cheaper ones
+   before giving up on the machines entirely.
+   A phone was falling back to the still, which means the constructor threw.
+   `powerPreference: 'high-performance'` asks iOS for the discrete-GPU path it
+   does not have; antialias at devicePixelRatio 3 asks it to allocate a
+   multisampled buffer four times the size of the screen. Either can refuse on
+   a device that is perfectly capable of drawing four laptops, and the old code
+   read a refusal of the ASK as the absence of WebGL. */
+let renderer = null, glWhy = '';
+const SMALL = matchMedia('(max-width: 820px)').matches;
+for (const opts of [
+  { antialias: !SMALL, alpha: true, powerPreference: SMALL ? 'default' : 'high-performance' },
+  { antialias: false, alpha: true },
+  { antialias: false, alpha: false, failIfMajorPerformanceCaveat: false },
+]) {
+  try { renderer = new THREE.WebGLRenderer({ canvas, ...opts }); break; }
+  catch (e) { glWhy = (e && e.message) || String(e); }
+}
+// Readable on the device that is failing, without a cable: getbedrock.ca/?gl=1
+if (new URLSearchParams(location.search).has('gl')) {
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;z-index:9999;left:8px;right:8px;top:96px;padding:10px 12px;' +
+    'background:#111;color:#8fe;font:11px/1.5 ui-monospace,monospace;border-radius:6px;white-space:pre-wrap';
+  d.textContent = 'renderer: ' + (renderer ? 'OK' : 'FAILED') +
+    '\nwebgl2: ' + !!document.createElement('canvas').getContext('webgl2') +
+    '\nwebgl: ' + !!document.createElement('canvas').getContext('webgl') +
+    '\ndpr: ' + (devicePixelRatio || 1) + '  small: ' + SMALL +
+    (glWhy ? '\nlast error: ' + glWhy : '');
+  document.body.appendChild(d);
+}
 
 if (!renderer) {
   const img = document.createElement('img');
@@ -874,11 +900,11 @@ if (!renderer) {
 
 if (renderer) {
   stage.insertBefore(canvas, stage.firstChild);
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, SMALL ? 1.5 : 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.02;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = !SMALL;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const scene = new THREE.Scene();
