@@ -345,11 +345,17 @@ footer { position: relative; z-index: 1; background: #fff;
    layout below was already written and already correct — it was only ever
    reachable by asking the OS for reduced motion. The height condition catches
    a phone held sideways, which is short rather than narrow. */
-@media (prefers-reduced-motion: reduce), (max-width: 820px), (max-height: 620px) {
+@media (prefers-reduced-motion: reduce), (max-height: 620px) {
   .scroll-hero { height: auto; }
   .sh-stage { position: static; height: auto; display: flex; flex-direction: column;
     padding: calc(var(--nav-h) + 26px) var(--edge) 60px; }
-  .sh-canvas { position: relative; height: clamp(300px, 46vh, 520px); order: 2; margin-top: 26px; }
+  .sh-canvas, .sh-fallback { position: relative; height: clamp(300px, 46vh, 520px);
+    order: 2; margin-top: 26px; }
+  /* The still replaces the canvas, so it re-flows with it. Left absolute in
+     a stage that is no longer positioned, it escaped the column and landed
+     on top of the title block — an image under the buttons. */
+  .sh-fallback { top: auto; left: auto; width: 100%; object-fit: contain;
+    transform: none; }   /* the centring translate goes with the absolute */
   .sh-titleblock { order: 1; }
   .sh-panel { order: 3; }
   .sh-titleblock { position: static; }
@@ -1053,7 +1059,7 @@ if (renderer) {
   // Same condition as the stylesheet: when the stage is not pinned there is
   // no runway to scrub, so the machines hold a single composed pose instead
   // of tracking a scroll position that no longer means anything.
-  const reduce = matchMedia('(prefers-reduced-motion: reduce), (max-width: 820px), (max-height: 620px)');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce), (max-height: 620px)');
   function progress() {
     if (reduce.matches) return 0.22;
     const runway = hero.offsetHeight - innerHeight;
