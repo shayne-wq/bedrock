@@ -158,6 +158,10 @@ figure video { position: absolute; inset: 0; width: 100%; height: 100%; object-f
    paints, and a label behind the iframe that stands in as the loading state
    and stays put as the error state if the deck never arrives. */
 .showcase-figure { position: relative; margin: 0; aspect-ratio: 16/9; background: #0b0d0e; overflow: hidden; }
+/* Taller on a phone. 16:9 across a 390px screen is a 219px-high deck — the
+   cover card alone does not fit in it, let alone a map. A portrait frame
+   gives the thing room, and Launch inside it goes full screen anyway. */
+@media (max-width: 720px) { .showcase-figure { aspect-ratio: 3/4; } }
 .showcase-figure::before { content: "LOADING THE LIVE DECK"; position: absolute; inset: 0; display: grid; place-items: center;
   font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; color: #6f7278; }
 .deck-frame { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; border: 0; display: block; }
