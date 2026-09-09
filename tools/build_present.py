@@ -567,6 +567,13 @@ def _pin(dx=0.0, dy=0.0):
 
 _T = stats["total"]
 _M = stats["by_class"]
+# ---- the WebGL guard -----------------------------------------------------
+# Safari can hand back a context that is functionally lost while reporting
+# isContextLost() === false, and every library dereferences the nulls it then
+# returns. One guard, applied to the context before any library touches it,
+# rather than a patch per library. See tools/webgl_guard.js.
+_GUARD = (ROOT / "tools" / "webgl_guard.js").read_text()
+
 # ---- locked slide cameras ------------------------------------------------
 # Hand-tuned chapter cameras rot. Slide 13's was solved by hand against a 480 m
 # pit, and resizing the pit left it framing a hillside with no truck in it —
@@ -873,6 +880,10 @@ HTML = r"""<!DOCTYPE html>
      separate .ico would break the promise that this page is one artifact you
      can copy anywhere. -->
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23090c0d'/><path d='M5 23 L12 9 L17 18 L22 11 L27 23 Z' fill='%23C99A3A'/></svg>">
+<!-- Before Cesium, deliberately: it hardens the WebGL context Cesium is
+     about to ask for. Source of truth is tools/webgl_guard.js, inlined here
+     because the deck is one self-contained file. -->
+<script>__WEBGL_GUARD__</script>
 <script>window.CESIUM_BASE_URL='https://cdn.jsdelivr.net/npm/cesium@1.120/Build/Cesium/';</script>
 <link href="https://cdn.jsdelivr.net/npm/cesium@1.120/Build/Cesium/Widgets/widgets.css" rel="stylesheet"
       integrity="sha384-ghEeMdcWWzRv/BPeUcX835vcKDGrxvROXisl/Btpv3GeekBUXTSPVcFJpI1Tcrgp" crossorigin="anonymous">
@@ -9195,6 +9206,7 @@ for k, v in {
     "__CLASS_CONFIRMED__": "true" if stats.get("class_mapping_confirmed") else "false",
     "__HOLES__": js(HOLES),
     "__HIGHLIGHTS__": js(HIGHLIGHTS),
+    "__WEBGL_GUARD__": _GUARD,
     "__SITE__": js(SITE),
     "__PIT_DEM__": js(PIT_DEM),
     "__PIT_DEPOSIT__": js(PIT_DEPOSIT),
@@ -9310,6 +9322,10 @@ self.addEventListener('message',e=>{
 import hashlib
 SWVER = hashlib.sha1(HTML.encode()).hexdigest()[:10]
 OUT_DIR.mkdir(parents=True, exist_ok=True)
+# The marketing page loads this as a classic script; the deck inlines it.
+# Written from the same source on every build so the two cannot drift.
+(ROOT / "vendor").mkdir(exist_ok=True)
+(ROOT / "vendor" / "webgl-guard.js").write_text(_GUARD)
 OUT_SW.write_text(SW.replace("__SWVER__", SWVER))
 
 OUT.write_text(HTML)

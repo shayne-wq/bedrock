@@ -467,6 +467,9 @@ footer { position: relative; z-index: 1; background: #fff;
   @keyframes demo-in { from { opacity: 0; transform: translateY(6px); } }
 }
 </style>
+<!-- Hardens the WebGL context before three.js asks for one. Classic
+     script on purpose: it must run before any module. -->
+<script src="vendor/webgl-guard.js"></script>
 </head>
 <body>
 
@@ -869,25 +872,11 @@ canvas.className = 'sh-canvas';
 let renderer = null, glWhy = '';
 const SMALL = matchMedia('(max-width: 820px)').matches;
 
-/* iOS Safari hands back a context it will not fully service: WebGL and WebGL2
-   both report available, and then gl.getShaderPrecisionFormat() returns NULL.
-   three.js reads .precision off that return value directly, so capability
-   detection dies with "null is not an object" and the machines never start —
-   measured on an iPhone, which is how this was found rather than guessed.
-   Cesium dies the same way in the deck, on getParameter(MAX_VIEWPORT_DIMS)[0].
-   The null is a Safari defect, not a statement about the hardware, so answer
-   it with the profile a compliant implementation would return for highp. */
-for (const Ctor of [window.WebGLRenderingContext, window.WebGL2RenderingContext]) {
-  const proto = Ctor && Ctor.prototype;
-  if (!proto || proto.__precisionShimmed) continue;
-  const original = proto.getShaderPrecisionFormat;
-  proto.getShaderPrecisionFormat = function () {
-    let r = null;
-    try { r = original ? original.apply(this, arguments) : null; } catch (e) { r = null; }
-    return r || { rangeMin: 127, rangeMax: 127, precision: 23 };
-  };
-  proto.__precisionShimmed = true;
-}
+/* The context is hardened by vendor/webgl-guard.js, loaded in <head> before
+   this module runs — one guard for every WebGL library on the page rather
+   than a patch per library. The retry ladder below is still worth having:
+   the guard makes a lying context survivable, but a context refused outright
+   is a different failure and still deserves cheaper options. */
 
 /* A fresh canvas per attempt. A canvas keeps the first context it is given,
    so retrying on the same one hands back the same broken context and the
@@ -914,6 +903,7 @@ if (new URLSearchParams(location.search).has('gl')) {
     '\nwebgl2: ' + !!document.createElement('canvas').getContext('webgl2') +
     '\nwebgl: ' + !!document.createElement('canvas').getContext('webgl') +
     '\ndpr: ' + (devicePixelRatio || 1) + '  small: ' + SMALL +
+    '\nguard: ' + (window.__bedrockGL ? ('on, ' + window.__bedrockGL.patched + ' protos') : 'MISSING') +
     (glWhy ? '\nlast error: ' + glWhy : '');
   document.body.appendChild(d);
 }
