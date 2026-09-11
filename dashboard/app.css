@@ -461,12 +461,21 @@ tbody tr[data-go]:hover td { background: var(--bg); }
 .dropmini input[type=file] { flex: 0 0 auto; max-width: 60%; }
 .dzname { font-family: var(--mono); font-size: 11.5px; color: var(--ink-mute); }
 .zone.dropping { border-color: var(--accent); background: var(--accent-dim); }
-/* Schematic, not a preview — see candidateGlyph(). Enough to tell a section
-   from a plan from a drill slide without rendering anything. */
+/* The schematic is what a card shows until its real frame arrives — see
+   candidateGlyph() for the drawing and queueThumbs() for the capture. Enough to
+   tell a section from a plan from a drill slide while the viewer works through
+   the queue, and replaced the moment there is a photograph of the actual shot. */
 .scard .sglyph {
   flex: 0 0 auto; line-height: 0; border-radius: 5px; overflow: hidden;
   border: 1px solid var(--border); background: var(--bg);
+  width: 64px; height: 40px;
+  background-size: cover; background-position: center;
 }
+/* Once a frame has landed the drawing underneath it is noise. Faded rather than
+   removed so the swap does not jump the row. */
+.scard .sglyph.has > svg { opacity: 0; transition: opacity .2s; }
+.scard .sglyph.has { border-color: var(--ink-mute); }
+@media (prefers-reduced-motion: reduce) { .scard .sglyph.has > svg { transition: none; } }
 
 /* ---- studio ------------------------------------------------------------
    The chapter list and the thing it edits, side by side, because the whole
@@ -1019,3 +1028,44 @@ body.stripoff .stmain { grid-column: 1 / -1; }
      18px is not a button anyone can hit. */
   .stgrp + .stgrp { padding-left: 0; border-left: 0; }
 }
+
+/* ---- audience: range tabs + session bars --------------------------------- */
+.rtabs {
+  display: inline-flex; gap: 0; margin-bottom: 16px;
+  border: 1px solid var(--border); border-radius: 5px; overflow: hidden;
+}
+.rtab {
+  font: inherit; font-size: 12px; padding: 5px 13px;
+  background: var(--bg); color: var(--ink-dim);
+  border: 0; border-right: 1px solid var(--border); cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.rtab:last-child { border-right: 0; }
+.rtab:hover { color: var(--ink); }
+.rtab.on { background: var(--accent-dim); color: var(--accent-700); font-weight: 500; }
+.rtab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* One column per bucket, including the empty ones. A chart drawn only from the
+   buckets that have sessions reports the volume and lies about the cadence. */
+.bars {
+  display: flex; align-items: flex-end; gap: 2px;
+  height: 96px; padding: 0 1px;
+  border-bottom: 1px solid var(--border);
+}
+.bar { flex: 1 1 0; min-width: 0; height: 100%; display: flex; align-items: flex-end; }
+.bar i {
+  display: block; width: 100%; min-height: 2px;
+  background: var(--accent); border-radius: 2px 2px 0 0;
+  transition: height .18s ease-out;
+}
+/* A quiet bucket still gets a mark on the baseline: an absent bar and a bar of
+   zero look identical, and only one of them means "we have data for this day". */
+.bar i.zero { background: var(--border); min-height: 2px; }
+.bar:hover i { background: var(--accent-700); }
+.barsx {
+  display: flex; justify-content: space-between; margin-top: 6px;
+  font-family: var(--mono); font-size: 10px; color: var(--ink-mute);
+  font-variant-numeric: tabular-nums;
+}
+.barsx .mx { color: var(--ink-dim); }
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }

@@ -153,7 +153,7 @@ export async function renderDeck(id, view) {
     </div>
 
     <div class="panel">
-      <h2>Audience <span class="hint">last 30 days</span></h2>
+      <h2>Audience</h2>
       <div id="analytics">${skeleton(3)}</div>
     </div>`;
 
@@ -259,8 +259,11 @@ function cardHtml(o, inOrder) {
   // and removing the second kind costs work the first does not.
   const authored = o.row && o.row.camera && Object.keys(o.row.camera).length &&
                    o.cand && JSON.stringify(o.row.camera) !== JSON.stringify(o.cand.camera);
+  const tid = thumbKey(c), shot = thumbCacheGet(tid);
   return `<div class="scard" draggable="true" data-cid="${esc(o.key)}">
-    <span class="sglyph">${candidateGlyph(c)}</span>
+    <span class="sglyph${shot ? " has" : ""}" data-thumb="${tid}"
+          ${shot ? `style="background-image:url(${shot})"` : ""}>
+      ${candidateGlyph(c)}</span>
     <div class="grow">
       <b>${esc(c.title || "Untitled")}${authored ? ` <i class="tagline">set</i>` : ""}</b>
       <span class="ssec">${esc(c.section || "")}</span>
@@ -278,6 +281,108 @@ function poolEntries() {
     .map((c) => ({ key: "cd:" + c.id, chapterId: null, row: null, cand: c }));
 }
 
+/* ---- slide thumbnails ----------------------------------------------------
+   A real frame of each slide rather than a drawing of what is switched on.
+   Choosing between nineteen candidates is a question about the SHOT — is the
+   subject in frame, is it too far out, is the overlay doing anything — and a
+   schematic of "this one has geochemistry" cannot answer it.
+
+   Rendered by one hidden viewer working a queue, so the pass never competes
+   with the preview the author is looking at, and one slide is in flight at a
+   time: several cameras and several layer sets fighting over one scene produce
+   nothing useful.
+
+   Cached per browser under a key made from the camera and the layers, so a
+   slide is shot once and re-shot the moment its framing changes. Not stored on
+   the deck: this is a convenience for whoever is building it, not a record of
+   anything, and a stale one costs a re-render rather than a wrong number. */
+const THUMBS = new Map();          // key -> dataURL, this page load
+let thumbFrame = null, thumbReady = false, thumbQueue = [], thumbBusy = false;
+
+const thumbKey = (c) => {
+  const src = JSON.stringify([c.camera || {}, c.layers || {}]);
+  let h = 0;
+  for (let i = 0; i < src.length; i++) { h = ((h << 5) - h + src.charCodeAt(i)) | 0; }
+  return "t" + (h >>> 0).toString(36);
+};
+
+function thumbCacheGet(k) {
+  if (THUMBS.has(k)) return THUMBS.get(k);
+  try {
+    const v = sessionStorage.getItem("bedrock.thumb." + k);
+    if (v) { THUMBS.set(k, v); return v; }
+  } catch { /* private window, or storage off: the cache is optional */ }
+  return null;
+}
+function thumbCacheSet(k, url) {
+  THUMBS.set(k, url);
+  // Quota is small and a thumbnail is worth less than whatever else is in
+  // there, so a full store is not an error — it just means no cache.
+  try { sessionStorage.setItem("bedrock.thumb." + k, url); } catch { /* full */ }
+}
+
+function startThumbs() {
+  const t = links.find((l) => !l.revoked_at);
+  if (!t || thumbFrame) return;
+  const api = encodeURIComponent(CONFIG.url.replace(/\/$/, "") + "/functions/v1");
+  thumbFrame = document.createElement("iframe");
+  // Off-screen rather than display:none — a hidden iframe gets no WebGL
+  // context in some browsers, and a viewer with no context renders nothing to
+  // capture. It still has to be a real, laid-out box.
+  thumbFrame.setAttribute("aria-hidden", "true");
+  thumbFrame.tabIndex = -1;
+  thumbFrame.style.cssText =
+    "position:fixed;left:-9999px;top:0;width:640px;height:360px;border:0;opacity:0;pointer-events:none";
+  thumbFrame.src = `${VIEWER}?t=${encodeURIComponent(t.token)}&api=${api}&author=1&frame=landscape`;
+  document.body.appendChild(thumbFrame);
+
+  addEventListener("message", (e) => {
+    const d = e.data;
+    if (!d || d.source !== "bedrock-viewer") return;
+    if (e.source !== thumbFrame.contentWindow) return;     // the studio has its own
+    if (d.type === "hello") {
+      thumbFrame.contentWindow.postMessage(
+        { source: "bedrock-console", type: "hello" }, location.origin);
+    } else if (d.type === "ready") {
+      thumbReady = true; pumpThumbs();
+    } else if (d.type === "thumb") {
+      if (d.url) {
+        thumbCacheSet(d.id, d.url);
+        // Paint straight into the card rather than re-rendering the builder:
+        // a full repaint mid-queue would throw away a drag in progress.
+        document.querySelectorAll(`[data-thumb="${d.id}"]`).forEach((el) => {
+          el.style.backgroundImage = `url(${d.url})`;
+          el.classList.add("has");
+        });
+      }
+      thumbBusy = false; pumpThumbs();
+    }
+  });
+}
+
+function pumpThumbs() {
+  if (!thumbReady || thumbBusy) return;
+  const job = thumbQueue.shift();
+  if (!job) return;
+  if (thumbCacheGet(job.id)) { pumpThumbs(); return; }
+  thumbBusy = true;
+  thumbFrame.contentWindow.postMessage(
+    { source: "bedrock-console", type: "thumb", id: job.id,
+      camera: job.camera, layers: job.layers }, location.origin);
+  // A viewer that never answers must not stall the rest of the queue.
+  setTimeout(() => { if (thumbBusy) { thumbBusy = false; pumpThumbs(); } }, 20000);
+}
+
+function queueThumbs(entries) {
+  for (const o of entries) {
+    const c = face(o), id = thumbKey(c);
+    if (thumbCacheGet(id) || thumbQueue.some((j) => j.id === id)) continue;
+    thumbQueue.push({ id, camera: c.camera || {}, layers: c.layers || {} });
+  }
+  startThumbs();
+  pumpThumbs();
+}
+
 function paintBuilder() {
   const pool = poolEntries();
   $("pool").innerHTML = pool.length
@@ -291,6 +396,9 @@ function paintBuilder() {
   const s = $("suggest");
   if (s) s.disabled = !suggestion.order.length;
   wireDrag();
+  // The running order first: those are the slides somebody has already chosen,
+  // and they are the ones being judged.
+  queueThumbs(order.concat(pool));
 }
 
 // Fill the running order with the suggested deck. Additive: anything already
@@ -911,33 +1019,96 @@ function embedSnippet(token) {
 }
 
 // ------------------------------------------------------------- analytics ---
+function rangeTabs() {
+  return `<div class="rtabs" role="tablist" aria-label="Time range">
+    ${Object.entries(RANGES).map(([k, v]) => `
+      <button role="tab" class="rtab ${k === range ? "on" : ""}" data-range="${k}"
+              aria-selected="${k === range}">${v.label}</button>`).join("")}
+  </div>`;
+}
+function wireRange() {
+  document.querySelectorAll("[data-range]").forEach((b) => {
+    b.onclick = () => { range = b.dataset.range; renderAnalytics(); };
+  });
+}
+
+/* Three windows over the same figures. A month says whether the deck is being
+   watched at all; a day says whether the email that went out this morning
+   landed. Every rollup already takes `p_since`, so the range is one argument
+   and not four queries' worth of new SQL. */
+const RANGES = {
+  "1d":  { label: "24 hours", hours: 24,      bucket: "hour" },
+  "7d":  { label: "7 days",   hours: 24 * 7,  bucket: "day" },
+  "30d": { label: "30 days",  hours: 24 * 30, bucket: "day" },
+};
+let range = "30d";
+
+/* Every bucket in the window, whether anybody watched in it or not.
+   The rollups return only the buckets that have sessions, so plotting them
+   straight drew thirteen sessions as two bars — one full height, one nearly
+   flat — which reads as "busy, then dead" rather than "two days out of thirty".
+   The zeroes are the story. */
+function fillBuckets(rows, key, bucket, count) {
+  const step = bucket === "hour" ? 3600e3 : 86400e3;
+  const now = new Date();
+  const end = bucket === "hour"
+    ? new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours())
+    : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const at = new Map();
+  for (const r of rows || []) {
+    const t = new Date(r[key]);
+    const k = bucket === "hour"
+      ? new Date(t.getFullYear(), t.getMonth(), t.getDate(), t.getHours()).getTime()
+      : new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime();
+    at.set(k, (at.get(k) || 0) + Number(r.sessions));
+  }
+  const out = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const t = end.getTime() - i * step;
+    out.push({ t, sessions: at.get(t) || 0 });
+  }
+  return out;
+}
+
 async function renderAnalytics() {
   const el = $("analytics");
-  const [{ data: sum, error: e1 }, { data: funnel }, { data: refs }, { data: daily }] =
+  const R = RANGES[range];
+  const since = new Date(Date.now() - R.hours * 3600e3).toISOString();
+  const arg = { p_deck: deck.id, p_since: since };
+  const [{ data: sum, error: e1 }, { data: funnel }, { data: refs }, { data: series }] =
     await Promise.all([
-      db.rpc("deck_summary", { p_deck: deck.id }),
-      db.rpc("deck_chapter_funnel", { p_deck: deck.id }),
-      db.rpc("deck_referrers", { p_deck: deck.id }),
-      db.rpc("deck_daily", { p_deck: deck.id }),
+      db.rpc("deck_summary", arg),
+      db.rpc("deck_chapter_funnel", arg),
+      db.rpc("deck_referrers", arg),
+      R.bucket === "hour" ? db.rpc("deck_hourly", arg) : db.rpc("deck_daily", arg),
     ]);
   if (e1) return fail("Analytics", e1);
 
   const s = sum?.[0] || { sessions: 0, embed_sessions: 0, completions: 0,
                           median_watch_ms: 0, total_watch_ms: 0, avg_chapters: 0 };
   if (!Number(s.sessions)) {
-    el.innerHTML = `<div class="empty">
-      <h3>Nobody has opened this yet</h3>
-      <p>Once the deck is shared or embedded, this shows how many people watched,
-         how long they stayed, which chapter lost them, and which website they
-         came from.</p></div>`;
+    el.innerHTML = rangeTabs() + `<div class="empty">
+      <h3>${range === "30d" ? "Nobody has opened this yet"
+                            : `Nothing in the last ${R.label}`}</h3>
+      <p>${range === "30d"
+        ? `Once the deck is shared or embedded, this shows how many people
+           watched, how long they stayed, which chapter lost them, and which
+           website they came from.`
+        : `No sessions in this window. Try a longer one.`}</p></div>`;
+    wireRange();
     return;
   }
 
   const maxReach = Math.max(1, ...(funnel || []).map((f) => Number(f.reached)));
-  const maxDay = Math.max(1, ...(daily || []).map((d) => Number(d.sessions)));
+  const bars = fillBuckets(series, R.bucket === "hour" ? "hour" : "day",
+                           R.bucket, R.bucket === "hour" ? 24 : R.hours / 24);
+  const maxBar = Math.max(1, ...bars.map((b) => b.sessions));
   const titleOf = (ord) => chapters.find((c) => c.ord === ord)?.title || `Chapter ${ord + 1}`;
+  const stamp = (t) => R.bucket === "hour"
+    ? new Date(t).toLocaleTimeString([], { hour: "numeric" })
+    : new Date(t).toLocaleDateString([], { month: "short", day: "numeric" });
 
-  el.innerHTML = `
+  el.innerHTML = rangeTabs() + `
     <div class="grid three" style="margin-bottom:20px">
       <div class="stat"><span class="l">Sessions</span><b>${fmtInt(s.sessions)}</b>
         <span class="sub">${fmtInt(s.embed_sessions)} from embeds</span></div>
@@ -948,12 +1119,22 @@ async function renderAnalytics() {
         <span class="sub">${fmtInt(s.completions)} of ${fmtInt(s.sessions)}</span></div>
     </div>
 
-    ${daily?.length ? `<div style="margin-bottom:22px">
-      <div class="eyebrow" style="margin-bottom:7px">Sessions per day</div>
-      <div class="spark">${daily.map((d) =>
-        `<i style="height:${(Number(d.sessions) / maxDay) * 100}%"
-            title="${fmtDate(d.day)} — ${d.sessions} sessions"></i>`).join("")}</div>
-    </div>` : ""}
+    <div style="margin-bottom:22px">
+      <div class="eyebrow" style="margin-bottom:7px">Sessions per ${R.bucket}</div>
+      <div class="bars" role="img"
+           aria-label="Sessions per ${R.bucket} over the last ${R.label}">
+        ${bars.map((b) => `
+          <div class="bar" title="${stamp(b.t)} — ${b.sessions} session${b.sessions === 1 ? "" : "s"}">
+            <i style="height:${Math.round((b.sessions / maxBar) * 100)}%"
+               class="${b.sessions ? "" : "zero"}"></i>
+          </div>`).join("")}
+      </div>
+      <div class="barsx">
+        <span>${stamp(bars[0].t)}</span>
+        <span class="mx">${maxBar} max</span>
+        <span>${stamp(bars[bars.length - 1].t)}</span>
+      </div>
+    </div>
 
     ${funnel?.length ? `<div style="margin-bottom:22px">
       <div class="eyebrow" style="margin-bottom:9px">Where attention went</div>
@@ -986,4 +1167,5 @@ async function renderAnalytics() {
       cross-site identifiers are collected — a country is derived at the edge and
       the address discarded. These are engagement figures for your own use, not
       audited numbers: anyone holding a share link could inflate them.</p>`;
+  wireRange();
 }
