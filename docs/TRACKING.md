@@ -2509,4 +2509,30 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   brand colours, inclusion, recording — has to be carried into this renderer
   before that switch is safe. `/pit/` and block-model support stay.
 
+- **2026-09-11** — **Shipped, and a deploy trap closed behind it.**
+  Live: the Williams renderer hydrates from a deck token, the studio previews
+  `/williams/` instead of `/pit/` with an authoring toolbar above the frame,
+  slides carry real captured thumbnails, Audience runs over 1 / 7 / 30 days,
+  and the marketing page's stakeholder section is a device that lifts as it
+  scrolls in.
+
+  **`/williams/` was 404ing in production before this deploy, and I caused it.**
+  `.vercelignore` deliberately keeps `williams/` IN the deployment while
+  `.gitignore` keeps it OUT of the repo — it is a real client's data and the
+  repo is public. That is correct, and it means a CLI deploy publishes a
+  complete site while a GIT-TRIGGERED deploy publishes one with no `/williams/`
+  at all. Vercel is git-connected, so pushing this repo to GitHub twice today
+  silently replaced production with a build missing the deck. The note at the
+  top of `.vercelignore` records the same failure happening once before.
+
+  Fixed by deploying from the CLI, and prevented by
+  `vercel.json → git.deploymentEnabled.main = false`. **Production is now
+  CLI-only: `vercel --prod --yes` from `orebody/`.** A `git push` no longer
+  deploys anything, which is the only safe arrangement while the deployment
+  and the repository hold different files.
+
+  Verified after the deploy: all 12 chapters walk with the camera landing on
+  its usual heights, render loop alive, no page errors, no failed requests,
+  and the live document is byte-identical to the local build.
+
 _Backlog opened 2026-08-08. Update this file and the linked issues as work lands._
