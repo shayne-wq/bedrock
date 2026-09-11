@@ -41,7 +41,12 @@ import { CONFIG } from "./config.js";
 // This pointed at /index.html, which Vercel's redirect does NOT rewrite — that
 // rule matches the bare path "/" and nothing else — so the studio framed the
 // marketing page and waited forever for a viewer that was never loaded.
-const VIEWER = "/pit/";
+/* The standard renderer. `/pit/` is still here and still opens a deck with a
+   block model in it; this is what every deck is drawn with otherwise, and it
+   is the one the marketing page shows. Previewing in a different product from
+   the one the audience gets is how the studio ended up showing a cut-off grade
+   slider and an AuEq legend over a property with no estimated resource. */
+const VIEWER = "/williams/";
 
 let deck = null, chapters = [], project = null;
 // Both previews, keyed the way everything else here is: 'wide' is 16:9 and

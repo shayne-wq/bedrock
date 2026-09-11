@@ -17,7 +17,9 @@ import { projectCandidates, toChapter, candidateGlyph, defaultOrder } from "./li
 // Vercel's redirect for a share token matches the bare path "/" and nothing
 // else, so every link and every embed snippet the console handed out opened the
 // homepage instead of the deck.
-const VIEWER = "/pit/";
+// The standard renderer — see studio.js. Share links and embed snippets must
+// point at the same product the studio previews.
+const VIEWER = "/williams/";
 let deck = null, chapters = [], project = null, links = [];
 let zones = [], datasets = [], candidates = [];
 let isClient = false;
