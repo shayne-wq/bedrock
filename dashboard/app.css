@@ -526,10 +526,17 @@ tbody tr[data-go]:hover td { background: var(--bg); }
    it should look like one. */
 .stview.tall { width: min(100%, 360px); margin-inline: auto; }
 
-/* Which frame Set view writes to. It is a selection, not decoration, so it
-   reads as one: the inactive frame recedes rather than the active one shouting. */
-.stview { opacity: .62; transition: opacity .12s, border-color .12s; cursor: pointer; }
-.stview.on { opacity: 1; border-color: var(--accent); }
+/* Which frame Set view writes to.
+   Dimming the inactive frame was right when both stood side by side. They no
+   longer do — `.stview.off` hides the one you are not looking at, so the frame
+   on screen IS the selection and there is nothing left for it to recede from.
+   The rule outlived that layout and kept its grip on the mobile frame, which
+   never received `on` (the markup stamps it on `wide` and paintActive only
+   toggled `off`): every phone preview rendered at 62% over a white page and
+   read as greyed out. The border still marks the selection; the opacity is
+   gone. */
+.stview { transition: border-color .12s; cursor: pointer; }
+.stview.on { border-color: var(--accent); }
 
 .stframehd {
   display: flex; align-items: baseline; justify-content: space-between;

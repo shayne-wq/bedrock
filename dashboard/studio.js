@@ -211,7 +211,11 @@ function setActive(w) {
 function paintActive() {
   for (const w of FRAMES) {
     const el = $(`stview_${w}`), tab = $(`sw_${w}`);
-    if (el) el.classList.toggle("off", active !== w);
+    // Both classes, because both mean something and they are not opposites:
+    // `off` hides the frame you are not looking at, `on` marks the one Set view
+    // writes to (its border, and its name in the header). Writing only `off`
+    // left `on` wherever the markup first put it.
+    if (el) { el.classList.toggle("off", active !== w); el.classList.toggle("on", active === w); }
     if (tab) {
       tab.classList.toggle("on", active === w);
       tab.setAttribute("aria-selected", String(active === w));
