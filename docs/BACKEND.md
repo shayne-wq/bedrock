@@ -53,11 +53,89 @@ the console's Audience panel reads.
 ```bash
 docker exec -i supabase_db_orebody psql -U postgres -d postgres \
   -v ON_ERROR_STOP=1 -f - < supabase/tests/rls_test.sql
+docker exec -i supabase_db_orebody psql -U postgres -d postgres \
+  -v ON_ERROR_STOP=1 -f - < supabase/tests/client_role_test.sql
 ```
 
-Fifteen assertions, including a deliberate check that one organisation cannot
-read another's analytics through the rollup functions. It exits non-zero if any
-of them stops holding.
+Fifteen assertions in the first, including a deliberate check that one
+organisation cannot read another's analytics through the rollup functions. The
+second covers the client role and invitations. Both exit non-zero if any
+assertion stops holding.
+
+## Roles, and how somebody gets an account
+
+Four roles: `owner`, `admin`, `member`, `client`.
+
+The first three are interchangeable for data purposes — all three are
+`is_org_editor` and may delete a project, its datasets and its share links.
+`admin` and `owner` additionally manage people.
+
+**`client` is the customer we built the deck for.** They may read their org's
+projects, decks and share links, and they may write **chapters** — the caption,
+the title, the camera, the running order, and deleting a slide. They may not
+delete a project or a dataset, rename a project, or create and revoke share
+links. This is enforced by policy, not by which buttons the console draws:
+`is_org_member` for reads, `is_org_editor` for the writes that destroy things,
+and `chapter_all` deliberately left at member because editing chapters is the
+entire point of the account.
+
+A client reads `share_links` because that is where the embed snippet comes
+from. Issuing and revoking tokens stays with us — the token is what decides who
+can see the deck at all.
+
+### Invitations
+
+`org_members` needs a `user_id`, which does not exist until somebody has signed
+in at least once, so there is no way to grant access ahead of time by writing to
+it. An invitation is therefore a row in `invites` keyed by **email**:
+
+1. An admin invites an address from **People** in the console.
+2. That person signs in at the console with the same address. Magic link, so
+   signing in confirms the address.
+3. The console calls `redeem_invites()` once per page load, before it lists
+   anything. Every live invitation matching their **confirmed** address becomes
+   an `org_members` row.
+
+`redeem_invites()` is SECURITY DEFINER — the caller is by definition not yet a
+member and cannot write `org_members` through RLS. Two things make that safe:
+the address comes from `auth.users` keyed on `auth.uid()` and never from an
+argument, so nobody can claim an invitation by naming it; and an **unconfirmed**
+address redeems nothing, so signing up as somebody else's address collects
+nothing of theirs. Matching is case-insensitive, or half the invitations sent
+would silently never land.
+
+`org_people(org)` exists because `org_members` stores no address and
+`auth.users` is not readable through RLS. It is DEFINER and therefore carries
+its own `is_org_admin` check in the WHERE clause — a client calling it gets
+nothing.
+
+### Sending the invitation
+
+The `invite` edge function emails it through Postmark. It runs on the **caller's
+JWT**, not the service role, so it reads `invites` through RLS and can only mail
+a row whose org the caller administers — a service-role version would be an open
+relay wearing our sender reputation.
+
+Two secrets, and it returns a 501 naming the missing one rather than failing
+vaguely:
+
+```bash
+supabase secrets set POSTMARK_TOKEN=<server API token> \
+                     POSTMARK_FROM=<a verified sender signature> \
+                     CONSOLE_URL=https://getbedrock.ca/dashboard/
+supabase functions deploy invite      # note: verify_jwt stays ON for this one
+```
+
+Sending is never fatal to inviting. If Postmark is unconfigured or down the
+invitation still stands and the People page still offers the link to forward by
+hand, which is what it did before this existed.
+
+**Magic links are a separate sender.** Sign-in email comes from Supabase Auth,
+not from this function, and with no custom SMTP it is capped at **2 emails per
+hour** for the whole project — enough to lock a client out on their first day.
+Point Auth at Postmark too: Authentication → Emails → SMTP, host
+`smtp.postmarkapp.com`, port 587, username and password both the server token,
+sender the same verified signature.
 
 ## 3. Deploy the edge functions
 
@@ -94,7 +172,7 @@ carries their membership.
 ## 5. Allow the redirect
 
 In Authentication → URL Configuration, add your deployed console URL (e.g.
-`https://bedrock-fawn.vercel.app/dashboard/`) to **Redirect URLs**, or the
+`https://getbedrock.ca/dashboard/`) to **Redirect URLs**, or the
 sign-in email will bounce users to the wrong place.
 
 ---

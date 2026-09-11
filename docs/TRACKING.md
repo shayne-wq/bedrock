@@ -32,6 +32,196 @@ model), and two sources of truth is one too many.
 
 ---
 
+## Williams migrated off the standalone build (2026-09-10)
+
+**The authored deck is ported**: the standalone build's twelve chapters — their
+sections, eyebrows, prose and cameras — now live in the platform deck. The
+generator's thirteen were replaced; it can propose a running order, it cannot
+write "Eleven contiguous mineral tenures... 100% owned and in good standing to
+November 2034". Cameras converted from the standalone's aim-at-a-point form
+(`lon/lat/alt/range/heading/pitch`) into the platform's `free` camera, which
+stores where the camera IS.
+
+**Two more bugs, both serious:**
+
+- [x] 🟢 **A real client's deck inherited the DEMO's fabricated deposit.** The
+  exploration branch of `hydrate` resets holes, site, claims and geophysics but
+  never reset `DEPOSITS`, so Williams drew Bedrock Demo's South Zone on Omega
+  Pacific's property, labelled "fabricated", under a red banner reading "one of
+  the deposits in this property view is FABRICATED". The comment 200 lines below
+  calls exactly this "the worst bug this viewer could have". Now cleared along
+  with `PITCUT`/`PIT_DEM`/`PIT_DEPOSIT`.
+- [x] 🟢 **`property` silently discards a chapter's camera.** `frameFor` does
+  `if(c.property){ frameProperty(); return; }` — the property-wide view frames
+  itself and returns before the authored camera is read. Mapping claims onto
+  `property` during the port threw away all twelve cameras; claims belong to
+  `site`. Worth knowing when authoring: a slide with `property` on cannot have
+  its own shot.
+
+- [ ] 🔴 **Geophysics product keys collide.** The type inference recognises TMI
+  and RTP and nothing else, so Williams' four IP grids all ingested as `grid`
+  and VTEM-RTP collided with the magnetics RTP. The IP chapters cannot select
+  their own grid. Needs chargeability / resistivity / CVG added, and a
+  disambiguator when two products infer the same key.
+- [ ] 🔴 **Intercept callouts overlap** when many holes are close together —
+  legible on the standalone build, a stack of unreadable labels here.
+
+
+
+Omega Pacific Resources -> project Williams (EPSG 26909, Toodoggone), zones
+T-Bill and GIC. Everything ingested through the console's own wizard rather
+than hand-built artifacts, so the formats are whatever the product produces.
+
+Drills 45 holes / 13,055 m / 5,234 intervals (planned holes excluded), claims
+11 tenures, geophysics 7 grids (TMI, RTP, CVG, VTEM, IP chg x2, IP res), soil
+4,298 samples on T-Bill, rock 1,022 on GIC. Logo in, colours read off it
+(#DBC088 / #EDE1CA). Deck of 13 chapters, share link issued.
+
+**Five bugs, all found by feeding it a real client's data:**
+
+- [x] 🟢 **`au_ppm` was unreadable.** The assay reader knew `au`, `au_gt`,
+  `grade`, `gold` — not the column name every lab deliverable actually uses.
+  Gold only: ppm and g/t are the same number for Au, `cu_ppm` is not.
+- [x] 🟢 **`geochem` and `topography` were never in `dataset_kind`.** The
+  console has offered both slots for weeks. Each one parses the file, builds the
+  artifact, uploads it to storage, and THEN fails the insert — after the slow
+  part. Nobody could ever have uploaded geochemistry.
+- [x] 🟢 **A deck for an exploration project loaded none of its own data.**
+  `newDeck` recorded `settings.zones` from zones with a BLOCK MODEL, and the
+  viewer loads side artifacts from `assetsOf(zones[0].id)`. No model meant no
+  zones meant no assets: terrain, chapters and captions rendered, with every
+  drill hole, grid and sample silently absent. Now every zone with DATA.
+- [x] 🟢 **REGRESSION, mine, shipped: `payload is not defined`.** The deck
+  inclusion work read `payload.deck.inclusion` from inside `loadSideArtifacts`,
+  which is handed an asset list and nothing else. It threw a ReferenceError that
+  killed the boot of EVERY deck carrying drill data — Elk Gold and Macpass
+  included — and it was live until Williams surfaced it. Captured in `hydrate`
+  now, where `payload` is in scope. **A viewer change needs a boot check against
+  a deck that HAS each artifact kind; the demo path did not exercise this.**
+- [ ] 🔴 **One dataset of each kind per zone.** Uploading soil then rock
+  geochemistry to one zone silently replaced the first — 4,503 samples gone,
+  "Geochemistry saved" both times, no warning. Worked around by splitting them
+  across zones, which is not what either dataset means. `geochem` needs a medium
+  discriminator; real projects carry soil, rock, till and stream sediment.
+
+- [ ] 🔴 **Generated cameras orbit the property centroid.** Fine for a single
+  modelled deposit; wrong for Williams, whose claim block is ~14 km across with
+  drilling clustered in a fraction of it — the drill chapters open on empty
+  ground reporting "no holes in view", and the GIC chapters reuse T-Bill's
+  angles. Either frame per chapter in the studio, or centre a generated camera
+  on the zone's own data extent rather than the project's.
+
+---
+
+## Shipped to production (2026-09-10)
+
+All four migrations applied to `czuaqwtngduvlisxonkh`, `deck` and `invite`
+deployed, site live on getbedrock.ca.
+
+- [x] 🟢 **Per-issuer branding.** Two colours read off the uploaded logo by
+  counting pixels — not by asking a model, which would need the image uploaded
+  and still be guessing at something the file states exactly. Verified against
+  six real mining logos; Bedrock's own symbol returns `#0088B0`, the accent in
+  its own stylesheet. Everything too dark for the deck's near-black ground is
+  lifted until it clears 4.5:1, hue kept. `VEIN_COLORS` and `CLS_COLOR` are
+  excluded by line: they are measurements, and recolouring them would change
+  what the deck says.
+- [x] 🟢 **Recording with narration and the full deck.** Mic merged into the
+  recorder; the tab is captured rather than the Cesium canvas, so caption
+  cards, chapter rail and the fabricated-data banner are in the video.
+  Compositing live DOM at 30fps is not a thing a browser will do. Verified
+  headless with a fake mic: real `.mp4` out, `avc1,mp4a.40.2`.
+- [x] 🟢 **Dual-frame studio + per-aspect cameras.** 16:9 full width with the
+  slide's fields and a 9:16 phone frame beneath. New `chapters.camera_portrait`,
+  empty means "use camera". The portrait CSS moved off a media query that could
+  never match inside a desktop iframe and onto a `body.portrait` class one JS
+  check sets.
+- [x] 🟢 **Deck inclusion.** `decks.inclusion` = rule + hide/show lists, applied
+  before headline intercepts are chosen so a hidden hole's best interval cannot
+  be quoted. Provenance states "Showing N of M drill holes"; a "Show all M"
+  control appears only when something is held back. Slide-level focus is
+  `layers.holes`, intersected with inclusion — a slide may narrow, never widen.
+  Rule logic unit-tested against the shipped function, 8 cases.
+- [x] 🟢 **Fixed: Fireweed Metals had no members.** Seeded with the service
+  role, which bypasses the `orgs_claim` trigger, so the Macpass project was
+  invisible to everyone including its owner. Ownership granted.
+- [x] 🟢 **Fixed: auth `site_url` pointed at the bare Vercel project**, so every
+  magic link landed on the marketing root instead of the console.
+
+- [ ] 🔴 **Postmark not yet configured.** `POSTMARK_TOKEN` / `POSTMARK_FROM`
+  unset, so `invite` returns 501 and the console falls back to "forward the
+  link". Auth SMTP is also unset — **2 emails/hour project-wide**.
+- [ ] 🔴 **Inclusion has no console UI.** The rule and the per-slide picker have
+  to be set by hand in SQL until built.
+- [ ] 🔴 **The console is single-org** (`state.orgs[0]` throughout). There are
+  now two orgs in production, so People invites always target the first one
+  alphabetically.
+- [ ] 🔴 **Inclusion wiring unverified in a browser.** Supabase-local signs
+  storage URLs against the internal Docker host, so the drills artifact never
+  reaches the page locally. Check it against production.
+
+---
+
+## P0 — the client workspace (2026-09-09)
+
+- [x] 🟢 **Clients can sign in and edit their own deck.**
+  A customer had no way into the console at all: `org_members` needs a
+  `user_id` that does not exist until they have signed in, and there was no
+  invite UI anywhere. Signing up got them an empty console and a prompt to
+  create their own organisation.
+  - Two migrations. `client_role` adds the enum value alone — Postgres refuses
+    to *use* a new label in the transaction that created it, and Supabase wraps
+    each migration in one. `client_editor` does the rest.
+  - **Reads stay at `is_org_member`; destructive writes move to
+    `is_org_editor`** (any member who is not a client). `datasets`, `decks` and
+    `share_links` each had a single `for all` policy that was also their only
+    route to SELECT, so each gained an explicit read before the write narrowed.
+    `chapter_all` is left at member on purpose — editing chapters IS the job.
+  - `invites` keyed by email + `redeem_invites()`, called once per page load
+    before anything lists projects. The address is read from `auth.users` on
+    `auth.uid()`, never from an argument, and an unconfirmed address redeems
+    nothing.
+  - `supabase/tests/client_role_test.sql` — 20 assertions. Verified it has
+    teeth by injection: loosening `project_write` back to `is_org_member` makes
+    it fail with "a client DELETED a project".
+
+- [x] 🟢 **The studio is the only place a deck is edited.**
+  It authored cameras and refused to touch prose, so every caption and every
+  reorder sent you back to the deck page and lost the shot you were looking at.
+  Now: filmstrip left, deck centre, inspector right. Title and caption beside
+  the camera, Set view / Set view + layers driven from the console, drag or
+  arrows to reorder, delete on the slide. Text autosaves on a 700 ms debounce;
+  the inspector only rebuilds when the *selected slide* changes, or it would
+  tear the caption out from under whoever is typing.
+
+- [x] 🟢 **Three path bugs that made the product not work.**
+  - `deck.js` built every share link and embed snippet against `/index.html`,
+    which is the **marketing site**. Vercel's token redirect matches the bare
+    path `/` and nothing else, so **every link the console ever handed out
+    opened the homepage**. Now `/pit/`.
+  - `studio.js` framed the same wrong path, so the studio waited forever for a
+    viewer that was never loaded. `tools/author_harness.html` too.
+  - `paintList()` read a `timings` object that was never declared. In a module
+    that is a ReferenceError, so the chapter list threw on every repaint.
+
+- [x] 🟢 **`wire()` now binds copy buttons.** `[data-copy-text]` was only ever
+  bound document-wide by whichever modal happened to open, so the same markup
+  on a panel did nothing when pressed.
+
+- [ ] 🔴 **Invitation emails are not sent.** The console shows the pending
+  invite and tells you to forward the console link. Wiring this to Supabase
+  auth's invite, or to any transactional sender, is the obvious next step.
+
+- [x] 🟢 **The deck page hides what a client cannot do.** They were shown a
+  Build-the-deck panel, Publish, Create-a-share-link, Revoke and an editable
+  deck title — every one of which the database refuses, so every one of which
+  would have failed silently. All gated on the role now, and the handlers are
+  guarded so a missing element cannot throw partway through render and take the
+  rest of the page with it. What a client keeps: the chapter list, the embed
+  panel, Preview, Audience, and the studio.
+
+---
+
 ## P0 — exploration blockers
 
 - [x] 🟢 **#1 — Support pure-exploration projects: make the block model optional.**
@@ -672,7 +862,7 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   retest on the actual phone.
 
 - **2026-09-01 (fifteenth pass)** — **Williams live at
-  <https://bedrock-fawn.vercel.app/williams/>.** Deployed as a SUBPATH of the
+  <https://getbedrock.ca/williams/>.** Deployed as a SUBPATH of the
   existing Bedrock project rather than as its own, so it is on the Bedrock
   domain. `orebody/williams/` is a build copy of `Bedrock/williams/`; the source
   is the latter. There is no custom bedrock domain registered —
@@ -2261,5 +2451,62 @@ whoever reaches for it next, with the reasoning in the code. 37/37 UI,
   `<org_id>/…` storage paths, re-exposing the tenant UUID the payload
   deliberately omits. Both fixed; four assertions added. **Not yet run** —
   OrbStack has a pending update and will not start its daemon.
+
+- **2026-09-10** — **The Williams renderer now hydrates from a deck token.**
+  `williams/index.html` reads `?t=<share token>&api=<url>`; with no token it
+  reads the seven static files exactly as before. `williams/hydrate.js` adapts a
+  console payload into those same seven shapes, so nothing below the seam knows
+  which source it got. Verified against the live Williams deck: all 45 drilled
+  collars land within **0.00 m** of the static build, all **60** Au composites
+  are identical, `best_au` matches on every hole, all **12** district holders
+  match on hectares/tenures/anchor, the subject outline is the same 136
+  segments, and the soil percentile breaks are identical. All 12 chapters walk
+  with the camera landing on the static build's exact heights.
+
+  Four defects found and fixed on the way, three of which were live bugs in the
+  existing product:
+
+  * **A logo with no dimensions killed the deck, silently.** The district card
+    sizes a mark from its aspect ratio, so a logo entry without pixel w/h gave
+    a NaN-wide billboard → NaN bounding volume → throw in Cesium's frustum
+    pass → Cesium stops the render loop, and with `showRenderLoopErrors:false`
+    says nothing. The deck froze on its opening frame while every chapter kept
+    advancing its text over a camera that would not move. The renderer now
+    declines to draw a mark it cannot size; the adapter measures them at load.
+  * **Embedded Launch dropped the query string.** `window.top.location.href =
+    origin + pathname + '?cover=0'` threw away `t` and `api`. On a hydrated
+    deck that is not a lost setting — the viewer reloads with no token and
+    falls back to the files beside it, drawing *this* property's drilling over
+    whoever's ground was embedded. Now carries the whole query string.
+  * **Geophysics rasters were unaddressable.** `derived.json` names a product
+    `mag_rtp.png`; the image sits beside it in a private bucket as
+    `images__mag_rtp.png`. A bare filename resolves against the *viewer's*
+    origin, so seven flown surveys 404'd. The `deck` function now signs the
+    raster siblings and returns `files`; deployed.
+  * **Chapter copy contradicted the chapter's own data.** The geochem prose
+    carried typed-in counts beside a legend computed from the survey, so the
+    hydrated deck read "4,298 soil samples" in its eyebrow over "4,503 soil
+    samples" in the sentence below it. Both chapters now derive their counts
+    and thresholds from the breaks they draw.
+
+  **Known gaps, all ingest-side, none in the adapter:**
+  * 17 planned holes are not in the console (45 of 62) — the console has no
+    notion of a planned hole, so the 2026-program chapter has nothing to draw.
+  * Geochem ingest skipped 205 soil and 3 rock rows; it records the count but
+    not the reason. The deck reports what it has, so nothing on screen is
+    untrue — but the client handed over 4,503 samples and the deck shows 4,298.
+  * Zones carry no `note`, so the zone geology lines are blank on a hydrated
+    deck. Editorial per-holder fields (`operator`, `anchor`, `prefer`) now live
+    in `projects.holders` and are honoured; `note` for zones wants the same.
+  * The geophysics key inference still only knows TMI and RTP. The adapter
+    recovers the real key from the filename and de-collides, so no raster is
+    lost, but ingest should be doing this.
+  * Two rings in the site artifact have null props; the adapter drops them
+    (they would have put "13 tenures" on a chapter that must say 11).
+
+  **Not yet done:** the console still points at `/pit/`. Switching `VIEWER`
+  is the next step, and the console bridge — `?author=1`, per-aspect cameras,
+  brand colours, inclusion, recording — has to be carried into this renderer
+  before that switch is safe. `/pit/` and block-model support stay.
 
 _Backlog opened 2026-08-08. Update this file and the linked issues as work lands._

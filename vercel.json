@@ -3,12 +3,31 @@
   "redirects": [
     {
       "source": "/",
-      "has": [{ "type": "query", "key": "t" }],
+      "has": [
+        {
+          "type": "query",
+          "key": "t"
+        }
+      ],
       "destination": "/pit/",
       "permanent": false
     }
   ],
   "rewrites": [
-    { "source": "/pit/data/:path*", "destination": "/data/:path*" }
+    {
+      "source": "/pit/data/:path*",
+      "destination": "/data/:path*"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/dashboard/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate, no-cache"
+        }
+      ]
+    }
   ]
 }

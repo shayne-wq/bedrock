@@ -6,16 +6,21 @@
 // their website, they want to know it was watched.
 
 import {
-  db, $, esc, fmtInt, fmtDur, fmtDate, fmtT, fmtOz,
+  db, state, $, esc, fmtInt, fmtDur, fmtDate, fmtT, fmtOz,
   toast, fail, modal, closeModal, skeleton, wire,
 } from "./lib/ui.js";
 import { CONFIG } from "./config.js";
 // Shared with the viewer: one definition of what a slide is.
 import { projectCandidates, toChapter, candidateGlyph, defaultOrder } from "./lib/slides.js";
 
-const VIEWER = "/index.html";
+// The viewer is /pit/. This said "/index.html", which is the marketing site —
+// Vercel's redirect for a share token matches the bare path "/" and nothing
+// else, so every link and every embed snippet the console handed out opened the
+// homepage instead of the deck.
+const VIEWER = "/pit/";
 let deck = null, chapters = [], project = null, links = [];
 let zones = [], datasets = [], candidates = [];
+let isClient = false;
 
 // The layers a chapter can turn on. Kept in one place so the editor and the
 // viewer cannot drift apart on spelling.
@@ -59,6 +64,10 @@ export async function renderDeck(id, view) {
   // project's stage, or by null on a first load.
   suggestion = defaultOrder(candidates, zones, 14, p);
   project = p; chapters = ch || []; links = ln || [];
+  // A client may edit chapters and read the embed snippet, and nothing else on
+  // this page. The database refuses the rest either way — this is so we do not
+  // draw a button whose only outcome is a silent failure.
+  isClient = state.roles?.[project.org_id] === "client";
   const fabricated = (ds || []).filter((x) => x.synthetic);
   const blocks = (ds || []).find((x) => x.kind === "blocks");
 
@@ -67,13 +76,13 @@ export async function renderDeck(id, view) {
       <div class="grow">
         <span class="eyebrow"><a href="#/">Projects</a> /
           <a href="#/p/${project.id}">${esc(project.name)}</a></span>
-        <h1 id="dtitle" contenteditable="plaintext-only"
+        <h1 id="dtitle" ${isClient ? "" : 'contenteditable="plaintext-only"'}
             style="outline:none;border-bottom:1px dashed transparent"
             title="Click to rename">${esc(deck.title)}</h1>
         <!-- The subtitle is on the deck's opening card in the viewer and was
              readable everywhere and editable nowhere: set once at creation,
              then permanent. -->
-        <p id="dsub" contenteditable="plaintext-only"
+        <p id="dsub" ${isClient ? "" : 'contenteditable="plaintext-only"'}
            style="outline:none;margin:4px 0 0;color:var(--ink-2);font-size:14px"
            data-placeholder="Add a subtitle"
            title="Click to edit">${esc(deck.subtitle || "")}</p>
@@ -81,7 +90,7 @@ export async function renderDeck(id, view) {
       <div class="row-actions">
         <span class="chip ${deck.status === "published" ? "live" : "draft"}"
               id="statuschip">${esc(deck.status)}</span>
-        <button class="btn" id="pub">${deck.status === "published" ? "Unpublish" : "Publish"}</button>
+        ${isClient ? "" : `<button class="btn" id="pub">${deck.status === "published" ? "Unpublish" : "Publish"}</button>`}
         <button class="btn" id="preview">Preview</button>
         <a class="btn primary" href="#/s/${deck.id}"
            title="Fly the deck and save the shots you land on">Studio</a>
@@ -101,6 +110,7 @@ export async function renderDeck(id, view) {
       <div class="stat"><span class="l">Contained</span><b>${fmtOz(blocks.stats.total.oz)}</b></div>
     </div>` : ""}
 
+    ${isClient ? "" : `
     <div class="panel">
       <div class="row"><h2 class="grow">Build the deck</h2>
         <span class="hint">${candidates.length} slides available from your data</span></div>
@@ -128,14 +138,16 @@ export async function renderDeck(id, view) {
           </div>
         </div>
       </div>
-    </div>
+    </div>`}
+
+    <div class="panel" id="embedpanel"></div>
 
     <div class="panel">
       <h2>Sharing</h2>
       <div id="shares"></div>
-      <div class="row-actions" style="margin-top:14px">
+      ${isClient ? "" : `<div class="row-actions" style="margin-top:14px">
         <button class="btn primary" id="newlink">Create a share link</button>
-      </div>
+      </div>`}
     </div>
 
     <div class="panel">
@@ -146,10 +158,11 @@ export async function renderDeck(id, view) {
   wire(view);
   renderChapters();
   renderShares();
+  renderEmbedPanel();
   renderAnalytics();
 
   // Saved on blur, like the title, rather than per keystroke.
-  $("dsub").onblur = async () => {
+  if ($("dsub")) $("dsub").onblur = async () => {
     const v = $("dsub").textContent.trim();
     if (v === (deck.subtitle || "")) return;
     const { error } = await db.from("decks")
@@ -167,7 +180,7 @@ export async function renderDeck(id, view) {
                 "_blank", "noopener");
   };
 
-  $("pub").onclick = async () => {
+  if ($("pub")) $("pub").onclick = async () => {
     const next = deck.status === "published" ? "draft" : "published";
     const { error: e2 } = await db.from("decks").update({ status: next }).eq("id", deck.id);
     if (e2) return fail("Publish", e2);
@@ -187,11 +200,13 @@ export async function renderDeck(id, view) {
     deck.title = t;
     toast("Renamed");
   };
-  title.onblur = saveTitle;
-  title.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); title.blur(); } };
+  if (title.isContentEditable) {
+    title.onblur = saveTitle;
+    title.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); title.blur(); } };
+  }
 
-  $("addch").onclick = addChapter;
-  $("newlink").onclick = newLink;
+  if ($("addch")) $("addch").onclick = addChapter;
+  if ($("newlink")) $("newlink").onclick = newLink;
 
   // Seed the running order from what the deck already holds, matching saved
   // chapters back to candidates by title so re-opening the builder shows the
@@ -201,10 +216,12 @@ export async function renderDeck(id, view) {
   // by TITLE, which is what this did, broke the instant anybody renamed a
   // slide: the chapter fell out of the running order and the next save deleted
   // it as though it had been removed.
-  seedOrder();
-  paintBuilder();
-  $("saveorder").onclick = (e) => saveOrder(e.currentTarget);
-  $("suggest").onclick = useSuggested;
+  if (!isClient) {
+    seedOrder();
+    paintBuilder();
+    $("saveorder").onclick = (e) => saveOrder(e.currentTarget);
+    $("suggest").onclick = useSuggested;
+  }
 }
 
 // --------------------------------------------------------------- builder ---
@@ -610,12 +627,73 @@ function shareUrl(token, embed) {
          `&api=${encodeURIComponent(api)}${embed ? "&embed=1" : ""}`;
 }
 
+/** The snippet, on the page, already filled in.
+ *
+ *  It used to live behind a button on a row of a table inside a panel called
+ *  Sharing, which is three guesses away from "how do we put this on our
+ *  website" — the single most common thing a customer wants from the console
+ *  after the deck is built. */
+function renderEmbedPanel() {
+  const el = $("embedpanel");
+  if (!el) return;
+  const now = Date.now();
+  const live = links.find((l) => !l.revoked_at && l.allow_embed &&
+    (!l.expires_at || new Date(l.expires_at).getTime() > now));
+
+  if (!live) {
+    const blocked = links.some((l) => !l.revoked_at && !l.allow_embed);
+    el.innerHTML = `<h2>Put this on your website</h2>
+      <div class="empty sm"><p>${blocked
+        ? `Your share links are set to <b>no embedding</b>. Create one with
+           embedding allowed and the snippet appears here, ready to paste.`
+        : `Create a share link below and the snippet appears here, ready to
+           paste into your site.`}</p></div>`;
+    return;
+  }
+
+  const src = shareUrl(live.token, true);
+  const snippet =
+`<!-- ${deck.title} -->
+<div style="position:relative;width:100%;padding-top:56.25%;border-radius:6px;overflow:hidden;background:#07090A">
+  <iframe src="${src}"
+    title="${deck.title}" loading="lazy" allowfullscreen
+    style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
+</div>`;
+
+  el.innerHTML = `
+    <div class="row">
+      <div class="grow">
+        <h2>Put this on your website</h2>
+        <p class="sub" style="margin:2px 0 0">Paste into a WordPress Custom HTML
+           block, an Elementor HTML widget, or a Squarespace code block. It holds
+           a 16:9 shape at any width.</p>
+      </div>
+      <span class="chip live">${esc(live.label || "live link")}</span>
+    </div>
+
+    <pre class="snip embed">${esc(snippet)}</pre>
+    <div class="row-actions">
+      <button class="btn primary" data-copy-text="${esc(snippet)}">Copy the snippet</button>
+      <button class="btn" data-copy-text="${esc(src)}">Copy the URL instead</button>
+      <button class="btn" id="embedmore">Other platforms</button>
+    </div>
+    <p class="hintline">Wix, Notion and Confluence take the <b>URL</b>, not the
+       markup. PowerPoint and Google Slides each need something different —
+       <b>Other platforms</b> has the exact steps.</p>`;
+
+  wire(el);
+  $("embedmore").onclick = () => embedSnippet(live.token);
+}
+
 function renderShares() {
   const el = $("shares");
   if (!links.length) {
     el.innerHTML = `<div class="empty"><h3>Not shared yet</h3>
-      <p>A share link is what you send, and what an embed on your website points
-         at. Each one can be revoked on its own.</p></div>`;
+      <p>${isClient
+        ? `A share link is what your deck is served through, and what an embed on
+           your website points at. Ask us to issue one.`
+        : `A share link is what you send, and what an embed on your website points
+           at. Each one can be revoked on its own.`}</p></div>`;
     return;
   }
   el.innerHTML = `<div class="tablewrap"><table>
@@ -638,7 +716,7 @@ function renderShares() {
         <td class="n"><div class="row-actions" style="justify-content:flex-end">
           <button class="btn sm" data-copy="${esc(l.token)}" ${dead ? "disabled" : ""}>Copy link</button>
           <button class="btn sm" data-embed="${esc(l.token)}" ${dead || !l.allow_embed ? "disabled" : ""}>Embed</button>
-          ${l.revoked_at ? "" : `<button class="btn sm danger" data-rev="${l.id}">Revoke</button>`}
+          ${l.revoked_at || isClient ? "" : `<button class="btn sm danger" data-rev="${l.id}">Revoke</button>`}
         </div></td></tr>`;
     }).join("")}</tbody></table></div>`;
 
@@ -656,6 +734,7 @@ function renderShares() {
       const l = links.find((x) => x.id === b.dataset.rev);
       if (l) l.revoked_at = new Date().toISOString();
       renderShares();
+      renderEmbedPanel();
       toast("Link revoked");
     });
 }
@@ -715,6 +794,7 @@ function newLink() {
     links.unshift(data);
     closeModal();
     renderShares();
+    renderEmbedPanel();
     toast("Share link created");
   };
 }

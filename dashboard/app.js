@@ -14,6 +14,7 @@ import { sniff } from "./lib/formats.js";
 import { renderDeck } from "./deck.js";
 import { renderStudio, teardownStudio } from "./studio.js";
 import { STAGES, stageEvidence } from "./lib/stage.js";
+import { paletteFrom, BRAND_FALLBACK } from "./lib/palette.js";
 
 const view = $("view");
 
@@ -112,6 +113,10 @@ $("signout").onclick = async () => { await db.auth.signOut(); location.hash = ""
 // removed: a run that never settles leaves the flag raised and freezes the
 // console on whatever rendered last, which is a far worse failure than the brief
 // double render it avoids. Renders here are a handful of DOM writes.
+// Redeeming is per page load, not per route: it is a write, and running it on
+// every hash change would fire it a dozen times a session for no gain.
+let redeemed = false;
+
 async function route() {
   if (!CONFIGURED) return renderSetup();
   // The client is the authority on whether we are signed in, not a cached copy.
@@ -126,15 +131,46 @@ async function route() {
   // console renders a blank page the first time a user ever signs in, which is
   // the worst possible moment for it.
   teardownStudio();
+
+  // An invited client has NO organisation until the invitation is redeemed,
+  // and it can only be redeemed by them, signed in, holding a verified address.
+  // So it happens here, once, before anything tries to list their projects —
+  // otherwise their first sign-in shows "create your first organisation" and
+  // the deck we built for them is nowhere.
+  //
+  // Failure is swallowed on purpose: on a deployment where the migration has
+  // not been applied the function does not exist, and a missing RPC must not
+  // take the whole console down for everyone who does not need it.
+  if (!redeemed) {
+    redeemed = true;
+    try {
+      const { data: n, error } = await db.rpc("redeem_invites");
+      if (!error && n > 0) {
+        toast(n === 1 ? "You have been added to an organisation"
+                      : `You have been added to ${n} organisations`);
+      }
+    } catch { /* no such function yet */ }
+  }
+
   const raw = location.hash.startsWith("#/") ? location.hash.slice(2) : "";
   const h = raw.split("/");                        // "#/p/<id>" -> ["p", id]
   await loadOrgs();
   // Every route in the console — a project, a deck, the studio — lives inside
   // Projects, so the one nav item reads active throughout rather than only on
   // the list, where the highlight would be telling you what the page already is.
+  // People is the exception because it is not inside a project.
+  // The studio is a working surface, not a page you browse. The app rail costs
+  // 240px that the 16:9 preview wants, and everything on it — Projects, People,
+  // sign out — is one click away up the breadcrumb. Hidden here, restored
+  // everywhere else.
+  document.body.classList.toggle("instudio", h[0] === "s" && !!h[1]);
+
+  const onPeople = h[0] === "people";
   document.querySelector("#rail nav").innerHTML =
-    `<a href="#/" class="on">Projects</a>`;
+    `<a href="#/" class="${onPeople ? "" : "on"}">Projects</a>` +
+    (isAdmin() ? `<a href="#/people" class="${onPeople ? "on" : ""}">People</a>` : "");
   try {
+    if (h[0] === "people") return await renderPeople();
     if (h[0] === "p" && h[1]) return await renderProject(h[1]);
     if (h[0] === "s" && h[1]) return await renderStudio(h[1], view);
     if (h[0] === "d" && h[1]) return await renderDeck(h[1], view);
@@ -150,6 +186,214 @@ async function loadOrgs() {
   // your first organisation" to someone who already had one.
   state.orgs = data || [];
   if (error) fail("Organisations", error);
+
+  // Which hat the signed-in person wears. A client sees their deck and edits
+  // it; they do not see People, and the database will refuse the writes the
+  // console does not offer them either way — this only decides what to draw.
+  //
+  // Filtered to this user explicitly. `member_read` lets you see EVERY member
+  // row of an org you belong to, so an unfiltered select returns your
+  // colleagues too and the last row wins — an owner who had invited one client
+  // was handed that client's role and lost the whole Build-the-deck panel.
+  const uid = state.session?.user?.id;
+  state.roles = {};
+  if (uid) {
+    const { data: mine } = await db.from("org_members")
+      .select("org_id, role").eq("user_id", uid);
+    for (const m of mine || []) state.roles[m.org_id] = m.role;
+  }
+}
+
+/** Role in the org the console is currently showing. One org per console
+ *  today — orgs[0] everywhere else in this file — so this follows that. */
+export function myRole() {
+  return state.roles?.[state.orgs[0]?.id] || null;
+}
+const isAdmin = () => ["owner", "admin"].includes(myRole());
+
+// ---------------------------------------------------------------- people ---
+// Inviting is by email because that is the only handle we have: a person has
+// no user id until they have signed in at least once, so the invitation is a
+// row keyed by address that attaches itself the first time they arrive.
+
+const ROLE_NOTE = {
+  client: "Edits their decks — slides, captions, cameras, running order. Cannot delete the project, its data, or share links.",
+  member: "Full access to projects and data. Can delete both.",
+  admin: "Everything a member can do, plus inviting and removing people.",
+  owner: "The organisation's owner.",
+};
+
+async function renderPeople() {
+  view.innerHTML = `<header class="page"><span class="eyebrow">Bedrock</span>
+    <h1>People</h1></header>${skeleton(3)}`;
+
+  const org = state.orgs[0];
+  if (!org) return renderFirstOrg();
+  if (!isAdmin()) {
+    view.innerHTML = `<div class="empty"><h3>Admins only</h3>
+      <p>Managing access is an owner and admin job.</p>
+      <a class="btn" href="#/">Back to projects</a></div>`;
+    return;
+  }
+
+  const [{ data: people, error: pe }, { data: invites, error: ie }] = await Promise.all([
+    db.rpc("org_people", { p_org: org.id }),
+    db.from("invites").select("*").eq("org_id", org.id)
+      .is("accepted_at", null).order("created_at", { ascending: false }),
+  ]);
+
+  // The one error worth stopping for: both of these arrive together only when
+  // the migration has been applied, and saying so beats an empty page.
+  if (pe || ie) {
+    view.innerHTML = `<header class="page"><h1>People</h1></header>
+      <div class="empty"><h3>Not available yet</h3>
+      <p>Invitations need the <code>client_editor</code> migration. Run
+         <code>supabase db push</code> and reload.</p>
+      <a class="btn" href="#/">Back to projects</a></div>`;
+    return;
+  }
+
+  const me = state.session?.user?.id;
+  view.innerHTML = `
+    <header class="page"><div class="row">
+      <div class="grow">
+        <span class="eyebrow">${esc(org.name)}</span>
+        <h1>People</h1>
+      </div>
+      <button class="btn primary" id="inv">Invite someone</button>
+    </div></header>
+
+    <div class="panel">
+      <div class="panel-hd"><h2>Has access</h2></div>
+      <div class="rows" id="plist">
+        ${(people || []).map((p) => `
+          <div class="rowline">
+            <div class="grow">
+              <b>${esc(p.email)}${p.user_id === me ? " (you)" : ""}</b>
+              <span class="sub">${esc(ROLE_NOTE[p.role] || "")}</span>
+            </div>
+            <span class="pill ${esc(p.role)}">${esc(p.role)}</span>
+            ${p.user_id === me || p.role === "owner" ? ""
+              : `<button class="btn sm danger" data-drop="${esc(p.user_id)}">Remove</button>`}
+          </div>`).join("")}
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hd"><h2>Invited, not yet signed in</h2></div>
+      ${!(invites || []).length
+        ? `<div class="empty sm"><p>No outstanding invitations.</p></div>`
+        : `<div class="rows">${invites.map((i) => `
+          <div class="rowline">
+            <div class="grow">
+              <b>${esc(i.email)}</b>
+              <span class="sub">Invited ${fmtDate(i.created_at)} ·
+                expires ${fmtDate(i.expires_at)}</span>
+            </div>
+            <span class="pill ${esc(i.role)}">${esc(i.role)}</span>
+            <button class="btn sm" data-resend="${esc(i.id)}"
+              title="Email this invitation again">Resend</button>
+            <button class="btn sm" data-copy-text="${esc(location.origin + location.pathname)}"
+              title="They sign in with this address at the console">Copy link</button>
+            <button class="btn sm danger" data-void="${esc(i.id)}">Revoke</button>
+          </div>`).join("")}</div>`}
+      <p class="hintline" style="padding:0 16px 14px">Invitations are emailed
+         when you create them. If mail is not configured the invitation still
+         stands — forward the console link and tell them to sign in with the
+         address you invited. Either way it attaches on their first sign-in.</p>
+    </div>`;
+
+  wire(view);
+  $("inv").onclick = () => inviteModal(org);
+  view.querySelectorAll("[data-resend]").forEach((b) => b.onclick = async () => {
+    b.disabled = true;
+    await sendInvite(b.dataset.resend);
+    b.disabled = false;
+  });
+  view.querySelectorAll("[data-void]").forEach((b) => b.onclick = async () => {
+    const { error } = await db.from("invites").delete().eq("id", b.dataset.void);
+    if (error) return fail("Revoke invitation", error);
+    toast("Invitation revoked");
+    route();
+  });
+  view.querySelectorAll("[data-drop]").forEach((b) => b.onclick = async () => {
+    if (!confirm("Remove this person's access?")) return;
+    const { error } = await db.from("org_members").delete()
+      .eq("org_id", org.id).eq("user_id", b.dataset.drop);
+    if (error) return fail("Remove", error);
+    toast("Access removed");
+    route();
+  });
+}
+
+function inviteModal(org) {
+  modal(`<h2>Invite someone</h2>
+    <p class="sub">They sign in at this console with the address you enter. The
+       invitation attaches itself the first time they do.</p>
+    <div class="field"><label for="ivmail">Email</label>
+      <input type="email" id="ivmail" placeholder="name@company.com"></div>
+    <div class="field"><label for="ivrole">Role</label>
+      <select id="ivrole">
+        <option value="client" selected>Client — edits their decks</option>
+        <option value="member">Member — full access to projects</option>
+        <option value="admin">Admin — full access, and manages people</option>
+      </select></div>
+    <p class="hintline" id="ivnote">${esc(ROLE_NOTE.client)}</p>
+    <div class="row-actions" style="margin-top:16px">
+      <button class="btn primary" id="ivgo">Send invitation</button>
+      <button class="btn" id="ivno">Cancel</button>
+    </div>`);
+  $("ivno").onclick = closeModal;
+  $("ivrole").onchange = () => { $("ivnote").textContent = ROLE_NOTE[$("ivrole").value] || ""; };
+  $("ivgo").onclick = async () => {
+    const email = $("ivmail").value.trim().toLowerCase();
+    if (!email || email.indexOf("@") < 1) return toast("That is not an email address", true);
+    const { data, error } = await db.from("invites").insert({
+      org_id: org.id, email, role: $("ivrole").value,
+      invited_by: state.session?.user?.id || null,
+    }).select("id").single();
+    if (error) {
+      // The partial unique index is the likely one, and "duplicate key" is not
+      // a sentence anybody should have to read.
+      return fail(/duplicate|unique/i.test(error.message || "")
+        ? "That address already has an outstanding invitation" : "Invite", error);
+    }
+    closeModal();
+    // Created and sent are two different things, and the console used to
+    // conflate them by saying "Invitation created" and leaving the sending to
+    // a human who mostly did not do it.
+    toast("Invitation created — sending…");
+    await sendInvite(data?.id);
+    route();
+  };
+}
+
+/** Ask the edge function to email the invitation.
+ *
+ *  Never fatal. The row is the invitation; the email is a convenience, and a
+ *  Postmark outage or an unconfigured environment must leave you with a working
+ *  invitation you can forward by hand — which is exactly what the People page
+ *  still offers. */
+async function sendInvite(id) {
+  if (!id) return;
+  try {
+    const { data: sess } = await db.auth.getSession();
+    const jwt = sess?.session?.access_token;
+    if (!jwt) return;
+    const res = await fetch(`${CONFIG.url.replace(/\/$/, "")}/functions/v1/invite`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
+      body: JSON.stringify({ inviteId: id }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok) return toast(`Invitation emailed to ${body.to || "them"}`);
+    toast(res.status === 501
+      ? "Invitation created, but email is not set up yet — forward the link"
+      : `Invitation created, but the email did not send: ${body.detail || res.statusText}`,
+      true);
+  } catch {
+    toast("Invitation created, but the email did not send — forward the link", true);
+  }
 }
 
 // ------------------------------------------------------------------ home ---
@@ -430,12 +674,42 @@ async function renderProject(id) {
           <label for="bsum">Property description</label>
           <textarea id="bsum" rows="3" placeholder="One paragraph. This is read aloud on the second slide, and it is the only sentence most people will remember.">${esc(p.brand?.summary || "")}</textarea>
           <div class="row-actions" style="margin-top:8px">
-            <label class="btn sm">Upload logo<input type="file" accept="image/*" hidden id="blogo"></label>
+            <label class="btn sm">${p.brand?.logo ? "Replace logo" : "Upload logo"}<input type="file" accept="image/*" hidden id="blogo"></label>
             ${p.brand?.logo ? `<button class="btn sm danger" id="brmlogo">Remove logo</button>` : ""}
             <button class="btn sm primary" id="bsave">Save description</button>
           </div>
         </div>
       </div>
+
+      ${p.brand?.logo ? `
+      <div class="brandcolours">
+        <div class="row" style="margin-bottom:10px">
+          <div class="grow">
+            <h3 style="margin:0">Deck colours</h3>
+            <p class="sub" style="margin:2px 0 0">Read off your logo. These colour the
+               chapter labels, the transport arrows, the progress bar and your own
+               ground on the claim map.</p>
+          </div>
+          <button class="btn sm" id="bpick">${p.brand?.colors?.length ? "Take them again" : "Take them from the logo"}</button>
+        </div>
+        ${p.brand?.colors?.length ? `
+          <div class="swatches">
+            ${p.brand.colors.map((c, i) => `
+              <label class="swatch">
+                <input type="color" id="bcol${i}" value="${esc(c)}">
+                <span class="chipc" style="background:${esc(c)}"></span>
+                <span class="lab">${i === 0 ? "Primary" : "Secondary"}</span>
+                <span class="hex">${esc(c)}</span>
+              </label>`).join("")}
+            <button class="btn sm" id="bcolsave">Save colours</button>
+            <button class="btn sm danger" id="bcolclear">Use Bedrock gold</button>
+          </div>
+          <p class="hintline" style="margin-top:8px">Anything too dark to read on the
+             deck's near-black background is lifted until it clears contrast, keeping
+             its hue. Override either one above if the automatic pick is wrong.</p>`
+        : `<p class="hintline" style="margin:0">No colours taken yet — the deck is using
+             Bedrock's gold.</p>`}
+      </div>` : ""}
     </div>
 
     <div class="panel" id="nbpanel" hidden>
@@ -503,10 +777,40 @@ async function renderProject(id) {
   $("blogo").onchange = async () => {
     const f = $("blogo").files?.[0];
     if (!f) return;
-    try { await saveBrand(p, { logo: await shrinkLogo(f, 256) }); }
-    catch (e) { fail("Logo", e); }
+    try {
+      const logo = await shrinkLogo(f, 256);
+      // Colours come off the logo in the same action that uploads it. Making
+      // it a second, separate button means most decks would never get branded.
+      let colors, monochrome = false;
+      try { ({ colors, monochrome } = await paletteFrom(logo)); }
+      catch { colors = undefined; }
+      await saveBrand(p, { logo, colors });
+      toast(monochrome
+        ? "Logo saved — it is black and white, so the deck keeps Bedrock's gold"
+        : "Logo saved, and the deck now uses its colours");
+    } catch (e) { fail("Logo", e); }
   };
-  if ($("brmlogo")) $("brmlogo").onclick = () => saveBrand(p, { logo: null });
+  if ($("brmlogo")) $("brmlogo").onclick = () => saveBrand(p, { logo: null, colors: null });
+
+  if ($("bpick")) $("bpick").onclick = async () => {
+    if (!p.brand?.logo) return;
+    try {
+      const { colors, monochrome } = await paletteFrom(p.brand.logo);
+      if (monochrome) return toast("That logo is black and white — nothing to take", true);
+      await saveBrand(p, { colors });
+    } catch (e) { fail("Colours", e); }
+  };
+  if ($("bcolsave")) $("bcolsave").onclick = () => saveBrand(p, {
+    colors: [$("bcol0").value.toUpperCase(), $("bcol1").value.toUpperCase()],
+  });
+  if ($("bcolclear")) $("bcolclear").onclick = () => saveBrand(p, { colors: null });
+  view.querySelectorAll(".swatch input[type=color]").forEach((inp) => {
+    inp.oninput = () => {
+      const w = inp.closest(".swatch");
+      w.querySelector(".chipc").style.background = inp.value;
+      w.querySelector(".hex").textContent = inp.value.toUpperCase();
+    };
+  });
   view.querySelectorAll("[data-del]").forEach((b) => {
     b.onclick = async () => {
       if (!confirm("Remove this dataset? Decks that use it will stop rendering it.")) return;
@@ -612,7 +916,13 @@ async function renderProject(id) {
     });
   });
   for (const k of ["addzone", "addzone2"]) if ($(k)) $(k).onclick = () => addZone(p);
-  for (const k of ["newdeck", "newdeck2"]) if ($(k)) $(k).onclick = () => newDeck(p, zonesWithBlocks);
+  // Every zone that HAS DATA, not every zone that has a block model. The
+  // button is already enabled on zonesWithData, and the viewer loads a deck's
+  // side artifacts from `assetsOf(zones[0].id)` — so a deck created for an
+  // exploration project recorded no zones and then silently loaded none of its
+  // own drilling, geochemistry or geophysics. It rendered: terrain, chapters,
+  // captions, and no data. Found importing a real client's project.
+  for (const k of ["newdeck", "newdeck2"]) if ($(k)) $(k).onclick = () => newDeck(p, zonesWithData);
 }
 
 // ------------------------------------------------------------------ zones ---
@@ -650,11 +960,12 @@ function addZone(p) {
   };
 }
 
-async function newDeck(p, zonesWithBlocks = []) {
+async function newDeck(p, zonesInDeck = []) {
   // A deck spans zones: it records which ones are in play so the viewer's
-  // deposit switcher can offer them. Every zone that has a block model is
-  // included by default — the presenter can narrow it later in the editor.
-  const zoneIds = zonesWithBlocks.map((z) => z.id);
+  // deposit switcher can offer them, AND so the viewer knows whose artifacts to
+  // load. Every zone with data is included by default — the presenter can
+  // narrow it later in the editor.
+  const zoneIds = zonesInDeck.map((z) => z.id);
   const { data, error } = await db.from("decks")
     .insert({
       project_id: p.id, title: p.name, status: "draft",
@@ -895,6 +1206,10 @@ async function saveBrand(project, patch) {
   if (patch.summary !== undefined) {
     if (patch.summary) brand.summary = patch.summary; else delete brand.summary;
   }
+  // null clears, undefined leaves alone — the same contract as the logo, so
+  // saving a description cannot silently drop the colours.
+  if (patch.colors === null) delete brand.colors;
+  else if (patch.colors !== undefined) brand.colors = patch.colors;
   const { error } = await db.from("projects").update({ brand }).eq("id", project.id);
   if (error) return fail("Save", error);
   project.brand = brand;

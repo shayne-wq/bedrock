@@ -105,4 +105,11 @@ export function wire(root) {
   root.querySelectorAll("[data-go]").forEach((el) => {
     el.onclick = () => { location.hash = el.dataset.go; };
   });
+  // Copy-to-clipboard buttons were bound only where a modal happened to bind
+  // them, document-wide, when that modal opened — so the same markup on a
+  // panel that is simply on the page did nothing at all when pressed.
+  root.querySelectorAll("[data-copy-text]").forEach((el) => {
+    el.onclick = () => navigator.clipboard.writeText(el.dataset.copyText)
+      .then(() => toast("Copied"), () => toast("Copy failed", true));
+  });
 }

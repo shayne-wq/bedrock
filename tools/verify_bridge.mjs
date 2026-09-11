@@ -1,5 +1,12 @@
 import { chromium } from 'playwright-core';
-const b = await chromium.launch({ channel:'chrome' });
+// Headless Chrome has no GPU, and Cesium will not create a context without
+// one — the viewer never boots and every assertion below times out looking for
+// an API that was never installed. SwiftShader is a software rasteriser, which
+// is slow and correct, and correct is what a bridge test needs.
+const b = await chromium.launch({ channel:'chrome', args:[
+  '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
+  '--ignore-gpu-blocklist', '--enable-webgl', '--disable-gpu-sandbox',
+]});
 const pg = await b.newPage({ viewport:{width:1500,height:900} });
 const errs=[]; pg.on('pageerror',e=>errs.push(String(e)));
 await pg.goto(process.argv[2],{waitUntil:'load'});
@@ -57,6 +64,22 @@ ok('the saved shot is what replays', back && Math.abs(back.state.camera.orbit.r-
    back? back.state.camera.orbit.r+' vs '+saved2.camera.r : '');
 
 // A message that is not the console must be ignored.
+// The console's own Set view. The studio drives this rather than making the
+// author reach inside the frame for the button, so the viewer has to answer a
+// `capture` with the same `set` the in-frame button sends.
+await pg.evaluate(()=>window.tell({type:'capture', what:'camera'}));
+await pg.waitForTimeout(2500);
+const cap = (await log()).filter(m=>m.type==='set').pop();
+ok('capture from the console returns a set', !!cap, JSON.stringify((await log()).map(m=>m.type)));
+ok('capture returns the camera only', cap && cap.what==='camera', JSON.stringify(cap&&cap.what));
+ok('captured state carries a camera', !!(cap&&cap.state&&cap.state.camera));
+
+await pg.evaluate(()=>window.tell({type:'capture', what:'all'}));
+await pg.waitForTimeout(2500);
+const capAll = (await log()).filter(m=>m.type==='set').pop();
+ok('capture all returns layers too', capAll && capAll.what==='all' && !!capAll.state.layers,
+   JSON.stringify(capAll&&capAll.what));
+
 await pg.evaluate(()=>{
   const w=document.getElementById('f').contentWindow;
   w.postMessage({source:'somebody-else',type:'goto',ord:0}, location.origin);

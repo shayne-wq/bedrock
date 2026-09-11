@@ -472,10 +472,116 @@ tbody tr[data-go]:hover td { background: var(--bg); }
    The chapter list and the thing it edits, side by side, because the whole
    point is that you adjust a shot while looking at it. Tall on purpose: a
    viewer in a letterbox is a viewer you cannot judge a camera in. */
+/* Filmstrip, the deck as the recipient sees it, and everything about the
+   selected slide — left to right, in the order the work happens. */
+/* The 16:9 preview is the deck, so it gets the full width of the working area.
+   Everything you change about the slide — its words, its framing — sits under
+   it, next to the phone frame that shows what those changes do on a phone. */
 .studio {
-  display: grid; grid-template-columns: 340px 1fr; gap: 16px;
-  align-items: stretch; height: calc(100vh - 210px); min-height: 520px;
+  display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: 14px;
+  align-items: start;
 }
+.stmain { display: grid; gap: 12px; min-width: 0; }
+
+/* Desktop or phone, one at a time. Side by side sounded right and wasn't: two
+   frames in one column means neither is big enough to judge, and the 16:9 one
+   is what most decks are read in. Both stay mounted and on the same slide, so
+   switching is instant and shows the SAME shot in the other shape. */
+.stswitch {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px; border: 1px solid var(--border); border-radius: var(--r-ctl);
+  background: var(--surface); width: fit-content; max-width: 100%;
+}
+.swbtn {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em;
+  text-transform: uppercase; padding: 7px 13px; border: 0; border-radius: 4px;
+  background: none; color: var(--ink-mute); cursor: pointer; white-space: nowrap;
+}
+.swbtn:hover { color: var(--ink); }
+.swbtn.on { background: var(--accent-dim); color: var(--accent-700); font-weight: 500; }
+.swbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.swlive {
+  font-family: var(--mono); font-size: 10.5px; color: var(--ink-mute);
+  padding-right: 8px; margin-left: 4px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.stview.off { display: none; }
+
+/* Desktop and phone, side by side, sharing the middle column. The 16:9 frame
+   takes the room it needs and the 9:16 one takes what a phone actually is —
+   sized by aspect-ratio rather than by a fraction, so neither is a guess. */
+/* Each frame is sized by its ASPECT. Height must never come from the row, or
+   the 16:9 preview ends up tall and narrow — a phone-shaped frame claiming to
+   be a desktop one, which is worse than no preview at all. */
+.stview { display: block; min-width: 0; }
+.stview .stglass { position: relative; width: 100%; background: #07090A; }
+.stview.wide .stglass { aspect-ratio: 16 / 9; }
+.stview.tall .stglass { aspect-ratio: 9 / 16; }
+/* Full width, full stop. This used to give up width on a short display so the
+   caption stayed above the fold — but on a 680px-tall window that solved for
+   the wrong thing and left a 440px preview. The preview IS the deck; scrolling
+   to the fields under it costs nothing. */
+.stview.wide { width: 100%; }
+/* A phone preview at full column width would be 2100px tall. It is a phone —
+   it should look like one. */
+.stview.tall { width: min(100%, 360px); margin-inline: auto; }
+
+/* Which frame Set view writes to. It is a selection, not decoration, so it
+   reads as one: the inactive frame recedes rather than the active one shouting. */
+.stview { opacity: .62; transition: opacity .12s, border-color .12s; cursor: pointer; }
+.stview.on { opacity: 1; border-color: var(--accent); }
+
+.stframehd {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px; padding: 7px 10px; border-bottom: 1px solid var(--border);
+  background: var(--raised); flex: 0 0 auto;
+}
+.stframehd .nm {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-dim);
+}
+.stview.on .stframehd .nm { color: var(--accent-700); }
+.stframehd .st {
+  font-family: var(--mono); font-size: 9.5px; color: var(--ink-mute);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* A slide that carries its own phone framing, flagged in the filmstrip so you
+   can see at a glance which ones have been done. */
+.stchap .cam .pf {
+  font-style: normal; font-family: var(--mono); font-size: 8.5px;
+  letter-spacing: .04em; padding: 1px 4px; border-radius: 3px; margin-left: 5px;
+  background: var(--accent-dim); color: var(--accent-700);
+}
+
+/* One block per shape in the inspector. */
+.camrow {
+  border: 1px solid var(--border); border-radius: var(--r-ctl);
+  padding: 9px 10px; margin-top: 8px; cursor: pointer;
+}
+.camrow.on { border-color: var(--accent); background: var(--accent-dim); }
+.camrow .camhd {
+  display: flex; align-items: baseline; gap: 8px; margin-bottom: 5px;
+}
+.camrow .nm {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-dim);
+}
+.camrow.on .nm { color: var(--accent-700); }
+.camrow .inherit {
+  font-family: var(--mono); font-size: 9px; color: var(--ink-mute);
+  margin-left: auto;
+}
+.camrow .camval {
+  font-family: var(--mono); font-size: 11.5px; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--border-2);
+  border-radius: 4px; padding: 6px 8px; margin-bottom: 7px;
+}
+.camrow .row-actions { flex-wrap: wrap; gap: 5px; }
+
+/* The phone frame is the first thing to go when the column gets tight — the
+   desktop shot is the one being framed most of the time. */
+
 .stchaps {
   overflow-y: auto; overscroll-behavior: contain;
   border: 1px solid var(--border); border-radius: var(--r-pan);
@@ -485,9 +591,12 @@ tbody tr[data-go]:hover td { background: var(--bg); }
    forced onto the console's paper. */
 .stview {
   position: relative; border: 1px solid var(--border);
-  border-radius: var(--r-pan); overflow: hidden; background: #07090A;
+  border-radius: var(--r-pan); overflow: hidden; background: var(--surface);
 }
-.stview iframe { display: block; width: 100%; height: 100%; border: 0; }
+.stview iframe {
+  display: block; position: absolute; inset: 0;
+  width: 100%; height: 100%; border: 0;
+}
 .stlive {
   position: absolute; left: 12px; top: 12px; z-index: 2; display: flex;
   gap: 10px; align-items: baseline; padding: 8px 12px; border-radius: 6px;
@@ -521,10 +630,24 @@ tbody tr[data-go]:hover td { background: var(--bg); }
   letter-spacing: .04em; padding: 2px 5px; border-radius: 3px;
   background: var(--border-2); color: var(--ink-mute);
 }
-@media (max-width: 1000px) {
+/* The inspector drops under the pair before the filmstrip gives up its column:
+   a filmstrip beside the scene is the thing that makes this feel like an
+   editor, and it is the last part to go. */
+@media (max-width: 1340px) {
+  .studio { grid-template-columns: 232px minmax(0, 1fr); height: auto; }
+  .stchaps { max-height: 62vh; }
+}
+/* The app rail already costs 240px. Below this, a filmstrip column as well
+   leaves the preview under half the window — which is the one thing in here
+   that has to be big. So the filmstrip goes on top, short, and the preview
+   takes the full width. */
+@media (max-width: 1180px) {
   .studio { grid-template-columns: 1fr; height: auto; }
-  .stchaps { max-height: 280px; }
-  .stview { height: 70vh; }
+  .stchaps { max-height: 172px; }
+  /* Horizontal filmstrip when it is stacked: a vertical list in a 170px box
+     shows one and a half slides. */
+  .stchaps #stlist { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+  .stchaps .stchap { flex: 0 0 208px; margin-bottom: 0; }
 }
 /* A slide someone has flown to and set, versus one that is still whatever the
    generator proposed. Removing the first costs work; removing the second does
@@ -606,3 +729,234 @@ tbody tr[data-go]:hover td { background: var(--bg); }
 }
 .toggle:hover { border-color: var(--ink-mute); color: var(--ink); }
 .toggle.on { background: var(--accent-dim); border-color: var(--accent); color: var(--accent-700); }
+
+/* ── studio: filmstrip head, slide controls, inspector ─────────────────── */
+
+.stchaps-hd {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 4px 6px 8px; position: sticky; top: -8px; z-index: 1;
+  background: var(--surface); border-bottom: 1px solid var(--border-2);
+  margin-bottom: 6px;
+}
+.stchaps-hd span {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--ink-mute);
+}
+
+/* Two states, and they are not the same one: `sel` is the slide the inspector
+   is editing, `on` is what the preview happens to be showing. They are usually
+   the same and the moment they are not is the moment it matters. */
+.stchap.sel { background: var(--accent-dim); border-color: var(--accent); }
+.stchap.on .n { color: var(--accent-700); font-weight: 600; }
+.stchap.dragging { opacity: .4; }
+.stchap.over { border-color: var(--accent); border-style: dashed; }
+.stchap[draggable="true"] { cursor: grab; }
+.stchap[draggable="true"]:active { cursor: grabbing; }
+
+.stchap .strow {
+  display: flex; align-items: center; gap: 3px; padding: 0 8px 8px 8px;
+  flex-wrap: wrap;
+}
+.stchap .ico {
+  width: 24px; height: 22px; padding: 0; line-height: 1;
+  border: 1px solid var(--border); border-radius: 4px;
+  background: var(--surface); color: var(--ink-dim);
+  font-size: 11px; cursor: pointer;
+}
+.stchap .ico:hover:not(:disabled) {
+  border-color: var(--accent); color: var(--accent-700); background: var(--accent-dim);
+}
+.stchap .ico:disabled { opacity: .35; cursor: default; }
+.stchap .ico.rm:hover:not(:disabled) {
+  border-color: var(--bad); color: var(--bad); background: var(--bad-dim);
+}
+.stchap .ico:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.stempty {
+  padding: 22px 14px; text-align: center; color: var(--ink-mute); font-size: 13px;
+}
+
+/* Save state lives in the header rather than beside the field being typed
+   into — a status that moves as you tab between inputs reads as an error. */
+.stsave {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .05em;
+  color: var(--ink-mute); min-width: 96px; text-align: right;
+}
+
+.stinspect {
+  overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid var(--border); border-radius: var(--r-pan);
+  background: var(--surface); padding: 14px;
+}
+.insp-hd {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-bottom: 12px;
+  padding-bottom: 10px; border-bottom: 1px solid var(--border-2);
+}
+.insp-hd .n {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--ink-mute);
+}
+.stinspect .field { margin-bottom: 12px; }
+.stinspect textarea { resize: vertical; min-height: 90px; }
+
+.insp-cam {
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-2);
+}
+.insp-cam .lbl {
+  display: block; font-family: var(--mono); font-size: 10px;
+  letter-spacing: .09em; text-transform: uppercase; color: var(--ink-mute);
+  margin-bottom: 6px;
+}
+.insp-cam .camval {
+  font-family: var(--mono); font-size: 12px; color: var(--ink);
+  background: var(--raised); border: 1px solid var(--border-2);
+  border-radius: var(--r-ctl); padding: 8px 10px;
+}
+.insp-cam .hint { margin: 8px 0 10px; font-size: 12px; color: var(--ink-mute); }
+.insp-cam .row-actions { flex-wrap: wrap; gap: 6px; }
+
+/* ── the embed panel ──────────────────────────────────────────────────── */
+
+.snip.embed {
+  max-height: 190px; overflow: auto; margin: 12px 0;
+  font-size: 11.5px; line-height: 1.55;
+}
+
+/* ── people ───────────────────────────────────────────────────────────── */
+
+.panel-hd { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.panel-hd h2 { margin: 0; }
+
+.rows { display: grid; }
+.rowline {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 0; border-bottom: 1px solid var(--border-2);
+}
+.rowline:last-child { border-bottom: 0; }
+.rowline .grow { min-width: 0; }
+.rowline b { display: block; font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.rowline .sub {
+  display: block; font-size: 12px; color: var(--ink-mute); margin-top: 2px;
+}
+
+/* Role is a fact about a person, not a status that changes on its own, so it
+   is a flat label rather than borrowing the live/draft chip's colours. */
+.pill {
+  flex: 0 0 auto; font-family: var(--mono); font-size: 9.5px;
+  letter-spacing: .07em; text-transform: uppercase;
+  padding: 3px 7px; border-radius: 4px;
+  background: var(--border-2); color: var(--ink-dim); border: 1px solid var(--border);
+}
+.pill.owner, .pill.admin { background: var(--accent-dim); color: var(--accent-700); }
+
+@media (max-width: 640px) {
+  .rowline { flex-wrap: wrap; }
+  .rowline .grow { flex: 1 1 100%; }
+}
+
+/* ── brand colours ────────────────────────────────────────────────────── */
+
+.brandcolours {
+  margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border-2);
+}
+.brandcolours h3 {
+  font-family: var(--heading); font-size: 14px; font-weight: 600;
+  letter-spacing: -.01em;
+}
+.brandcolours .sub { font-size: 12.5px; color: var(--ink-mute); max-width: 62ch; }
+
+.swatches { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* The whole tile is the picker. A colour input on its own renders as a small
+   OS-specific box that reads as a form field rather than as the colour. */
+.swatch {
+  position: relative; display: flex; align-items: center; gap: 9px;
+  padding: 7px 12px 7px 8px; border: 1px solid var(--border);
+  border-radius: var(--r-ctl); background: var(--surface); cursor: pointer;
+}
+.swatch:hover { border-color: var(--accent); }
+.swatch input[type="color"] {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0; cursor: pointer; border: 0; padding: 0;
+}
+.swatch input[type="color"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.swatch .chipc {
+  width: 26px; height: 26px; border-radius: 4px; flex: 0 0 auto;
+  /* The deck's own ground behind it, so the swatch shows the colour where it
+     will actually be seen rather than on white. */
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.25), 0 0 0 3px #07090A;
+}
+.swatch .lab {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--ink-mute);
+}
+.swatch .hex {
+  font-family: var(--mono); font-size: 12px; color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 560px) {
+  .swatches { align-items: stretch; }
+  .swatch { flex: 1 1 100%; }
+}
+
+
+/* ── the studio takes the whole window ────────────────────────────────────
+   Everything on the rail is reachable from the breadcrumb, and the preview is
+   the only thing in here that has to be big. */
+body.instudio #app {
+  grid-template-columns: minmax(0, 1fr);
+  background: var(--bg);
+}
+body.instudio #rail { display: none; }
+body.instudio main {
+  padding: 22px 26px 40px;
+  max-width: none;
+}
+body.instudio header.page { margin-bottom: 16px; }
+body.instudio header.page h1 { font-size: 22px; margin-top: 6px; }
+
+/* With 240px back, the filmstrip can keep its column much further down. */
+@media (min-width: 900px) {
+  body.instudio .studio { grid-template-columns: 224px minmax(0, 1fr); }
+  body.instudio .stchaps #stlist { display: block; }
+  body.instudio .stchaps .stchap { flex: none; margin-bottom: 4px; }
+  body.instudio .stchaps { max-height: none; }
+}
+@media (max-width: 899px) {
+  body.instudio .studio { grid-template-columns: 1fr; }
+}
+
+/* ── the filmstrip folds away ─────────────────────────────────────────────
+   On a 1100px laptop the slide list costs a quarter of the preview, and the
+   preview is the only thing in the studio that has to be big. */
+body.stripoff .studio { grid-template-columns: minmax(0, 1fr); }
+body.stripoff .stchaps { display: none; }
+.stchaps-hd { gap: 6px; }
+.stchaps-hd span { margin-right: auto; }
+.swbtn.strip { border-right: 1px solid var(--border); border-radius: 4px 0 0 4px; margin-right: 2px; }
+
+/* Give the preview every pixel the window has. Header and breadcrumb shrink;
+   the frame does not. */
+body.instudio main { padding: 16px 18px 32px; }
+body.instudio header.page { margin-bottom: 12px; }
+body.instudio header.page h1 { font-size: 19px; margin-top: 4px; }
+body.instudio .studio { gap: 12px; }
+@media (min-width: 900px) {
+  body.instudio .studio { grid-template-columns: 210px minmax(0, 1fr); }
+}
+
+/* The inspector is a form; it does not need to be as wide as the deck. */
+body.instudio .stinspect { max-width: 860px; }
+
+/* The fold has to beat the `body.instudio .studio` rule inside the 900px media
+   query above — same specificity, so it has to come later AND match the same
+   media context. Without this the grid kept its 210px first track, `.stchaps`
+   was display:none, and `.stmain` was auto-placed into the empty filmstrip
+   column: folding the list made the preview SMALLER, which is the opposite of
+   the point. */
+@media (min-width: 900px) {
+  body.instudio.stripoff .studio,
+  body.stripoff .studio { grid-template-columns: minmax(0, 1fr); }
+}
+body.stripoff .stmain { grid-column: 1 / -1; }

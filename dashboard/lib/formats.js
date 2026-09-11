@@ -539,7 +539,12 @@ export function readAssays(text, what = "assays") {
   const ih = col(header, ...HOLE_NAMES);
   const ifr = col(header, "from", "depthfrom", "start", "top");
   const ito = col(header, "to", "depthto", "end", "bottom");
-  const ig = col(header, "aueq", "au_gt", "au", "grade", "gold", "value", "assay");
+  // au_ppm is what a real assay export calls it — Omega Pacific's Williams data
+  // and most lab deliverables ship that column and nothing named "grade". For
+  // GOLD, ppm and g/t are the same number, so it needs no conversion; this is
+  // deliberately gold-only, because cu_ppm is a different thing entirely.
+  const ig = col(header, "aueq", "au_gt", "au_gpt", "au_ppm", "augt", "auppm",
+                 "au", "grade", "gold", "value", "assay");
   const missing = [["hole id", ih], ["from", ifr], ["to", ito], ["grade", ig]]
     .filter(([, i]) => i < 0).map(([n]) => n);
   if (missing.length) {

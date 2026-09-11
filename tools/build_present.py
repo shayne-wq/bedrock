@@ -894,7 +894,7 @@ HTML = r"""<!DOCTYPE html>
      measured off this rather than guessing, because they used to be laid out
      against an empty corner and the card now covers it: the banner was
      printing across the first figure of every slide that had one. */
-  :root{--capw:min(440px,calc(100vw - 300px));--capr:30px}
+  :root{--capw:min(440px,calc(100vw - 300px));--capr:30px;--brand:#C99A3A;--brand-hi:#F2C14E}
   *{box-sizing:border-box;margin:0}
   html,body{height:100%;width:100%;overflow:hidden;background:#000}
   #cesiumContainer{height:100%;width:100%;overflow:hidden;background:#07090A}
@@ -917,15 +917,20 @@ HTML = r"""<!DOCTYPE html>
      reader needs the glass. So portrait fills the screen and landscape keeps
      the shape. The transform stays either way: it is what makes the stage the
      containing block for the fixed UI, not decoration. */
-  @media (orientation:portrait) and (max-width:820px){
-    #slidestage{width:100vw;height:100dvh}
-  }
+  /* Keyed on a class, not on the media query that used to own it, because the
+     studio previews a portrait frame inside a 9:16 iframe on a desktop — where
+     the viewport is landscape and the query would never match. JS sets the
+     class from EITHER a real phone or an explicit ?frame=portrait, so there is
+     one definition of "portrait" instead of two that drift. Filling the
+     viewport is right in both cases: on a phone it is the screen, in the
+     studio it is a frame already cut to 9:16. */
+  body.portrait #slidestage{width:100vw;height:100dvh}
   body{font-family:Archivo,system-ui,sans-serif;color:#EDEEEC;-webkit-font-smoothing:antialiased}
   .cesium-widget-credits,.cesium-viewer-bottom{display:none!important}
   .cesium-viewer,.cesium-widget,.cesium-widget canvas{cursor:grab}
 
   #brand{position:fixed;top:26px;left:30px;z-index:6}
-  #brand .w{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.34em;color:#C99A3A;text-transform:uppercase}
+  #brand .w{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.34em;color:var(--brand);text-transform:uppercase}
   #brand .n{font-size:17px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;margin-top:5px;line-height:1}
 
   /* The rail is a contents page, not a filmstrip.
@@ -989,7 +994,7 @@ HTML = r"""<!DOCTYPE html>
            transition:color .18s}
   #rail .c:hover{color:#C6CAC5}
   #rail .c.on{color:#EDEEEC}
-  #rail .c.on .num{color:#C99A3A}
+  #rail .c.on .num{color:var(--brand)}
   #rail .num{font-family:'JetBrains Mono',monospace;font-size:10px;
              color:rgba(255,255,255,.45);width:18px;flex:none}
   #rail .t{min-width:0}
@@ -1028,7 +1033,7 @@ HTML = r"""<!DOCTYPE html>
        transform:translateY(10px);opacity:.999;transition:opacity .5s ease,transform .5s ease}
   #cap.in{opacity:1;transform:none}
   #cap .ey{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.22em;
-           color:#C99A3A;text-transform:uppercase}
+           color:var(--brand);text-transform:uppercase}
   #cap h2{font-size:25px;font-weight:600;letter-spacing:-.022em;line-height:1.14;
           margin:11px 0 9px;text-wrap:balance}
   #cap p{font-family:Newsreader,Georgia,serif;font-size:17px;line-height:1.56;
@@ -1050,17 +1055,17 @@ HTML = r"""<!DOCTYPE html>
        border-top:1px solid rgba(255,255,255,.11)}
   #nav .arw{flex:none;width:44px;height:36px;display:flex;align-items:center;
             justify-content:center;font-size:17px;line-height:1;cursor:pointer;
-            color:#C99A3A;background:rgba(201,154,58,.10);
+            color:var(--brand);background:rgba(201,154,58,.10);
             border:1px solid rgba(201,154,58,.42);border-radius:3px;
             transition:background .16s,color .16s,border-color .16s}
   #nav #next{background:rgba(201,154,58,.2);border-color:rgba(201,154,58,.66)}
-  #nav .arw:hover{background:#C99A3A;border-color:#C99A3A;color:#12100B}
+  #nav .arw:hover{background:var(--brand);border-color:var(--brand);color:#12100B}
   #nav .arw:active{transform:translateY(1px)}
   #nav .arw[disabled]{opacity:.28;pointer-events:none}
   #nav .ct{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:7px}
   #nav .count{font-family:'JetBrains Mono',monospace;font-size:14px;letter-spacing:.16em;
               color:#EDEEEC;font-weight:500}
-  #nav .count b{color:#C99A3A;font-weight:500}
+  #nav .count b{color:var(--brand);font-weight:500}
   /* One tick per chapter, clickable. Thirty of them at three pixels wide is a
      legible position indicator and a jump target at the same time; the old
      single filled bar was only the first. */
@@ -1069,7 +1074,7 @@ HTML = r"""<!DOCTYPE html>
               cursor:pointer;transition:background .16s}
   #nav .prg i:hover{background:rgba(255,255,255,.42)}
   #nav .prg i.done{background:rgba(201,154,58,.42)}
-  #nav .prg i.now{background:#C99A3A;box-shadow:0 0 0 1px rgba(201,154,58,.35)}
+  #nav .prg i.now{background:var(--brand);box-shadow:0 0 0 1px rgba(201,154,58,.35)}
 
   /* ---- explore ----
      The last chapter hands the camera over, so the card stops being a slide
@@ -1091,9 +1096,9 @@ HTML = r"""<!DOCTYPE html>
      one place beat four positions that have to be kept in agreement. */
   body.explore{--capw:min(380px,calc(100vw - 700px));--capr:346px}
   .btn{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#EDEEEC;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);border-radius:3px;padding:12px 18px;cursor:pointer;transition:.2s}
-  .btn:hover{border-color:#C99A3A;color:#C99A3A}
+  .btn:hover{border-color:var(--brand);color:var(--brand)}
   .btn:disabled{opacity:.3;cursor:default}
-  .btn.on{background:#C99A3A;border-color:#C99A3A;color:#07090A}
+  .btn.on{background:var(--brand);border-color:var(--brand);color:#07090A}
   .btn.sm{padding:13px 14px;font-size:10px;min-height:44px}
   .btn.rec{border-color:#D9584A;color:#D9584A}
   #recdot{display:none;width:8px;height:8px;border-radius:50%;background:#D9584A;
@@ -1121,7 +1126,7 @@ HTML = r"""<!DOCTYPE html>
     justify-content:center;transition:background .15s,color .15s}
   #cam .pad button:hover{background:rgba(255,255,255,.15);color:#EDEEEC}
   #cam .pad button:active{transform:translateY(1px)}
-  #cam [data-a="reset"]{color:#C99A3A}
+  #cam [data-a="reset"]{color:var(--brand)}
   #cam .lg{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.18em;
     text-transform:uppercase;color:#8A908C;display:flex;width:100%;
     justify-content:space-between;padding:0 6px}
@@ -1159,7 +1164,7 @@ HTML = r"""<!DOCTYPE html>
   .cocard .coid{font-family:'JetBrains Mono',monospace;font-size:11px;
                 letter-spacing:.06em;color:#EDEEEC;text-align:right}
   .cocard .cov{font-size:12px;color:#C6CAC5;text-align:right;margin-top:2px}
-  .cocard .cov b{color:#F2C14E;font-weight:600}
+  .cocard .cov b{color:var(--brand-hi);font-weight:600}
   .cocard .coincl{font-size:11px;color:#8C948C;text-align:right;margin-top:2px}
   .cocard.left .coid,.cocard.left .cov,.cocard.left .coincl{text-align:left}
   .cocard .cosyn{font-family:'JetBrains Mono',monospace;font-size:8.5px;
@@ -1191,7 +1196,7 @@ HTML = r"""<!DOCTYPE html>
   .seg{display:flex;border:1px solid rgba(255,255,255,.16);border-radius:3px;overflow:hidden}
   .seg button{flex:1;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
               padding:8px 0;background:transparent;border:none;color:#8E948E;cursor:pointer;transition:.15s}
-  .seg button.on{background:#C99A3A;color:#07090A}
+  .seg button.on{background:var(--brand);color:#07090A}
   .chips{display:flex;flex-wrap:wrap;gap:6px}
   .chip{display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:10px;
         padding:6px 9px;border:1px solid rgba(255,255,255,.16);border-radius:3px;cursor:pointer;color:#8E948E;transition:.15s}
@@ -1209,37 +1214,37 @@ HTML = r"""<!DOCTYPE html>
         padding:0 12px 0 0;border-right:1px solid rgba(255,255,255,.14)}
   #pgnd .pl{font-family:'JetBrains Mono',monospace;font-size:10px;
             letter-spacing:.09em;text-transform:uppercase;color:#8A8F98}
-  #pgndr{width:88px;accent-color:#C99A3A}
+  #pgndr{width:88px;accent-color:var(--brand)}
   #pgndv{font-family:'JetBrains Mono',monospace;font-size:11px;color:#EDEEEC;
          min-width:62px;text-align:right}
-  #pgnd.held .pl{color:#C99A3A}
+  #pgnd.held .pl{color:var(--brand)}
   @media (max-width:1100px){ #pgnd{display:none} }
 
   #pcut{display:flex;align-items:center;gap:8px;margin-right:14px;
         padding:0 12px 0 0;border-right:1px solid rgba(255,255,255,.14)}
   #pcut .pl{font-family:'JetBrains Mono',monospace;font-size:10px;
             letter-spacing:.09em;text-transform:uppercase;color:#8A8F98}
-  #pcutr{width:104px;accent-color:#C99A3A}
+  #pcutr{width:104px;accent-color:var(--brand)}
   #pcutv{font-family:'JetBrains Mono',monospace;font-size:11px;color:#EDEEEC;
          min-width:58px;text-align:right}
-  #pcut.held .pl,#pcut.held #pcutv{color:#C99A3A}
+  #pcut.held .pl,#pcut.held #pcutv{color:var(--brand)}
   #pcutx{margin-left:2px}
   @media (max-width:900px){#pcut{display:none}}
   .cutrow{display:flex;align-items:center;gap:11px}
-  #cut{flex:1;accent-color:#C99A3A}
-  #cutv{font-family:'JetBrains Mono',monospace;font-size:11px;color:#C99A3A;min-width:56px;text-align:right}
+  #cut{flex:1;accent-color:var(--brand)}
+  #cutv{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--brand);min-width:56px;text-align:right}
   select{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);border-radius:3px;
          color:#EDEEEC;font-family:'JetBrains Mono',monospace;font-size:11px;padding:9px;cursor:pointer}
   #readout{margin-top:18px;padding-top:15px;border-top:1px solid rgba(255,255,255,.11)}
   #readout .row{display:flex;justify-content:space-between;align-items:baseline;padding:4px 0}
   #readout .l{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:#8E948E}
   #readout .v{font-family:'JetBrains Mono',monospace;font-size:14px;color:#EDEEEC}
-  #readout .v.hero{color:#C99A3A;font-size:16px}
+  #readout .v.hero{color:var(--brand);font-size:16px}
   #veincav{margin-top:10px;font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.55;color:#E3BE79}
   .erow{display:flex;align-items:center;gap:9px;margin:7px 0}
   .erow label{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.1em;
               text-transform:uppercase;color:#8E948E;width:74px;flex:0 0 auto}
-  .erow input{flex:1;accent-color:#C99A3A;min-width:0}
+  .erow input{flex:1;accent-color:var(--brand);min-width:0}
   .erow span{font-family:'JetBrains Mono',monospace;font-size:11px;color:#EDEEEC;
              width:52px;text-align:right;flex:0 0 auto}
   #econout{margin-top:12px;padding-top:11px;border-top:1px solid rgba(255,255,255,.11)}
@@ -1247,7 +1252,7 @@ HTML = r"""<!DOCTYPE html>
   #econout .l{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.14em;
               text-transform:uppercase;color:#8E948E}
   #econout .v{font-family:'JetBrains Mono',monospace;font-size:13px;color:#EDEEEC}
-  #econout .v.hero{color:#C99A3A;font-size:15px}
+  #econout .v.hero{color:var(--brand);font-size:15px}
   #e_note{margin-top:9px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
           line-height:1.5;color:#A8AEA9}
   #e_note.warn{color:#0d0f10;background:#D9584A;padding:6px 9px;border-radius:3px;font-weight:600}
@@ -1301,7 +1306,7 @@ HTML = r"""<!DOCTYPE html>
   .phead{display:flex;justify-content:space-between;align-items:center;
          padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.10)}
   .phead>span{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.24em;
-              text-transform:uppercase;color:#C99A3A}
+              text-transform:uppercase;color:var(--brand)}
   .phead>div{display:flex;gap:8px}
   #emb .pinner{max-width:760px}
   #emb label{display:block;font-size:10px;letter-spacing:.14em;text-transform:uppercase;
@@ -1329,7 +1334,7 @@ HTML = r"""<!DOCTYPE html>
   #inspect.on{display:block}
   .ihead{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
   .ihead span{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.22em;
-              text-transform:uppercase;color:#C99A3A}
+              text-transform:uppercase;color:var(--brand)}
   .ihead button{background:none;border:none;color:#C6CAC5;font-size:18px;cursor:pointer;
                 line-height:1;padding:0 4px;min-height:44px;min-width:44px}
   .irow{display:flex;justify-content:space-between;gap:14px;padding:3px 0}
@@ -1355,7 +1360,7 @@ HTML = r"""<!DOCTYPE html>
   #stbar .pl{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.16em;
              text-transform:uppercase;color:#8C948C}
   #stnote{flex-basis:100%;text-align:center;font-size:11.5px;color:#8C948C;line-height:1.5}
-  #st360.on{background:#C99A3A;color:#0d0f10;border-color:#C99A3A}
+  #st360.on{background:var(--brand);color:#0d0f10;border-color:var(--brand)}
   @media (max-width:900px){ #stbar{top:auto;bottom:196px} }
 
   #authbar{position:fixed;left:50%;transform:translateX(-50%);top:118px;z-index:24;
@@ -1364,7 +1369,7 @@ HTML = r"""<!DOCTYPE html>
            backdrop-filter:blur(8px)}
   #authbar[hidden]{display:none}
   #authbar .pl{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.16em;
-               text-transform:uppercase;color:#C99A3A}
+               text-transform:uppercase;color:var(--brand)}
   #authch,#authnote{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#8C948C}
   #authnote{color:#7FB77E}
   @media (max-width:900px){ #authbar{display:none} }
@@ -1378,7 +1383,7 @@ HTML = r"""<!DOCTYPE html>
   .lhead{display:flex;align-items:center;gap:8px;padding:10px 12px;
          border-bottom:1px solid rgba(255,255,255,.10)}
   .lhead>span:first-child{flex:1;font-family:'JetBrains Mono',monospace;font-size:10px;
-         letter-spacing:.14em;text-transform:uppercase;color:#C99A3A}
+         letter-spacing:.14em;text-transform:uppercase;color:var(--brand)}
   #ledglist{overflow-y:auto;overscroll-behavior:contain}
   .lrow{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:9px 12px;cursor:pointer;
         border-bottom:1px solid rgba(255,255,255,.05)}
@@ -1387,7 +1392,7 @@ HTML = r"""<!DOCTYPE html>
   .lrow .hid{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#EDEEEC;letter-spacing:.04em}
   .lrow .htd{font-family:'JetBrains Mono',monospace;font-size:10px;color:#8C948C}
   .lrow .hbest{grid-column:1/3;font-size:11.5px;color:#C6CAC5}
-  .lrow .hbest b{color:#F2C14E;font-weight:600}
+  .lrow .hbest b{color:var(--brand-hi);font-weight:600}
   #ledgnote{padding:8px 12px;font-size:10.5px;line-height:1.5;color:#8C948C;
             border-top:1px solid rgba(255,255,255,.08)}
   #holegraph{position:fixed;left:34px;bottom:118px;z-index:10;width:340px;
@@ -1428,7 +1433,7 @@ HTML = r"""<!DOCTYPE html>
   .ibtn{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
         color:#C6CAC5;background:transparent;border:1px solid rgba(255,255,255,.18);border-radius:3px;
         padding:13px 16px;min-height:44px;cursor:pointer}
-  .ibtn.on{background:#C99A3A;border-color:#C99A3A;color:#07090A}
+  .ibtn.on{background:var(--brand);border-color:var(--brand);color:#07090A}
   .isw{width:34px;height:34px;border-radius:50%;cursor:pointer;border:2px solid rgba(255,255,255,.25);
        flex:0 0 auto}
   .isw.on{border-color:#fff;transform:scale(1.15)}
@@ -1450,14 +1455,14 @@ HTML = r"""<!DOCTYPE html>
   #slide.on{display:flex;opacity:1}
   #slide .sinner{max-width:620px;padding:0 60px;pointer-events:auto}
   #slide .sey{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.26em;
-              text-transform:uppercase;color:#C99A3A;margin-bottom:20px}
+              text-transform:uppercase;color:var(--brand);margin-bottom:20px}
   #slide h2{font-size:clamp(34px,4.2vw,58px);font-weight:800;letter-spacing:-.03em;line-height:1.02}
   #slide p{font-family:Newsreader,Georgia,serif;font-size:19px;line-height:1.55;color:#C6CAC5;
            margin-top:20px;text-wrap:pretty}
   .sstats{display:flex;flex-wrap:wrap;gap:34px;margin-top:36px}
   .sstats .k{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.16em;
              text-transform:uppercase;color:#8E948E}
-  .sstats .v{font-size:28px;font-weight:700;letter-spacing:-.02em;color:#C99A3A;margin-top:5px}
+  .sstats .v{font-size:28px;font-weight:700;letter-spacing:-.02em;color:var(--brand);margin-top:5px}
   .stab{margin-top:30px;border-collapse:collapse;width:100%;display:none}
   .stab.on{display:table}
   .stab th{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.16em;
@@ -1470,15 +1475,15 @@ HTML = r"""<!DOCTYPE html>
   #s_chart text{font-family:'JetBrains Mono',monospace;fill:#8E948E;font-size:10px}
   #s_chart .ax{stroke:rgba(255,255,255,.16);stroke-width:1}
   #s_chart .gl{stroke:rgba(255,255,255,.07);stroke-width:1}
-  #prog{position:fixed;left:0;top:0;height:2px;background:#C99A3A;width:0;z-index:8;transition:width .6s ease}
+  #prog{position:fixed;left:0;top:0;height:2px;background:var(--brand);width:0;z-index:8;transition:width .6s ease}
   #dwell{position:fixed;left:0;top:0;height:2px;background:rgba(201,154,58,.35);width:0;z-index:7}
 
   #intro{position:fixed;inset:0;z-index:12;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
          background:radial-gradient(ellipse at center,rgba(7,9,10,.45),rgba(7,9,10,.86));transition:opacity .8s ease}
-  #intro .eyebrow{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.3em;text-transform:uppercase;color:#C99A3A;margin-bottom:22px}
+  #intro .eyebrow{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.3em;text-transform:uppercase;color:var(--brand);margin-bottom:22px}
   #intro h1{font-size:clamp(42px,7vw,96px);font-weight:800;letter-spacing:-.035em;line-height:.94;text-transform:uppercase}
   #intro .sub{font-family:Newsreader,Georgia,serif;font-size:clamp(17px,1.6vw,22px);color:#C6CAC5;margin-top:22px;max-width:600px;line-height:1.5}
-  #begin{margin-top:40px;font-family:'JetBrains Mono',monospace;font-size:12.5px;letter-spacing:.18em;text-transform:uppercase;color:#07090A;background:#C99A3A;border:none;border-radius:3px;padding:16px 32px;cursor:pointer;transition:filter .2s}
+  #begin{margin-top:40px;font-family:'JetBrains Mono',monospace;font-size:12.5px;letter-spacing:.18em;text-transform:uppercase;color:#07090A;background:var(--brand);border:none;border-radius:3px;padding:16px 32px;cursor:pointer;transition:filter .2s}
   #begin:hover{filter:brightness(1.12)}
   #load{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:#07090A;font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.2em;color:#8E948E}
   #status{position:fixed;right:14px;bottom:12px;z-index:4;font-family:'JetBrains Mono',monospace;
@@ -1486,7 +1491,7 @@ HTML = r"""<!DOCTYPE html>
   #status.fatal{color:#0d0f10;background:#D9584A;padding:7px 13px;border-radius:3px;font-size:11px;z-index:30;font-weight:600}
   #offline{position:fixed;left:30px;bottom:12px;z-index:9;display:none;
            font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.14em;
-           text-transform:uppercase;color:#07090A;background:#C99A3A;padding:6px 12px;border-radius:3px}
+           text-transform:uppercase;color:#07090A;background:var(--brand);padding:6px 12px;border-radius:3px}
   #offline.on{display:block}
   #toast{position:fixed;left:50%;top:26px;transform:translateX(-50%);z-index:14;background:rgba(12,15,16,.95);
          border:1px solid rgba(255,255,255,.18);border-radius:3px;padding:11px 18px;display:none;
@@ -1646,25 +1651,23 @@ HTML = r"""<!DOCTYPE html>
      the figures and the pager stay put — those are what you read at a glance
      and what you navigate by. Nothing is removed; the long prose is one
      thumb-scroll away instead of occupying the screen the deck exists for. */
-  @media(orientation:portrait) and (max-width:820px){
-    #cap{max-height:46dvh;padding:14px 16px 0}
-    #cap h2{font-size:20px;line-height:1.18}
-    /* min-height:0 or the flex child refuses to shrink and scroll. */
-    #cap p{font-size:15px;line-height:1.5;max-height:15dvh;min-height:0;
-           overflow-y:auto;-webkit-overflow-scrolling:touch;padding-right:6px}
-    #cap .fig{margin-top:10px;padding-top:10px;gap:0 14px}
-    #cap .fig b{font-size:13px}
-    #cap .fig span{font-size:8.5px}
-    /* The banner is an obligation, not a headline. Two small lines, not a block. */
-    #synwarn{font-size:8.5px;line-height:1.4;padding:5px 9px}
-    /* One scrolling row rather than a stack that eats the top of the frame.
-       The wrap happens INSIDE the legend's groups, so nowrap has to reach
-       them too — setting it on the container alone left two rows. */
-    #legend,#legend>div{flex-wrap:nowrap}
-    #legend{overflow-x:auto;max-width:100%}
-    /* 32x29 is below every touch-target guideline. */
-    #cam .pad button{width:40px;height:40px}
-  }
+  body.portrait #cap{max-height:46dvh;padding:14px 16px 0}
+  body.portrait #cap h2{font-size:20px;line-height:1.18}
+  /* min-height:0 or the flex child refuses to shrink and scroll. */
+  body.portrait #cap p{font-size:15px;line-height:1.5;max-height:15dvh;min-height:0;
+         overflow-y:auto;-webkit-overflow-scrolling:touch;padding-right:6px}
+  body.portrait #cap .fig{margin-top:10px;padding-top:10px;gap:0 14px}
+  body.portrait #cap .fig b{font-size:13px}
+  body.portrait #cap .fig span{font-size:8.5px}
+  /* The banner is an obligation, not a headline. Two small lines, not a block. */
+  body.portrait #synwarn{font-size:8.5px;line-height:1.4;padding:5px 9px}
+  /* One scrolling row rather than a stack that eats the top of the frame.
+     The wrap happens INSIDE the legend's groups, so nowrap has to reach them
+     too — setting it on the container alone left two rows. */
+  body.portrait #legend,body.portrait #legend>div{flex-wrap:nowrap}
+  body.portrait #legend{overflow-x:auto;max-width:100%}
+  /* 32x29 is below every touch-target guideline. */
+  body.portrait #cam .pad button{width:40px;height:40px}
 </style>
 </head>
 <body>
@@ -1700,6 +1703,10 @@ HTML = r"""<!DOCTYPE html>
 <div id="tools">
   <button id="recbtn" class="btn sm" title="Record a walkthrough to video (R)"><span id="recdot"></span>Rec<span id="rectime"></span></button>
   <button id="assetbtn" class="btn sm" title="Asset only — the orebody, nothing else (A)">Asset</button>
+  <!-- Only rendered once the deck reports it is holding holes back. A deck
+       that shows everything must not carry a control implying it might not. -->
+  <button id="allholes" class="btn sm" hidden
+          title="Show the holes this deck leaves out">Show all</button>
   <button id="datatoggle" class="btn sm" title="Text edition — no 3D required">Text</button>
   <button id="provbtn" class="btn sm" title="Audit trail — where every number comes from">Audit</button>
   <button id="sitebtn" class="btn sm" title="Ground-level site view">Site</button>
@@ -1773,7 +1780,7 @@ HTML = r"""<!DOCTYPE html>
   </div>
 
   <h3>Mine plan timeline</h3>
-  <div class="cutrow"><input type="range" id="stage" min="-1" max="3" step="1" value="-1"><span id="stagev" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#C99A3A;min-width:96px;text-align:right">none</span></div>
+  <div class="cutrow"><input type="range" id="stage" min="-1" max="3" step="1" value="-1"><span id="stagev" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--brand);min-width:96px;text-align:right">none</span></div>
 
   <h3>Block model</h3>
   <div class="seg" id="blockseg">
@@ -1812,7 +1819,7 @@ HTML = r"""<!DOCTYPE html>
   </div>
   <div class="cutrow" style="margin-top:8px">
     <input type="range" id="sect" min="0" max="100" step="2" value="50">
-    <span id="sectv" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#C99A3A;min-width:96px;text-align:right">off</span>
+    <span id="sectv" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--brand);min-width:96px;text-align:right">off</span>
   </div>
 
   <h3>Plan view</h3>
@@ -2022,7 +2029,7 @@ HTML = r"""<!DOCTYPE html>
 
 <svg id="compass" viewBox="0 0 100 100"><g id="cneedle">
   <circle cx="50" cy="50" r="34" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="2"/>
-  <polygon points="50,14 58,50 50,44 42,50" fill="#C99A3A"/>
+  <polygon points="50,14 58,50 50,44 42,50" fill="var(--brand)"/>
   <polygon points="50,86 42,50 50,56 58,50" fill="rgba(255,255,255,.5)"/>
   <text x="50" y="10" text-anchor="middle" fill="#EDEEEC" font-size="13" font-family="monospace">N</text>
 </g></svg>
@@ -2135,6 +2142,60 @@ let N=__N__,
 let CHAPTERS=__CHAPTERS__, RUNS=__RUNS__, BUCKETS=__BUCKETS__, VEINS=__VEINS__,
       LADDER=__LADDER__, CLASS_LABELS=__CLASS_LABELS__, CLASS_CONFIRMED=__CLASS_CONFIRMED__,
       PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, REAL_CLAIMS=__REAL_CLAIMS__, CLAIMS_ATTRIB=__CLAIMS_ATTRIB__, CLAIMS_SYNTHETIC=__CLAIMS_SYNTHETIC__, CLAIMS_SUBJECT=__CLAIMS_SUBJECT__, HOLDER_LOGOS=__HOLDER_LOGOS__, HOLDER_META=__HOLDER_META__, BRAND=__BRAND__, GEOPHYS=__GEOPHYS__, GEOPHYS_SYNTHETIC=__GEOPHYS_SYNTHETIC__, STATIONS=__STATIONS__, DEPOSITS=__DEPOSITS__, PITCUT=__PITCUT__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, PIT_DEM=__PIT_DEM__, PIT_DEPOSIT=__PIT_DEPOSIT__, CAM_FIXED=__CAM_FIXED__, CAM_KEYS=__CAM_KEYS__, G_PER_OZ=31.10348;
+  // The issuer's accent, and a lighter partner for anything that has to read
+  // against the model. CSS gets the same pair as custom properties; these two
+  // exist because a canvas fillStyle and a Cesium material cannot take var().
+  // Defaults are Bedrock's own gold, so a deck with no brand on it looks
+  // deliberate rather than unstyled.
+  let AC='#C99A3A', ACH='#F2C14E';
+
+  // Holes the deck deliberately does not show, and whether the reader has
+  // asked to see them anyway. HOLES itself stays "what this deck shows", so
+  // the ledger, the headline intercepts and every count downstream respect the
+  // filter without knowing it exists.
+  let HOLES_HIDDEN=[], HOLE_RULE=null, showAllHoles=false, PAYLOAD_INCLUSION=null;
+
+  // Gram-metres: grade times length, summed. It is what "how good is this
+  // hole" means on a drill programme — a metre of 10 g/t and ten metres of
+  // 1 g/t are the same discovery, and neither grade nor length alone says so.
+  function holeStats(h){
+    let gm=0, best=0, n=0;
+    (h.segs||[]).forEach(sg=>{
+      const len=Math.max(0,(sg.t-sg.f));
+      gm+=(sg.g||0)*len; if(sg.g>best) best=sg.g; n++;
+    });
+    return {gm:Math.round(gm*10)/10, best:best, n:n, td:+h.td||0};
+  }
+
+  /** Split a hole list by the deck's inclusion rule.
+   *
+   *  The rule proposes and the two lists decide, in that order: `show` wins
+   *  over everything so a geologist can keep a barren hole that closes the
+   *  anomaly, and `hide` wins over the rule so they can drop one the rule
+   *  liked. A deck with no rule and no lists shows everything, which is what
+   *  every deck built before this did. */
+  function splitHoles(list, inc){
+    const cfg=(inc&&inc.holes)||{};
+    const rule=cfg.rule||null;
+    const hide=new Set(cfg.hide||[]), show=new Set(cfg.show||[]);
+    HOLE_RULE=rule;
+    if(!rule && !hide.size && !show.size) return {inc:list.slice(), out:[]};
+    const keep=[], drop=[];
+    list.forEach(h=>{
+      const st=holeStats(h);
+      h.__stats=st;
+      let ok=true;
+      if(rule){
+        if(rule.minGm!=null && st.gm < +rule.minGm) ok=false;
+        if(rule.minBest!=null && st.best < +rule.minBest) ok=false;
+        if(rule.minLen!=null && st.td < +rule.minLen) ok=false;
+      }
+      if(show.has(h.id)) ok=true;
+      if(hide.has(h.id)) ok=false;
+      (ok?keep:drop).push(h);
+    });
+    return {inc:keep, out:drop};
+  }
 // ---- projections -------------------------------------------------------
 // The viewer used to hard-code EPSG:26910 — NAD83 / UTM 10N, which is this
 // model's grid and nobody else's. Every project outside one zone of British
@@ -2242,6 +2303,23 @@ const EMBED=QS.has('embed');
 // Authoring mode. The viewer is framed by the console, reports what it is
 // looking at, and never writes anything itself — see the bridge at the bottom.
 const AUTHOR=QS.has('author');
+
+// Which shape the deck is being read in. `frame` forces it, which is how the
+// studio can show a 9:16 preview inside a landscape desktop — the media query
+// that used to own this could never match there. Absent the override, a real
+// phone held upright decides.
+const FRAME=QS.get('frame');
+const mqPortrait=matchMedia('(orientation:portrait) and (max-width:820px)');
+function isPortrait(){
+  return FRAME==='portrait' ? true : FRAME==='landscape' ? false : mqPortrait.matches;
+}
+function syncFrame(){
+  if(document.body) document.body.classList.toggle('portrait',isPortrait());
+}
+if(document.readyState==='loading') addEventListener('DOMContentLoaded',syncFrame);
+else syncFrame();
+// Only meaningful when nothing is forced; a forced frame ignores the device.
+mqPortrait.addEventListener('change',syncFrame);
 
 // ---- audience telemetry -------------------------------------------------
 // Reports engagement for decks opened through a share link, including — in
@@ -2597,6 +2675,17 @@ function rollHolders(claims, subjectOwner){
 function applyHolderLogos(project){
   HOLDER_LOGOS={}; HOLDER_META={};
   BRAND=(project&&project.brand)||{};
+  // Two colours read off the issuer's logo when it was uploaded. Applied here
+  // rather than at boot because this is where the project payload lands, and
+  // applied to BOTH the CSS variables and the JS mirrors or half the deck
+  // would brand and half would not.
+  if(BRAND&&Array.isArray(BRAND.colors)&&BRAND.colors[0]){
+    AC=String(BRAND.colors[0]);
+    ACH=String(BRAND.colors[1]||BRAND.colors[0]);
+    const rs=document.documentElement.style;
+    rs.setProperty('--brand',AC);
+    rs.setProperty('--brand-hi',ACH);
+  }
   const hs=(project&&project.holders)||{};
   Object.keys(hs).forEach(k=>{
     const v=hs[k];
@@ -2635,7 +2724,12 @@ function claimsFromArtifact(a){
 // spread rather than enumerated — a layer added to the console should not need
 // a matching change here to reach the deck.
 function mapChapter(c){
-  const cam=c.camera||{};
+  // A shot framed for 16:9 is rarely the shot for 9:16 — the subject sits in a
+  // different part of the frame and usually wants a different range. So a
+  // chapter may carry a second camera for portrait, and falls back to its only
+  // one when it does not, which is what every existing chapter does.
+  const cp=c.camera_portrait;
+  const cam=(isPortrait() && cp && Object.keys(cp).length) ? cp : (c.camera||{});
   const out=Object.assign({}, c.layers||{});
   // Two camera shapes, and they are now TAGGED, because they were not and it
   // cost the console its camera editor.
@@ -2733,6 +2827,10 @@ async function hydrate(token){
   const zones=(payload.zones&&payload.zones.length)?payload.zones:
     [{id:null,name:(payload.project||{}).name||'Deposit',slug:'zone',ord:0}];
   const assetsOf=zid=>(payload.assets||[]).filter(a=>(a.zone_id||null)===(zid||null));
+  // Captured here, where `payload` is in scope. loadSideArtifacts() is handed an
+  // asset list and nothing else — reading `payload` inside it threw a
+  // ReferenceError that killed the boot of EVERY deck carrying drill data.
+  PAYLOAD_INCLUSION=(payload.deck&&payload.deck.inclusion)||{};
   const modelled=zones
     .map(z=>({zone:z, blocks:assetsOf(z.id).find(a=>a.kind==='blocks'&&a.url)}))
     .filter(x=>x.blocks);
@@ -2815,6 +2913,14 @@ async function hydrate(token){
     HOLES=[]; HIGHLIGHTS=[]; SITE={areas:[],roads:[],labels:[],claims:[]};
     SITE_SYNTHETIC=false; REAL_CLAIMS=[]; CLAIMS_ATTRIB=''; CLAIMS_SYNTHETIC=false;
     GEOPHYS={}; GEOPHYS_SYNTHETIC=false; THUMBS=[]; STATIONS=[];
+    // DEPOSITS too. The modelled branch below rebuilds this list from the
+    // project's own zones; the exploration branch did not, so a real
+    // client's deck inherited the DEMO's fabricated South Zone — drawn on
+    // their property, labelled 'fabricated', under a red banner reading
+    // 'one of the deposits in this property view is FABRICATED'. Exactly
+    // the failure the comment two hundred lines down calls the worst bug
+    // this viewer could have.
+    DEPOSITS=[]; PITCUT=null; PIT_DEM=null; PIT_DEPOSIT=null;
     await loadSideArtifacts(assetsOf(zones[0] && zones[0].id));
 
     const chs0=(payload.chapters||[]).map(mapChapter);
@@ -3028,6 +3134,14 @@ async function loadSideArtifacts(assets){
   if(d&&d.json&&d.json.format==='orebody-drills/1'){
     HOLES=holesFromArtifact(d.json,GRADE_FLOOR);
     DRILL_SYNTHETIC=!!d.asset.synthetic;
+    // Filter before the headline intercepts are chosen, or the best interval
+    // in a hole the deck does not show would be quoted on a slide.
+    {
+      const sp=splitHoles(HOLES,PAYLOAD_INCLUSION||{});
+      HOLES=sp.inc; HOLES_HIDDEN=sp.out;
+      const ab=document.getElementById('allholes');
+      if(ab && HOLES_HIDDEN.length){ ab.hidden=false; ab.textContent=holeBtnLabel(); }
+    }
     // Headline intercepts, ranked the way a drill release ranks them: grade
     // times length, capped at two per hole so one deep hole cannot own the
     // whole list.
@@ -3754,7 +3868,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       // where a screen-space dot reads as a UI annotation.
       const collar=viewer.entities.add({position:P(h.collar),
         box:{dimensions:new Cesium.Cartesian3(16,16,16),
-             material:Cesium.Color.fromCssColorString('#F2C14E'),
+             material:Cesium.Color.fromCssColorString(ACH),
              outline:true,outlineColor:Cesium.Color.fromCssColorString('#07090A')},
         label:{text:h.id,font:'500 11px monospace',fillColor:Cesium.Color.WHITE.withAlpha(.85),
                showBackground:true,backgroundColor:new Cesium.Color(0.03,0.04,0.04,0.72),
@@ -3839,7 +3953,8 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
            !!HTMLCanvasElement.prototype.captureStream;
   }
   function pickMime(){
-    const want=['video/mp4;codecs=avc1','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
+    const want=['video/mp4;codecs=avc1,mp4a.40.2','video/mp4;codecs=avc1',
+                'video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
     for(const m of want) if(MediaRecorder.isTypeSupported(m)) return m;
     return '';
   }
@@ -3852,9 +3967,32 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     $('recdot').classList.toggle('on',on);
     if(!on){ clearInterval(recTimer); recTimer=null; $('rectime').textContent=''; }
   }
-  function startRec(){
+  // Tracks we opened and therefore have to close. A microphone left live after
+  // a recording is a hardware light that stays on.
+  let recTracks=[], recChrome=false;
+  async function startRec(){
     if(rec) return;                       // already running
     if(!recSupported()){ toast('Recording not supported in this browser',4000); return; }
+
+    // Voice first, and never fatal. A silent walkthrough is a worse video than
+    // a narrated one, but it is still the video they asked for.
+    let micStream=null;
+    try{ micStream=await navigator.mediaDevices.getUserMedia({audio:true}); }
+    catch(e){ micStream=null; }
+
+    // The captions ARE the deck, and they live in the DOM, not on the Cesium
+    // canvas. Compositing them frame by frame would mean rasterising live DOM
+    // at 30fps, which is not a thing a browser will do. So capture the tab and
+    // the chrome comes along by definition - caption card, chapter rail,
+    // legend, the fabricated-data banner and the ink, all of it.
+    let capStream=null;
+    if(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia){
+      try{
+        capStream=await navigator.mediaDevices.getDisplayMedia(
+          {video:{frameRate:30}, audio:false, preferCurrentTab:true});
+      }catch(e){ capStream=null; }       // declined, or not offered
+    }
+    recChrome=!!capStream;
     const src=viewer.scene.canvas;
     recComp=document.createElement('canvas');
     recComp.width=src.width; recComp.height=src.height;
@@ -3886,16 +4024,24 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       cx.fillText(f, pad, recComp.height-pad-Math.round(6*S));
       recRAF=requestAnimationFrame(draw);
     };
-    draw();
+    if(!recChrome) draw();               // the tab capture already has everything
     const mime=pickMime();
     recChunks=[];
-    rec=new MediaRecorder(recComp.captureStream(30), mime?{mimeType:mime}:undefined);
+    const vTrack=recChrome ? capStream.getVideoTracks()[0]
+                           : recComp.captureStream(30).getVideoTracks()[0];
+    recTracks=[vTrack].concat(micStream?micStream.getAudioTracks():[]);
+    // Ending the share from the browser's own bar has to end the recording,
+    // or it keeps writing a frozen frame until somebody notices in the file.
+    vTrack.addEventListener('ended',()=>{ if(rec) stopRec(); });
+    rec=new MediaRecorder(new MediaStream(recTracks), mime?{mimeType:mime}:undefined);
     rec.ondataavailable=e=>{ if(e.data.size) recChunks.push(e.data); };
     rec.onerror=()=>{ recUI(false); cancelAnimationFrame(recRAF); rec=null;
       toast('Recording failed',4000); };
     rec.onstop=()=>{
       recUI(false);
       cancelAnimationFrame(recRAF);
+      recTracks.forEach(t=>{ try{ t.stop(); }catch(e){} });
+      recTracks=[];
       const type=rec.mimeType||mime||'video/webm';
       const ext=type.indexOf('mp4')>=0?'mp4':'webm';
       const blob=new Blob(recChunks,{type:type});
@@ -3911,8 +4057,12 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       $('rectime').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+
                                String(s%60).padStart(2,'0');
     },500);
-    toast(pickMime().indexOf('mp4')>=0
-      ? 'Recording — MP4' : 'Recording — WebM (this browser has no MP4 encoder)',4500);
+    // Three independent things can each be missing, and a presenter finds out
+    // an hour later when they open the file. Say which ones now.
+    const bits=[pickMime().indexOf('mp4')>=0 ? 'MP4' : 'WebM (no MP4 encoder here)'];
+    bits.push(recChrome ? 'full deck' : '3D only — screen capture was declined');
+    bits.push(micStream ? 'with narration' : 'silent — no microphone');
+    toast('Recording — '+bits.join(' · '),5500);
   }
   function stopRec(){
     if(!rec){ recUI(false); return; }     // clear a stale badge either way
@@ -4000,7 +4150,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       const b=document.createElement('button');
       b.textContent='Try the 3D view again';
       b.style.cssText='margin-top:14px;font:600 13px system-ui;padding:12px 18px;'+
-        'border-radius:5px;border:1px solid #C99A3A;background:#C99A3A;color:#07090A;cursor:pointer';
+        'border-radius:5px;border:1px solid '+AC+';background:'+AC+';color:#07090A;cursor:pointer';
       b.onclick=()=>location.reload();
       h.appendChild(why); h.appendChild(b);
     }
@@ -5058,7 +5208,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
           typeof HOLDER_META[norm(h.owner)].feature==='boolean')
             ? HOLDER_META[norm(h.owner)].feature : h.corporate))
       .forEach(h=>{ holderStyle[norm(h.owner)]=NB_HUES[hi_++%NB_HUES.length]; });
-    const hueFor=c=>isMine(c) ? '#F2C14E' : (holderStyle[norm(c.owner)] || '#7C8792');
+    const hueFor=c=>isMine(c) ? ACH : (holderStyle[norm(c.owner)] || '#7C8792');
 
     // Trade-off worth stating: a company gets a coloured, filled parcel with
     // its name on it; a private individual gets a grey outline and no name.
@@ -5272,7 +5422,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       if(ct) placeCard(ct.x/ct.n, ct.y/ct.n, titleCase(me.owner),
                        me.claims+(me.claims===1?' claim':' claims')+'  ·  '+nf(me.ha)+' ha'
                          +(CLAIMS_SYNTHETIC?'  ·  conceptual':''),
-                       '#F2C14E', BRAND_IMG||LOGO_IMG[norm(me.owner)]||null,
+                       ACH, BRAND_IMG||LOGO_IMG[norm(me.owner)]||null,
                        // Clear of the site furniture, which sits at the
                        // deposit — the same place this card's centroid lands.
                        (SITE.labels||[]).length*130+260);
@@ -5302,7 +5452,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
         polyline:{positions:Cesium.Cartesian3.fromDegreesArray(deg(c.ring)),
           width:2.5,clampToGround:true,
           material:new Cesium.PolylineDashMaterialProperty({
-            color:Cesium.Color.fromCssColorString('#F2C14E'),dashLength:26})}})));
+            color:Cesium.Color.fromCssColorString(ACH),dashLength:26})}})));
     }
     // Collected while the areas are walked, applied to the globe once: the
     // clipping collection is global state, not per entity.
@@ -5910,7 +6060,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     if(targetEnts||!TARGETS.length) return targetEnts;
     targetEnts=[];
     const STYLE={
-      target:{c:'#F2C14E', dz:340},
+      target:{c:ACH, dz:340},
       pit:{c:'#E4EAF0', dz:260},
       portal:{c:'#4FD1C5', dz:220},
       showing:{c:'#A78BFA', dz:300},
@@ -6357,7 +6507,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     x.textBaseline='alphabetic';
     if(s.eyebrow){
       x.font='500 '+(11*S)+'px "JetBrains Mono", monospace';
-      x.fillStyle='#C99A3A';
+      x.fillStyle=AC;
       x.fillText(String(s.eyebrow).toUpperCase(),L,y); y+=34*S;
     }
     wrap(s.title,'800 '+(52*S)+'px Archivo, sans-serif','#EDEEEC',52*S,58*S,620*S);
@@ -6368,7 +6518,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       const cx=L+i*(170*S);
       x.font='500 '+(9.5*S)+'px "JetBrains Mono", monospace'; x.fillStyle='#8E948E';
       x.fillText(String(st.k).toUpperCase(),cx,y);
-      x.font='700 '+(28*S)+'px Archivo, sans-serif'; x.fillStyle='#C99A3A';
+      x.font='700 '+(28*S)+'px Archivo, sans-serif'; x.fillStyle=AC;
       x.fillText(st.v,cx,y+32*S);
     });
     if(s.table){
@@ -6404,18 +6554,18 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     for(let k=0;k<=4;k++){const y=T+(H-T-B)*k/4;
       s+='<line class="gl" x1="'+L+'" y1="'+y+'" x2="'+(W-R)+'" y2="'+y+'"/>';}
     s+='<line class="ax" x1="'+L+'" y1="'+(H-B)+'" x2="'+(W-R)+'" y2="'+(H-B)+'"/>';
-    s+='<path d="'+path(Yt,p=>p.t)+'" fill="none" stroke="#C99A3A" stroke-width="2.5"/>';
+    s+='<path d="'+path(Yt,p=>p.t)+'" fill="none" stroke=AC stroke-width="2.5"/>';
     s+='<path d="'+path(Yg,p=>p.g)+'" fill="none" stroke="#17a89a" stroke-width="2.5" stroke-dasharray="5 4"/>';
     pts.forEach((p,i)=>{ if(i%3) return;
       s+='<text x="'+X(i)+'" y="'+(H-10)+'" text-anchor="middle">'+p.cut+'</text>'; });
-    s+='<text x="'+L+'" y="'+(T+9)+'" text-anchor="start" fill="#C99A3A">'+
+    s+='<text x="'+L+'" y="'+(T+9)+'" text-anchor="start" fill=AC>'+
        (maxT/1e6).toFixed(1)+' Mt</text>';
     s+='<text x="'+(W-R)+'" y="'+(T+9)+'" text-anchor="end" fill="#17a89a">'+
        maxG.toFixed(1)+' g/t</text>';
     s+='<text x="'+((L+W-R)/2)+'" y="'+(H-10)+'" text-anchor="middle" opacity="0"> </text>';
     s+='</svg>';
     return s+'<div style="display:flex;gap:22px;margin-top:10px;font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#8E948E">'+
-      '<span><span style="color:#C99A3A">\u2014</span> tonnes above cut-off</span>'+
+      '<span><span style="color:'+AC+'">\u2014</span> tonnes above cut-off</span>'+
       '<span><span style="color:#17a89a">- -</span> average grade</span>'+
       '<span>x-axis: cut-off g/t AuEq</span></div>';
   }
@@ -6429,7 +6579,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       s+='<div style="display:flex;align-items:center;gap:10px;margin:7px 0">'+
         '<span style="width:64px;font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#C6CAC5">'+d.n+'</span>'+
         '<span style="flex:1;height:12px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden">'+
-        '<span style="display:block;height:100%;width:'+(d.oz/max*100).toFixed(1)+'%;background:#C99A3A"></span></span>'+
+        '<span style="display:block;height:100%;width:'+(d.oz/max*100).toFixed(1)+'%;background:'+AC+'"></span></span>'+
         '<span style="width:78px;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#EDEEEC">'+
         Math.round(d.oz).toLocaleString()+' oz</span></div>';
     });
@@ -6480,6 +6630,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     $('inkbar').classList.toggle('on',on);
     $('inkPen').classList.toggle('on',on);
   }
+  $('allholes').onclick=()=>setShowAllHoles(!showAllHoles);
   $('recbtn').onclick=()=>rec?stopRec():startRec();
   $('assetbtn').onclick=()=>setAssetOnly(!assetOnly);
   $('datatoggle').onclick=()=>{
@@ -6942,7 +7093,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       const yb=y(st.best.f), yb2=y(st.best.t);
       parts.push('<rect x="'+(padL-2)+'" y="'+yb.toFixed(1)+'" width="'+(plotW+4)+
                  '" height="'+Math.max(2,(yb2-yb)).toFixed(1)+
-                 '" fill="none" stroke="#F2C14E" stroke-width="1"/>');
+                 '" fill="none" stroke=ACH stroke-width="1"/>');
     }
     parts.push('</svg>');
     let cap='Peak '+st.peak.toFixed(2)+' g/t  ·  '+st.metres.toFixed(1)+' m assayed  ·  0 → '+
@@ -7089,7 +7240,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
 
     add({position:P(h.collar),
       box:{dimensions:new Cesium.Cartesian3(6*u,6*u,6*u),
-           material:Cesium.Color.fromCssColorString('#F2C14E')},
+           material:Cesium.Color.fromCssColorString(ACH)},
       label:{text:h.id+(DRILL_SYNTHETIC?'  ·  synthetic':'')+'\n'+
                   'TD '+Math.round(h.td)+' m  ·  '+st.az+'° / '+st.dip+'°',
         font:'500 12px "JetBrains Mono", monospace',
@@ -7114,12 +7265,12 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       const m=at((st.best.f+st.best.t)/2);
       const off=[m[0]+Math.sin(back)*44*u, m[1]+Math.cos(back)*44*u, m[2]];
       add({polyline:{positions:[P(m),P(off)],width:1.2,arcType:Cesium.ArcType.NONE,
-        material:Cesium.Color.fromCssColorString('#F2C14E').withAlpha(0.8)}});
+        material:Cesium.Color.fromCssColorString(ACH).withAlpha(0.8)}});
       add({position:P(off),label:{
         text:st.best.len.toFixed(1)+' m @ '+st.best.g.toFixed(2)+' g/t\nfrom '+
              st.best.f.toFixed(0)+' m',
         font:'600 13px "JetBrains Mono", monospace',
-        fillColor:Cesium.Color.fromCssColorString('#F2C14E'),
+        fillColor:Cesium.Color.fromCssColorString(ACH),
         showBackground:true,backgroundColor:new Cesium.Color(0.03,0.04,0.05,0.86),
         horizontalOrigin:Cesium.HorizontalOrigin.RIGHT,
         pixelOffset:new Cesium.Cartesian2(-8,0),
@@ -7436,6 +7587,53 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   function setDrills(on){
     drills=on;
     $('drillseg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',(x.dataset.d==='1')===on));
+  }
+
+  /** Reveal the holes the deck leaves out, or put them back.
+   *
+   *  Not a way around the filter — it is the point of it. An investor page that
+   *  quietly drops eleven holes is cherry-picking; one that shows a clean map
+   *  and a control saying "show all 45" is an editorial choice a reader can
+   *  check. So the count is always on the button, whether or not it is pressed.
+   *
+   *  Rebuilds rather than toggling visibility, because the ledger, the headline
+   *  intercepts and every count read HOLES, and they all have to agree with
+   *  what is on the screen. */
+  function setShowAllHoles(on){
+    if(on===showAllHoles || (!HOLES_HIDDEN.length && !showAllHoles)) return;
+    showAllHoles=on;
+    if(on){ HOLES=HOLES.concat(HOLES_HIDDEN); HOLES_HIDDEN=[]; }
+    else {
+      const sp=splitHoles(HOLES,(PAYLOAD_INCLUSION||{}));
+      HOLES=sp.inc; HOLES_HIDDEN=sp.out;
+    }
+    if(drillEnts){ drillEnts.forEach(e=>viewer.entities.remove(e)); drillEnts=null; }
+    buildDrills();
+    applyHoleFocus(CHAPTERS[cur]);
+    if(ledgerOn) ledgerPaint();
+
+    const b=$('allholes');
+    if(b){ b.classList.toggle('on',on); b.textContent=holeBtnLabel(); }
+    apply();
+  }
+  function holeBtnLabel(){
+    const total=HOLES.length+HOLES_HIDDEN.length;
+    return showAllHoles ? ('Showing all '+total) : ('Show all '+total);
+  }
+
+  /** Which of the INCLUDED holes this slide draws attention to.
+   *
+   *  A slide may narrow, never widen: `layers.holes` is intersected with what
+   *  the deck includes, so a chapter cannot put back a hole the deck left out.
+   *  Emphasis is editorial; inclusion is disclosure, and they do not get to be
+   *  the same control. */
+  function applyHoleFocus(c){
+    if(!drillEnts) return;
+    const want=c&&Array.isArray(c.holes)&&c.holes.length ? new Set(c.holes) : null;
+    drillEnts.forEach(e=>{
+      const h=e.__hole;
+      e.show = !h ? true : (!want || want.has(h.id));
+    });
   }
   setCut(cutIdx);
   // Moving either control counts as taking manual control of the cut-off, so
@@ -8010,13 +8208,13 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   const DECK=document.title.split(' \u00b7 ')[0];
   // Served from a real host, the deck knows its own address. Served from
   // localhost it does not, and a snippet pointing at 127.0.0.1 is useless to
-  // everyone but its author — so fall back to the published alias. That is
-  // bedrock-fawn.vercel.app, not orebody.vercel.app: the bare name belongs to
-  // an unrelated project, and defaulting to it would have handed users a
-  // snippet that embedded a stranger's website. The host keeps its old name
-  // until the deployment is renamed — a live embed URL is not a brand surface
-  // to sweep, it is somebody's website.
-  const PUBLISHED='https://bedrock-fawn.vercel.app/';
+  // everyone but its author — so fall back to the published address.
+  //
+  // getbedrock.ca now, not the vercel.app alias: this string ends up pasted
+  // into a customer's website, and a deployment hostname in an embed on an
+  // issuer's investor page reads as a prototype. The vercel.app alias still
+  // resolves, so nothing already embedded breaks.
+  const PUBLISHED='https://getbedrock.ca/';
   function embBase(){
     const u=location.origin+location.pathname;
     return /^https?:\/\/(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(u)
@@ -8349,6 +8547,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     if(cutHold) setCut(cutIdx); else applyChapterCut(c);
     setMode(c.mode||'grade');
     setDrills(assetOnly?false:!!c.drills);
+    applyHoleFocus(c);
     if(c.section3d && !assetOnly){
       sectAxis=c.section3d;
       const pct=c.sectionAt===undefined?50:c.sectionAt;
@@ -8763,6 +8962,19 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     u.hash='';
     return u.toString();
   }
+  /** How many holes this deck leaves out, as a sentence rather than a silence.
+   *
+   *  It rides with the fabricated-data disclaimer because it is the same kind
+   *  of claim: something about this picture that a reader cannot see by looking
+   *  at it, and would want to know. It is stated whether or not the drill layer
+   *  is on, and it is burned into stills and recordings like the rest. */
+  function holeNote(){
+    if(!HOLES_HIDDEN.length) return '';
+    const total=HOLES.length+HOLES_HIDDEN.length;
+    return ' Showing '+HOLES.length+' of '+total+' drill holes'+
+           (HOLE_RULE ? ' (the rest are below this deck\u2019s reporting threshold).'
+                      : '.');
+  }
   function foot(){
     const f=[];
     if(drills&&DRILL_SYNTHETIC) f.push('drill holes');
@@ -8778,7 +8990,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       ? ' '+areas.length+' area'+(areas.length===1?'':'s')+' drawn by the presenter.' : '';
     return (CLASS_CONFIRMED?'':'Resource class labels unconfirmed. ')+
       'Illustrative visualization — not a mineral resource statement.'+
-      (f.length?' SYNTHETIC, fabricated: '+f.join(', ')+'.':'')+marks;
+      (f.length?' SYNTHETIC, fabricated: '+f.join(', ')+'.':'')+holeNote()+marks;
   }
 
   $('expPptx').onclick=async()=>{
@@ -8799,10 +9011,10 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
         sl.addText(s.title,{x:0.5,y:3.6,w:8.5,h:0.6,fontSize:26,bold:true,color:'FFFFFF',fontFace:'Arial'});
         sl.addText(s.body,{x:0.5,y:4.25,w:8.5,h:0.9,fontSize:13,color:'C6CAC5',fontFace:'Arial'});
         sl.addText(fmt(s.stats.t)+'   ·   '+s.stats.g.toFixed(2)+' g/t AuEq   ·   '+fmtoz(s.stats.oz),
-          {x:0.5,y:5.05,w:8.5,h:0.35,fontSize:12,color:'C99A3A',fontFace:'Consolas'});
+          {x:0.5,y:5.05,w:8.5,h:0.35,fontSize:12,color:AC.slice(1),fontFace:'Consolas'});
         sl.addText(foot(),{x:0.5,y:5.32,w:8.5,h:0.34,fontSize:10,color:'C6CAC5',fontFace:'Arial'});
         sl.addText('Open in 3D  \u2192',{x:8.05,y:0.22,w:1.6,h:0.3,fontSize:11,
-          color:'C99A3A',fontFace:'Arial',align:'right',
+          color:AC.slice(1),fontFace:'Arial',align:'right',
           hyperlink:{url:live,tooltip:'Open the interactive 3D deck'}});
       });
       await p.writeFile({fileName:deckName()+'.pptx'});
@@ -9031,7 +9243,12 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       if(!d||d.source!=='bedrock-console') return;
       if(d.type==='hello'){
         authOrigin=e.origin;
-        $('authbar').hidden=false;
+        // The bar stays hidden. The console drives capture now — Set view and
+        // Set view + layers live in the studio's inspector, per frame — so this
+        // was a second copy of the same three buttons sitting on top of the
+        // deck being previewed. It answers `capture` either way; it just does
+        // not need to be on screen.
+        $('authbar').hidden=true;
         authPaint();
         authSend({type:'ready', total:CHAPTERS.length,
                   titles:CHAPTERS.map(c=>c.title||'')});
@@ -9051,6 +9268,12 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
         });
       } else if(d.type==='poll'){
         authSend({type:'state', state:authSnapshot()});
+      } else if(d.type==='capture'){
+        // The console's own "Set view" buttons. Same payload the in-frame
+        // buttons send, so the console cannot store a shape the viewer would
+        // not have stored itself.
+        authSend({type:'set', what:(d.what==='all'?'all':'camera'),
+                  state:authSnapshot()});
       } else if(d.type==='saved'){
         authNote(d.ok?('Saved to chapter '+(d.ord+1)):'Save failed \u2014 see the console',!d.ok);
         // Patch the in-memory chapter to what was actually stored. Without
@@ -9183,7 +9406,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     btn.textContent='Copy diagnostics';
     btn.style.cssText='position:fixed;right:14px;bottom:14px;z-index:100;'+
       'font:600 12px system-ui;padding:10px 14px;border-radius:5px;border:0;'+
-      'background:#C99A3A;color:#07090A';
+      'background:'+AC+';color:#07090A';
     btn.onclick=()=>navigator.clipboard?.writeText(pre.textContent);
     document.body.appendChild(btn);
   }catch(_){}

@@ -8,9 +8,13 @@
 // override in localStorage wins, so development against `supabase start` does
 // not require editing — or accidentally committing — this file.
 
+// The trailing character matters. This was pasted a character short once and
+// every request 401'd — which the console renders as the sign-in screen, so it
+// looked like "the magic link does not work" rather than "the key is wrong".
+// Verify with:  curl -o /dev/null -w '%{http_code}' <url>/auth/v1/settings -H "apikey: <key>"
 const BAKED = {
   url: "https://czuaqwtngduvlisxonkh.supabase.co",
-  anonKey: "sb_publishable_7Uv04ITIEFMNPFyiJgHD6g_INAhri9",
+  anonKey: "sb_publishable_7Uv04ITIEFMNPFyiJgHD6g_INAhri9b",
 };
 
 function stored() {

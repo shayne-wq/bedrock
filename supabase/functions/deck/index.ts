@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
 
   const { data: deck } = await db
     .from("decks")
-    .select("id, title, subtitle, status, theme, settings, project_id")
+    .select("id, title, subtitle, status, theme, settings, inclusion, project_id")
     .eq("id", link.deck_id)
     .maybeSingle();
   if (!deck || deck.status === "archived") {
@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
 
   const { data: chapters } = await db
     .from("chapters")
-    .select("ord, kind, section, title, body, camera, layers, slide, dwell_ms, areas")
+    .select("ord, kind, section, title, body, camera, camera_portrait, layers, slide, dwell_ms, areas")
     .eq("deck_id", deck.id)
     .order("ord");
 
@@ -145,6 +145,37 @@ Deno.serve(async (req) => {
       .createSignedUrl(path, SIGNED_URL_TTL);
     return data?.signedUrl ?? null;
   };
+  /* A geophysics artifact names its rasters but cannot address them.
+   *
+   * `derived.json` lists products as `{file: "mag_rtp.png"}` — the name the
+   * survey arrived under. The image itself sits beside it in the same private
+   * bucket under the flattened upload path (`images__mag_rtp.png`), which no
+   * viewer can guess and could not fetch if it did. A bare filename resolves
+   * against the VIEWER's own origin instead, so seven flown surveys 404'd
+   * against the page they were meant to be drawn on and the chapter showed
+   * bare terrain with a legend over it.
+   *
+   * So sign the siblings here, where the path is known, and hand back a map
+   * from the name the artifact uses to a URL that works. Keyed both ways —
+   * stored name and original name — because the flattening is the uploader's
+   * business, not the viewer's.
+   */
+  const rasterFiles = async (storagePath: string | null | undefined) => {
+    if (!storagePath) return null;
+    const dir = storagePath.replace(/\/[^/]*$/, "");
+    const { data: objects } = await db.storage.from("artifacts").list(dir, { limit: 200 });
+    const out: Record<string, string> = {};
+    for (const o of objects ?? []) {
+      if (!/\.(png|jpe?g|webp)$/i.test(o.name)) continue;
+      const url = await sign(`${dir}/${o.name}`);
+      if (!url) continue;
+      out[o.name] = url;                                  // as stored
+      const original = o.name.replace(/^.*__/, "");       // as the survey named it
+      if (original && !(original in out)) out[original] = url;
+    }
+    return Object.keys(out).length ? out : null;
+  };
+
   const assets: Record<string, unknown>[] = [];
   for (const d of datasets ?? []) {
     const prov = { ...(d.provenance ?? {}) } as Record<string, unknown>;
@@ -159,6 +190,7 @@ Deno.serve(async (req) => {
       synthetic: d.synthetic, synthetic_note: d.synthetic_note,
       url: await sign(d.storage_path),
       buckets_url: await sign(bucketsPath),
+      files: d.kind === "geophysics" ? await rasterFiles(d.storage_path) : null,
     });
   }
 
@@ -171,6 +203,9 @@ Deno.serve(async (req) => {
     deck: {
       id: deck.id, title: deck.title, subtitle: deck.subtitle,
       theme: deck.theme, settings: deck.settings,
+      // Which holes this deck shows. The viewer needs it to filter, and to
+      // state in the provenance trail how many it left out.
+      inclusion: deck.inclusion ?? {},
     },
     project,
     zones,
