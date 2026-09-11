@@ -144,7 +144,77 @@ figure video { position: absolute; inset: 0; width: 100%; height: 100%; object-f
 @media (max-width: 720px) {
   .split.is-film .split-grid { grid-template-columns: 1fr; margin-left: 0; } }
 .split-figure { position: relative; margin: 0; aspect-ratio: 16/10; border: 1px solid var(--border); background: var(--bg-2); overflow: hidden; }
+/* ---- the deck slab -------------------------------------------------------
+   Named `slab`, not `showcase`: this page already has a `.showcase` section
+   further down — the live embedded deck — and its rules come later in the
+   stylesheet, so every name shared with it silently won. `.showcase-head` there
+   is a centred flex row, which is what this block's head became.
+   A screen tilted away from the reader that lifts to face them as the section
+   is scrolled into place. One custom property, --p, runs 0 (tilted back, held
+   slightly larger) to 1 (flat, settled); everything below is a function of it,
+   so the whole effect is one number and the JS never touches a style but that.
+
+   It rests at 1. With no JavaScript, with a scroll listener that never runs, or
+   under prefers-reduced-motion, the section is simply a screenshot the right
+   way up — which is the state that matters, because it is what a thumbnail, a
+   shared link and a reader who scrolls fast all get. */
+.slab { --p: 1; padding-bottom: 88px; overflow: clip; }
+.slab-head { max-width: 46ch; margin: 0 auto 40px; text-align: center;
+  transform: translateY(calc((1 - var(--p)) * -22px)); }
+/* The kicker is a flex row everywhere else on the page, which left-aligns it
+   inside a centred column. */
+.slab-head .kicker { justify-content: center; }
+.slab-title { font-family: var(--heading); font-weight: 600; font-size: clamp(28px, 4.2vw, 40px);
+  line-height: 1.15; letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+.slab-head .note { font-size: 15.5px; line-height: var(--leading); color: var(--ink-dim);
+  margin: 16px auto 0; max-width: 46ch; }
+
+.device { margin: 0 auto; max-width: 1040px; perspective: 1400px; }
+/* The bezel, not a picture of one: a matte slab with a hairline edge. This page
+   is white and technical and a glossy chrome mockup would be a different
+   product's marketing. */
+.device-shell {
+  transform: rotateX(calc((1 - var(--p)) * 18deg)) scale(calc(1 + (1 - var(--p)) * 0.04));
+  transform-origin: 50% 0;
+  border-radius: 22px; padding: 12px;
+  background: #17191c; border: 1px solid #2a2d31;
+  box-shadow: 0 1px 1px #0000000d, 0 8px 18px #00000014, 0 34px 44px #0000001a,
+              0 70px 70px #0000000f;
+  will-change: transform;
+}
+.device-screen { border-radius: 12px; overflow: hidden; background: #07090A; aspect-ratio: 16/10; }
+.device-screen img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.device { text-align: center; }
+
+@media (max-width: 760px) {
+  .device { perspective: 900px; }
+  .device-shell { border-radius: 16px; padding: 7px; }
+  .device-screen { border-radius: 9px; }
+}
+/* The reader asked for the page, not for a performance. */
+@media (prefers-reduced-motion: reduce) {
+  .slab { --p: 1 !important; }
+  .device-shell, .slab-head { transition: none; }
+}
+
+.slab-specs { max-width: 760px; margin: 40px auto 0;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+/* In a row the rules read as column dividers rather than as a list, so each
+   cell carries its own top rule and the last-child bottom rule is dropped. */
+.slab-specs li { border-top: 1px solid var(--border); }
+.slab-specs li:last-child { border-bottom: 0; }
+@media (max-width: 700px) {
+  .slab-specs { grid-template-columns: 1fr; max-width: 42ch; }
+  .slab-specs li:last-child { border-bottom: 1px solid var(--border); }
+}
+
 .fig-tag { position: absolute; z-index: 2; top: 12px; left: 12px; font-family: var(--mono); font-size: 11px; color: var(--ink-dim); border: 1px solid var(--border); border-radius: 3px; padding: 4px 8px; background: color-mix(in srgb, var(--bg) 80%, transparent); white-space: nowrap; }
+/* Under the slab, not on it. Every other figure on this page is a flat still
+   and a corner tag sits on it harmlessly; this one is a screenshot of a deck
+   that has its own nameplate in that exact corner, and the tag landed on top of
+   it. Declared after .fig-tag rather than before, because the two rules have
+   the same specificity and the loser of that is decided by source order. */
+.device-tag { position: static; display: inline-block; margin: 18px auto 0; }
 
 .showcase { padding: 0 0 76px; }
 .showcase-intro { padding-top: 76px; border-top: 1px solid var(--border); text-align: center; }
@@ -684,23 +754,36 @@ footer { position: relative; z-index: 1; background: #fff;
     </div>
   </section>
 
-  <section class="split rev" id="company">
-    <div class="split-grid">
-      <div class="split-copy">
-        <span class="kicker">BOARD &amp; CAPITAL MARKETS</span>
-        <h2 class="split-title">One model, every stakeholder</h2>
-        <p class="note">The board, your analysts, and your shareholders work from the same up-to-date view of the project, so a milestone update means the same thing in every room it's shown in.</p>
-        <ul class="specs">
-          <li><span>Source of truth</span><b>SINGLE</b></li>
-          <li><span>Viewer install</span><b>NONE — SHARED LINK</b></li>
-          <li><span>Story continuity</span><b>EXPLORATION → PRODUCTION</b></li>
-        </ul>
-      </div>
-      <figure class="split-figure">
-        <img src="img/neighbours.jpg" alt="The land package seen in plan, each surrounding holder's tenure dissolved into a single outline and named on its own ground." width="1600" height="900" loading="lazy" decoding="async">
-        <span class="fig-tag">FIG. 03 — LAND PACKAGE &amp; NEIGHBOURS</span>
-      </figure>
+  <!-- The one section on this page that is about the deck being OPENED rather
+       than about what is in it, so it is the one that shows a device. The slab
+       lifts to face the reader as it is scrolled into place: a screen being
+       turned round to show somebody, which is the section's whole argument. -->
+  <section class="split slab" id="company">
+    <div class="slab-head">
+      <span class="kicker">BOARD &amp; CAPITAL MARKETS</span>
+      <h2 class="slab-title">One model, every stakeholder</h2>
+      <p class="note">The board, your analysts, and your shareholders work from the same
+        up-to-date view of the project, so a milestone update means the same thing in every
+        room it's shown in.</p>
     </div>
+
+    <figure class="device">
+      <div class="device-shell">
+        <div class="device-screen">
+          <img src="img/platform.jpg" width="2080" height="1300" loading="lazy" decoding="async"
+               alt="The Williams deck open in a browser: two airborne magnetic surveys draped over
+                    eleven mineral tenures, the two drilled zones outlined and labelled with their
+                    hole counts and metres, and the chapter rail down the left.">
+        </div>
+      </div>
+      <figcaption class="fig-tag device-tag">FIG. 03 — THE DECK AS IT ARRIVES</figcaption>
+    </figure>
+
+    <ul class="specs slab-specs">
+      <li><span>Source of truth</span><b>SINGLE</b></li>
+      <li><span>Viewer install</span><b>NONE — SHARED LINK</b></li>
+      <li><span>Story continuity</span><b>EXPLORATION → PRODUCTION</b></li>
+    </ul>
   </section>
 
 </div><!-- /wrap — the deck runs the full width of the viewport, so this
@@ -1150,6 +1233,53 @@ if (renderer) {
   size(); pose(progress()); requestAnimationFrame(frame);
 
   if (reduce.matches) { title.classList.add('on'); panel.classList.add('on'); cards.forEach(c => c.classList.add('on')); }
+}
+
+/* ---- the showcase slab --------------------------------------------------
+   Writes one number, --p, and the stylesheet does the rest. Same shape as the
+   hero above: an observer to stop the work when the section is off screen, a
+   passive scroll listener that only raises a flag, and one rAF loop that reads
+   layout — so the scroll handler never measures anything and cannot be the
+   thing that makes a scroll stutter.
+
+   The section rests at --p:1 in the stylesheet. This only ever lowers it while
+   the slab is on its way in, so every path where this code does not run — no
+   JS, an old browser, reduced motion, a thrown error before this line — leaves
+   a screenshot the right way up rather than one stuck on its back. */
+{
+  const sec = document.getElementById('company');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  if (sec && !reduce.matches) {
+    let visible = false, dirty = true;
+    new IntersectionObserver(e => { visible = e[0].isIntersecting; if (visible) dirty = true; },
+                             { rootMargin: '120px 0px' }).observe(sec);
+
+    function lift() {
+      const r = sec.getBoundingClientRect();
+      /* Fully presented by the time the slab's top third has reached the middle
+         of the screen. Tying it to the section's own height instead would make
+         a tall section turn slowly and a short one snap, which reads as two
+         different animations on one page. */
+      const start = innerHeight;
+      const end = innerHeight * 0.42;
+      const p = (start - r.top) / Math.max(1, start - end);
+      sec.style.setProperty('--p', Math.min(1, Math.max(0, p)).toFixed(3));
+    }
+
+    function frame() {
+      requestAnimationFrame(frame);
+      if (!visible || !dirty) return;
+      lift(); dirty = false;
+    }
+    addEventListener('scroll', () => { dirty = true; }, { passive: true });
+    addEventListener('resize', () => { dirty = true; }, { passive: true });
+    lift(); requestAnimationFrame(frame);
+    // A reader who turns motion off mid-visit gets the settled state, not
+    // whatever tilt the slab happened to be holding.
+    reduce.addEventListener('change', (e) => {
+      if (e.matches) sec.style.setProperty('--p', '1');
+    });
+  }
 }
 </script>
 
