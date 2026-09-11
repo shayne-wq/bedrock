@@ -170,16 +170,27 @@ figure video { position: absolute; inset: 0; width: 100%; height: 100%; object-f
   margin: 16px auto 0; max-width: 46ch; }
 
 .device { margin: 0 auto; max-width: 1040px; perspective: 1400px; }
-/* The bezel, not a picture of one: a matte slab with a hairline edge. This page
+/* The bezel, not a picture of one: a matte frame with a hairline edge. This page
    is white and technical and a glossy chrome mockup would be a different
-   product's marketing. */
+   product's marketing.
+
+   It is deliberately THICK. At 12px it was geometrically correct and read as
+   nothing — a tilting screenshot with no device around it, which on a phone
+   (where it shrank to 7px) disappeared entirely. A bezel is what makes the
+   turn legible: the eye tracks the frame's parallel edges converging, not the
+   photograph inside it. So it is sized as a proportion of the slab rather than
+   in fixed pixels, which also keeps it a bezel at every width. */
 .device-shell {
   transform: rotateX(calc((1 - var(--p)) * 20deg)) scale(calc(1 + (1 - var(--p)) * 0.05));
   transform-origin: 50% 0;
-  border-radius: 22px; padding: 12px;
-  background: #17191c; border: 1px solid #2a2d31;
-  box-shadow: 0 1px 1px #0000000d, 0 8px 18px #00000014, 0 34px 44px #0000001a,
-              0 70px 70px #0000000f;
+  border-radius: clamp(18px, 2.4vw, 30px); padding: clamp(10px, 2.1vw, 26px);
+  background: #15181b;
+  /* Two edges, because a real one has two: a light rim catching the room, and
+     a darker line where the frame turns away from it. */
+  border: 1px solid #33383d;
+  box-shadow: inset 0 1px 0 #ffffff1f, inset 0 -1px 0 #00000059,
+              0 1px 1px #0000000d, 0 10px 22px #00000017, 0 38px 50px #0000001f,
+              0 78px 78px #00000012;
   will-change: transform;
 }
 /* `position: relative` is load-bearing. The page sets `figure img { position:
@@ -188,15 +199,15 @@ figure video { position: absolute; inset: 0; width: 100%; height: 100%; object-f
    absolutely positioned descendants. So the screenshot filled the bezel's
    padding box instead of the screen's: a 12px overhang on all four sides,
    sitting on top of the frame it was supposed to sit inside. */
-.device-screen { position: relative; border-radius: 12px; overflow: hidden;
+.device-screen { position: relative; border-radius: clamp(6px, 0.9vw, 11px); overflow: hidden;
   background: #07090A; aspect-ratio: 16/10; }
 .device-screen img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .device { text-align: center; }
 
 @media (max-width: 760px) {
-  .device { perspective: 900px; }
-  .device-shell { border-radius: 16px; padding: 7px; }
-  .device-screen { border-radius: 9px; }
+  /* Shorter perspective so the same rotation reads as more depth on a small
+     screen, where there are fewer pixels for the convergence to show in. */
+  .device { perspective: 760px; }
 }
 /* The reader asked for the page, not for a performance. */
 @media (prefers-reduced-motion: reduce) {
