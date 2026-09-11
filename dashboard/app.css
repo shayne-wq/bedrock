@@ -967,3 +967,55 @@ body.instudio .stinspect { max-width: 860px; }
   body.stripoff .studio { grid-template-columns: minmax(0, 1fr); }
 }
 body.stripoff .stmain { grid-column: 1 / -1; }
+
+/* ---- authoring toolbar ---------------------------------------------------
+   One row above the preview, grouped by what each control acts on: where the
+   camera is, what the ground looks like, what has been drawn on it. It sits
+   outside the frame deliberately — controls drawn over a deck cover the thing
+   being edited, land in the recording, and make the author move the camera to
+   see past their own tools. */
+.sttools {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px;
+  padding: 7px 10px; margin-bottom: 8px;
+  background: var(--raised); border: 1px solid var(--border); border-radius: 6px;
+}
+.stgrp { display: flex; align-items: center; gap: 5px; }
+/* A hairline between groups rather than a box around each: the groups are a
+   reading aid, not six separate panels. */
+.stgrp + .stgrp { padding-left: 14px; border-left: 1px solid var(--border); }
+.stgl {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-mute); margin-right: 2px;
+}
+.tbtn {
+  font: inherit; font-size: 12px; line-height: 1;
+  min-width: 28px; height: 26px; padding: 0 8px;
+  background: var(--bg); color: var(--ink-dim);
+  border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.tbtn:hover { color: var(--ink); border-color: var(--ink-mute); }
+/* A pressed tool stays lit: the pencil is armed until you draw, and a button
+   that looked idle while the canvas was waiting for a stroke would be lying. */
+.tbtn.on { background: var(--accent-dim); border-color: var(--accent); color: var(--accent-700); }
+.tbtn:active { transform: translateY(1px); }
+.tbtn:focus-visible, .sttools input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sttools input[type="range"] { width: 88px; accent-color: var(--accent); }
+.sttools input[type="text"] {
+  width: 120px; height: 26px; padding: 0 7px; font-size: 12px;
+  background: var(--bg); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 4px;
+}
+.sttools output {
+  font-family: var(--mono); font-size: 10.5px; color: var(--ink-mute);
+  min-width: 34px; font-variant-numeric: tabular-nums;
+}
+.stnote {
+  font-size: 11.5px; color: var(--ink-dim); margin-left: auto;
+  max-width: 40ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@media (max-width: 900px) {
+  /* The groups stack before any control shrinks: a 28px button that has become
+     18px is not a button anyone can hit. */
+  .stgrp + .stgrp { padding-left: 0; border-left: 0; }
+}

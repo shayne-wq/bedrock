@@ -87,6 +87,57 @@ async function tokenFor(deckId) {
     !l.revoked_at && (!l.expires_at || new Date(l.expires_at).getTime() > now))?.token || null;
 }
 
+/* The authoring toolbar.
+   Above the frame, never on it. Controls drawn over the deck cover the thing
+   being edited and end up in the recording, and the author spends the session
+   moving the camera to see past their own tools. Out of frame they can also be
+   read at a glance, which is what a row of grouped controls is for.
+
+   Grouped by what each one acts on: where the camera is, what the ground looks
+   like, and what has been drawn on it. No cut-off grade — the viewer reports
+   whether the deck has a block model and the control appears only then, because
+   a grade threshold on a property with no estimated resource tells a reader
+   there is one. */
+function toolbarHtml() {
+  return `
+    <div class="sttools" id="sttools" role="toolbar" aria-label="Authoring tools">
+      <div class="stgrp" role="group" aria-label="Camera">
+        <span class="stgl">View</span>
+        <button class="tbtn" data-nudge="h-15" title="Rotate left">\u21b6</button>
+        <button class="tbtn" data-nudge="h15"  title="Rotate right">\u21b7</button>
+        <button class="tbtn" data-nudge="p10"  title="Tilt up">\u2191</button>
+        <button class="tbtn" data-nudge="p-10" title="Tilt down">\u2193</button>
+        <button class="tbtn" data-nudge="z0.8" title="Move closer">+</button>
+        <button class="tbtn" data-nudge="z1.25" title="Pull back">\u2212</button>
+        <button class="btn sm" id="tb_set" title="Store this framing on the slide">Set view</button>
+      </div>
+
+      <div class="stgrp" role="group" aria-label="Ground">
+        <span class="stgl">Terrain</span>
+        <input type="range" id="tb_ground" min="0" max="100" step="1" value="100"
+               aria-label="Terrain opacity" title="See through the ground">
+        <output id="tb_ground_o">100%</output>
+        <span class="stgl" id="tb_ov_l" hidden>Overlay</span>
+        <input type="range" id="tb_geo" min="0" max="100" step="1" value="72" hidden
+               aria-label="Survey overlay opacity" title="Geophysics overlay">
+        <output id="tb_geo_o" hidden>72%</output>
+      </div>
+
+      <div class="stgrp" role="group" aria-label="Annotate">
+        <span class="stgl">Mark</span>
+        <input type="text" id="tb_text" placeholder="Label text" maxlength="40"
+               aria-label="Label text">
+        <button class="tbtn" id="tb_label" title="Type a label, then click the map">Label</button>
+        <button class="tbtn" id="tb_draw" title="Draw on the ground">Pencil</button>
+        <button class="tbtn" id="tb_undo" title="Remove the last mark">Undo</button>
+        <button class="btn sm" id="tb_save" title="Publish these marks to the slide" disabled>
+          Save marks</button>
+      </div>
+
+      <span class="stnote" id="tb_note" role="status"></span>
+    </div>`;
+}
+
 function frameHtml(w, token) {
   const api = encodeURIComponent(CONFIG.url.replace(/\/$/, "") + "/functions/v1");
   return `
@@ -169,6 +220,7 @@ export async function renderStudio(id, view) {
                       aria-selected="${w === "wide"}">${LABEL[w]}</button>`).join("")}
             <span class="swlive" id="swlive"></span>
           </div>
+          ${toolbarHtml()}
           ${frameHtml("wide", token)}
           ${frameHtml("tall", token)}
           <aside class="stinspect" id="stinspect"></aside>
@@ -186,6 +238,7 @@ export async function renderStudio(id, view) {
     // whole interaction: Set view then writes to that frame's camera.
   }
   for (const w of FRAMES) $(`sw_${w}`).onclick = () => setActive(w);
+  wireTools();
   $("stfold").onclick = () => setStrip(false);
   $("stunfold").onclick = () => setStrip(true);
   setStrip(stripOpen);
@@ -321,6 +374,7 @@ function onMessage(e) {
       tell({ type: "goto", ord: sel }, other(which));
     }
     paintLive(which); paintList();
+    if (which === active) paintTools(st);
     return;
   }
   if (d.type === "set") {
@@ -339,6 +393,82 @@ function onMessage(e) {
     else if (st && typeof st.ord === "number" && d.result) timings[st.ord] = d.result;
     paintList();
     return;
+  }
+}
+
+/* Every tool acts on the frame you are looking at. `active` is that frame, and
+   sending to both would rotate the phone shot while you framed the desktop
+   one — the two cameras are deliberately separate. */
+function wireTools() {
+  const note = (t) => { const el = $("tb_note"); if (el) el.textContent = t || ""; };
+
+  for (const b of document.querySelectorAll("[data-nudge]")) {
+    b.onclick = () => {
+      const v = b.dataset.nudge, n = +v.slice(1);
+      tell({ type: "nudge",
+             dh: v[0] === "h" ? n : 0,
+             dp: v[0] === "p" ? n : 0,
+             dz: v[0] === "z" ? n : 1 }, active);
+    };
+  }
+  $("tb_set").onclick = () => { requestCapture("camera", active); note("Saving\u2026"); };
+
+  const slide = (id, out, type, scale) => {
+    const el = $(id), o = $(out);
+    if (!el) return;
+    el.oninput = () => {
+      o.textContent = el.value + "%";
+      tell({ type, v: +el.value / 100 }, active);
+    };
+  };
+  slide("tb_ground", "tb_ground_o", "ground");
+  slide("tb_geo", "tb_geo_o", "geoalpha");
+
+  $("tb_label").onclick = () => {
+    const t = ($("tb_text").value || "").trim();
+    if (!t) { note("Type the label first, then click the map."); $("tb_text").focus(); return; }
+    tell({ type: "tool", name: "label", text: t }, active);
+    note("Click the map to place \u201c" + t + "\u201d");
+  };
+  $("tb_draw").onclick = () => {
+    const on = !$("tb_draw").classList.contains("on");
+    tell({ type: "tool", name: on ? "draw" : null }, active);
+    note(on ? "Drag on the map to draw." : "");
+  };
+  $("tb_undo").onclick = () => tell({ type: "notes", op: "undo" }, active);
+  // Marks are published on their own rather than folded into Set view. A camera
+  // is the shot; an annotation is a claim about the ground, and putting one in
+  // front of an audience should be a thing somebody pressed.
+  $("tb_save").onclick = () => { requestCapture("areas", active); note("Publishing marks\u2026"); };
+}
+
+/* The toolbar reads the deck rather than remembering what it last sent — the
+   author can move the camera inside the frame, and a control that tracked its
+   own value would drift away from what is on screen. */
+function paintTools(st) {
+  if (!st || !st.ui) return;
+  const ui = st.ui;
+  const set = (id, out, v) => {
+    const el = $(id); if (!el || el === document.activeElement) return;
+    el.value = Math.round(v * 100); $(out).textContent = el.value + "%";
+  };
+  if (typeof ui.ground === "number") set("tb_ground", "tb_ground_o", ui.ground);
+  // The overlay slider is meaningless with no survey on screen, so it is not
+  // there rather than sitting inert.
+  const hasGeo = !!ui.geo;
+  for (const id of ["tb_ov_l", "tb_geo", "tb_geo_o"]) {
+    const el = $(id); if (el) el.hidden = !hasGeo;
+  }
+  if (hasGeo && typeof ui.geoAlpha === "number") set("tb_geo", "tb_geo_o", ui.geoAlpha);
+
+  const d = $("tb_draw"); if (d) d.classList.toggle("on", ui.tool === "draw");
+  const l = $("tb_label"); if (l) l.classList.toggle("on", ui.tool === "label");
+  const sv = $("tb_save");
+  if (sv) {
+    // Offered when there is something to publish, and also when the author has
+    // cleared a slide's marks — otherwise the deletion could never be committed.
+    const stored = ((chapters[st.ord] || {}).areas || []).length;
+    sv.disabled = (st.areas || []).length === stored && stored === (st.ui.notes || 0);
   }
 }
 
