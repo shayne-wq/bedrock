@@ -12,6 +12,38 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="app.css">
+<!-- Retire the legacy root-scoped service worker.
+
+     The deck used to be served from the site root, so anyone who opened it back
+     then still carries a worker registered with scope "/" — and that worker is
+     cache-first over EVERYTHING beneath it: this page, /dashboard/, /williams/.
+     A service worker answers from Cache Storage before the network is consulted,
+     so the `no-cache` header on /dashboard/* never reached it. The symptom is a
+     console that silently stays on a months-old build while the server has been
+     serving the new one all along.
+
+     /sw.js is a tombstone that unregisters itself, but nothing ever registered
+     it, so it only ran if the browser happened to re-fetch the script. This
+     retires the registration directly instead, which needs no new worker on a
+     device that never had one.
+
+     Scoped precisely: /pit/ registers its own worker for offline use and that
+     one is left alone. Only a registration at the ROOT is removed. -->
+<script>
+if (navigator.serviceWorker) {
+  navigator.serviceWorker.getRegistrations().then((rs) => {
+    for (const r of rs) {
+      if (new URL(r.scope).pathname !== '/') continue;
+      r.unregister().then((gone) => {
+        // The page in front of the reader was itself served by that worker, so
+        // it is stale too. One reload, once, and only when something was
+        // actually removed.
+        if (gone) location.reload();
+      });
+    }
+  }).catch(() => {});
+}
+</script>
 </head>
 <body>
 

@@ -355,22 +355,37 @@ function startThumbs() {
           el.classList.add("has");
         });
       }
-      thumbBusy = false; pumpThumbs();
+      // Only the job actually in flight releases the queue. A late answer from
+      // one already abandoned is used if it is good, but it does not advance
+      // anything a second time.
+      if (thumbInFlight === d.id) { thumbInFlight = null; thumbBusy = false; pumpThumbs(); }
     }
   });
 }
 
+let thumbInFlight = null;
 function pumpThumbs() {
   if (!thumbReady || thumbBusy) return;
   const job = thumbQueue.shift();
   if (!job) return;
   if (thumbCacheGet(job.id)) { pumpThumbs(); return; }
   thumbBusy = true;
+  thumbInFlight = job.id;
   thumbFrame.contentWindow.postMessage(
     { source: "bedrock-console", type: "thumb", id: job.id,
       camera: job.camera, layers: job.layers }, location.origin);
-  // A viewer that never answers must not stall the rest of the queue.
-  setTimeout(() => { if (thumbBusy) { thumbBusy = false; pumpThumbs(); } }, 20000);
+  /* A viewer that never answers must not stall the queue — but the watchdog has
+     to know WHICH job it is giving up on. Firing blind, it released a slide that
+     was still rendering, started the next one on top of it, and left two
+     cameras fighting over one scene: answers came back out of order and the
+     queue reported itself finished twice. A slow first frame is normal, so the
+     wait is generous; only a genuinely dead job is abandoned. */
+  const mine = job.id;
+  setTimeout(() => {
+    if (thumbBusy && thumbInFlight === mine) {
+      thumbInFlight = null; thumbBusy = false; pumpThumbs();
+    }
+  }, 45000);
 }
 
 function queueThumbs(entries) {
