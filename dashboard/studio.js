@@ -98,6 +98,11 @@ async function tokenFor(deckId) {
    whether the deck has a block model and the control appears only then, because
    a grade threshold on a property with no estimated resource tells a reader
    there is one. */
+/* A short, fixed set rather than a colour picker. Six that read on terrain and
+   against each other; a free picker on a dark 3D scene mostly produces marks
+   nobody can see. */
+const MARK_COLOURS = ["#F2C14E", "#5EC8E8", "#D053B8", "#7FC98B", "#E08C72", "#FFFFFF"];
+
 function toolbarHtml() {
   return `
     <div class="sttools" id="sttools" role="toolbar" aria-label="Authoring tools">
@@ -132,10 +137,17 @@ function toolbarHtml() {
 
       <div class="stgrp" role="group" aria-label="Annotate">
         <span class="stgl">Mark</span>
-        <input type="text" id="tb_text" placeholder="Label text" maxlength="40"
-               aria-label="Label text">
-        <button class="tbtn" id="tb_label" title="Type a label, then click the map">Label</button>
-        <button class="tbtn" id="tb_draw" title="Draw on the ground">Pencil</button>
+        <input type="text" id="tb_text" placeholder="Label or zone name" maxlength="40"
+               aria-label="Label or zone name">
+        <button class="tbtn" id="tb_label" title="Type a name, then click the map">Label</button>
+        <button class="tbtn" id="tb_draw" title="Drag to draw on the ground">Pencil</button>
+        <button class="tbtn" id="tb_zone" title="Drag a box over a piece of ground">Zone</button>
+        <button class="tbtn" id="tb_move" title="Drag a mark or zone somewhere else">Move</button>
+        <span class="swatches" role="group" aria-label="Colour">
+          ${MARK_COLOURS.map((c, i) => `
+            <button class="swatch${i === 0 ? " on" : ""}" data-colour="${c}"
+                    style="--sw:${c}" title="${c}" aria-label="Colour ${c}"></button>`).join("")}
+        </span>
         <button class="tbtn" id="tb_undo" title="Remove the last mark">Undo</button>
         <button class="btn sm" id="tb_save" title="Publish these marks to the slide" disabled>
           Save marks</button>
@@ -249,6 +261,20 @@ export async function renderStudio(id, view) {
   $("stfold").onclick = () => setStrip(false);
   $("stunfold").onclick = () => setStrip(true);
   setStrip(stripOpen);
+  for (const cb of document.querySelectorAll("[data-zone]")) {
+    cb.onchange = async () => {
+      const c = chapters[sel]; if (!c) return;
+      const layers = Object.assign({}, c.layers || {});
+      const on = new Set(Array.isArray(layers.shapes) ? layers.shapes : []);
+      if (cb.checked) on.add(cb.dataset.zone); else on.delete(cb.dataset.zone);
+      layers.shapes = [...on];
+      const { error } = await db.from("chapters").update({ layers }).eq("id", c.id);
+      if (error) { cb.checked = !cb.checked; return fail("Show zone on slide", error); }
+      c.layers = layers;
+      pushShapes();
+    };
+  }
+
   $("stundo").onclick = doUndo;
   $("stadd").onclick = addSlide;
   paintList();
@@ -366,7 +392,7 @@ function onMessage(e) {
       { source: "bedrock-console", type: "hello" }, location.origin);
     return;
   }
-  if (d.type === "ready") { ready[which] = true; tell({ type: "poll" }, which); return; }
+  if (d.type === "ready") { ready[which] = true; tell({ type: "poll" }, which); pushShapes(); return; }
   if (d.type === "state") {
     live[which] = d.state;
     // Follow the viewer when IT moves — pressing next inside a frame should
@@ -392,6 +418,10 @@ function onMessage(e) {
     // shot.
     if (captureTimer) { clearTimeout(captureTimer); captureTimer = null; }
     save(d.state, d.what, which);
+    return;
+  }
+  if (d.type === "shape") {
+    saveShape(d, which);
     return;
   }
   if (d.type === "transition") {
@@ -434,14 +464,30 @@ function wireTools() {
   $("tb_label").onclick = () => {
     const t = ($("tb_text").value || "").trim();
     if (!t) { note("Type the label first, then click the map."); $("tb_text").focus(); return; }
-    tell({ type: "tool", name: "label", text: t }, active);
+    tell({ type: "tool", name: "label", text: t, colour }, active);
     note("Click the map to place \u201c" + t + "\u201d");
   };
-  $("tb_draw").onclick = () => {
-    const on = !$("tb_draw").classList.contains("on");
-    tell({ type: "tool", name: on ? "draw" : null }, active);
-    note(on ? "Drag on the map to draw." : "");
+  let colour = MARK_COLOURS[0];
+  for (const sw of document.querySelectorAll("[data-colour]")) {
+    sw.onclick = () => {
+      colour = sw.dataset.colour;
+      document.querySelectorAll("[data-colour]").forEach((x) => x.classList.toggle("on", x === sw));
+      // Recolours whatever Move has hold of; otherwise it is the colour the
+      // next mark will be drawn in.
+      tell({ type: "colour", v: colour }, active);
+    };
+  }
+
+  const arm = (name, msg) => {
+    const btn = $("tb_" + name);
+    const on = !btn.classList.contains("on");
+    tell({ type: "tool", name: on ? name : null,
+           text: ($("tb_text").value || "").trim(), colour }, active);
+    note(on ? msg : "");
   };
+  $("tb_draw").onclick = () => arm("draw", "Drag on the map to draw.");
+  $("tb_zone").onclick = () => arm("zone", "Drag a box over the ground you mean.");
+  $("tb_move").onclick = () => arm("move", "Drag a mark or a zone to move it.");
   /* Caption size is the deck's, not a frame's, so it goes to BOTH previews and
      is saved once. Sent live for the look of it and written after a pause, so
      holding the button does not post a row per click. */
@@ -501,6 +547,51 @@ function paintTools(st) {
     const stored = ((chapters[st.ord] || {}).areas || []).length;
     sv.disabled = (st.areas || []).length === stored && stored === (st.ui.notes || 0);
   }
+}
+
+/* A zone belongs to the deck and its visibility belongs to a chapter, so
+   drawing one writes in two places: the shape onto `decks.settings.shapes`, and
+   its id onto the chapter's `layers.shapes`. Two writes because they answer two
+   different questions — what this zone IS, and where it is shown. */
+async function saveShape(d, which) {
+  const settings = Object.assign({}, deck.settings || {});
+  const list = Array.isArray(settings.shapes) ? settings.shapes.slice() : [];
+
+  if (d.remove) {
+    settings.shapes = list.filter((z) => z.id !== d.remove);
+  } else if (d.shape) {
+    const i = list.findIndex((z) => z.id === d.shape.id);
+    if (i >= 0) list[i] = d.shape; else list.push(d.shape);
+    settings.shapes = list;
+  } else return;
+
+  const { error } = await db.from("decks").update({ settings }).eq("id", deck.id);
+  if (error) return fail("Save zone", error);
+  deck.settings = settings;
+
+  const c = chapters[typeof d.ord === "number" ? d.ord : sel];
+  if (c) {
+    const layers = Object.assign({}, c.layers || {});
+    const on = new Set(Array.isArray(layers.shapes) ? layers.shapes : []);
+    if (d.remove) on.delete(d.remove); else on.add(d.shape.id);
+    layers.shapes = [...on];
+    const r = await db.from("chapters").update({ layers }).eq("id", c.id);
+    if (r.error) return fail("Show zone on slide", r.error);
+    c.layers = layers;
+  }
+  pushShapes();
+  paintInspector();
+  toast(d.remove ? "Zone removed" : "Zone saved to the deck");
+}
+
+/* Both previews need the deck's zones and this slide's list of which to show.
+   Sent on load and after every change, because a frame that reloads has no idea
+   what the other one has been drawing. */
+function pushShapes() {
+  const list = (deck.settings && deck.settings.shapes) || [];
+  const c = chapters[sel] || {};
+  const on = ((c.layers || {}).shapes) || [];
+  tell({ type: "shapes", list, on });
 }
 
 const other = (w) => (w === "wide" ? "tall" : "wide");
@@ -1001,6 +1092,25 @@ function paintInspector() {
                value="${Math.round((c.dwell_ms || 9000) / 1000)}">
       </div>
     </div>
+
+    ${(() => {
+      const zs = (deck.settings && deck.settings.shapes) || [];
+      if (!zs.length) return "";
+      const on = new Set(((c.layers || {}).shapes) || []);
+      return `<div class="field">
+        <label>Zones on this slide</label>
+        <div class="zlist">
+          ${zs.map((z) => `
+            <label class="zrow">
+              <input type="checkbox" data-zone="${esc(z.id)}" ${on.has(z.id) ? "checked" : ""}>
+              <span class="zdot" style="--sw:${esc(z.colour || "#F2C14E")}"></span>
+              <span class="znm">${esc(z.label || "Untitled zone")}</span>
+            </label>`).join("")}
+        </div>
+        <p class="hint">Zones belong to the deck. Drawing one puts it on the slide
+           you drew it on; tick it here to show the same ground on another.</p>
+      </div>`;
+    })()}
 
     <div class="insp-cam">
       <span class="lbl">Framing</span>
