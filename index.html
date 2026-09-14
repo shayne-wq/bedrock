@@ -150,6 +150,78 @@ figure video { position: absolute; inset: 0; width: 100%; height: 100%; object-f
 .split-figure { position: static; margin: 0; }
 .fig-media { position: relative; aspect-ratio: 16/10; border: 1px solid var(--border);
   background: var(--bg-2); overflow: hidden; }
+/* ---- FAQ ----------------------------------------------------------------
+   Two layouts, one DOM. Wide: three rows of cards drifting past at different
+   speeds and directions. Narrow: the same six as a tap-to-open list, because a
+   row of cards moving sideways past a 390px screen is unreadable, and an FAQ
+   that cannot be read is decoration.
+
+   The marquee obeys the usual rules for one: it stops on hover, stops when
+   anything inside it takes focus, and never starts at all for a reader who has
+   asked for less motion. */
+.faqs { padding: 76px 0 84px; border-top: 1px solid var(--border); }
+.faqs-lead { font-family: var(--heading); font-weight: 600; font-size: clamp(26px, 3.6vw, 36px);
+  line-height: 1.15; letter-spacing: -0.02em; margin: 0; max-width: 22ch; text-wrap: balance; }
+.faqs-note { font-size: 15.5px; line-height: var(--leading); color: var(--ink-dim);
+  margin: 14px 0 0; max-width: 54ch; }
+.fq-all { margin-top: 30px; }
+
+.fq-rows { display: grid; gap: 14px; margin-top: 34px; }
+
+/* ---- narrow: an accordion ---- */
+.fq-row { }
+.fq-track { display: grid; gap: 10px; padding: 0 var(--edge); }
+.fq { border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+.fq-q { display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  width: 100%; text-align: left; background: none; border: 0; cursor: pointer;
+  padding: 15px 16px; font: inherit; color: var(--ink); }
+.fq-t { font-family: var(--heading); font-weight: 600; font-size: 15.5px; letter-spacing: -0.01em; }
+/* A plus that becomes a minus: two bars, one of which turns. Cheaper than an
+   icon font and it cannot arrive late. */
+.fq-pm { position: relative; flex: 0 0 auto; width: 14px; height: 14px; }
+.fq-pm::before, .fq-pm::after { content: ""; position: absolute; left: 0; top: 6px;
+  width: 14px; height: 2px; border-radius: 1px; background: var(--ink-mute);
+  transition: transform .22s cubic-bezier(.22,1,.36,1), background-color .22s; }
+.fq-pm::after { transform: rotate(90deg); }
+.fq-q[aria-expanded="true"] .fq-pm::before,
+.fq-q[aria-expanded="true"] .fq-pm::after { background: var(--accent-deep); }
+.fq-q[aria-expanded="true"] .fq-pm::after { transform: rotate(0deg); }
+/* Height animated with a grid track rather than max-height, so the panel opens
+   to exactly its own height and never a guessed one. */
+.fq-a { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .28s cubic-bezier(.22,1,.36,1); }
+.fq-q[aria-expanded="true"] + .fq-a { grid-template-rows: 1fr; }
+.fq-a-in { overflow: hidden; }
+.fq-a p { margin: 0 16px 0; padding-bottom: 12px; font-size: 14.5px; line-height: 1.6; color: var(--ink-dim); }
+.fq-more { display: inline-block; margin: 0 16px 15px; font-family: var(--mono);
+  font-size: 11px; letter-spacing: 0.04em; color: var(--accent-deep); }
+
+/* ---- wide: the drifting rows ---- */
+@media (min-width: 900px) {
+  .fq-rows { gap: 18px; }
+  /* The mask is what makes a row read as continuing past the page rather than
+     being cut off at it. */
+  .fq-row { overflow: hidden;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent);
+            mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent); }
+  .fq-track { grid-auto-flow: column; grid-auto-columns: 370px; gap: 18px;
+    padding: 0; width: max-content;
+    animation: fq-drift var(--fq-speed, 44s) linear infinite;
+    animation-direction: var(--fq-dir, normal); }
+  .fq-row:hover .fq-track, .fq-row:focus-within .fq-track { animation-play-state: paused; }
+  .fq { padding-bottom: 4px; }
+  .fq-q { cursor: default; padding: 17px 18px 6px; }
+  .fq-pm { display: none; }
+  /* Open, always. There is nothing to toggle when the card is the answer. */
+  .fq-a { grid-template-rows: 1fr; }
+  .fq-a p { font-size: 14px; }
+}
+@keyframes fq-drift { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+/* A reader who asked for less motion gets the list, at any width. */
+@media (prefers-reduced-motion: reduce) {
+  .fq-track { animation: none !important; width: auto !important; }
+}
+
 /* ---- the deck slab -------------------------------------------------------
    Named `slab`, not `showcase`: this page already has a `.showcase` section
    further down — the live embedded deck — and its rules come later in the
@@ -610,6 +682,7 @@ footer { position: relative; z-index: 1; background: #fff;
     <a href="#product">PRODUCT</a>
     <a href="#how-it-works">ASSET</a>
     <a href="#company">COMPANY</a>
+    <a href="/faq/">FAQ</a>
     <a href="/dashboard/" style="border:none">LOG IN</a>
   </div>
 </nav>
@@ -901,6 +974,89 @@ footer { position: relative; z-index: 1; background: #fff;
 
 </div>
 
+<section class="faqs" id="faq" aria-labelledby="faq-lead">
+  <div class="wrap">
+    <span class="kicker">BEFORE A DECK GETS BUILT</span>
+    <h2 class="faqs-lead" id="faq-lead">Six questions we get asked first</h2>
+    <p class="faqs-note">Short answers here. The long ones, with the intake table and the
+      formats we read, are on the <a href="/faq/">full FAQ</a>.</p>
+  </div>
+  <!-- Wide: three rows drifting past at different speeds, which is a marquee and
+       behaves like one — it pauses on hover, on focus within, and for a reader
+       who has asked for less motion. Narrow: the same six items as a tap-to-open
+       list, because a moving row you cannot read is worse than a static one you
+       can. Both are the same DOM; only the layout changes. -->
+  <div class="fq-rows">
+        <div class="fq-row" data-speed="40s" data-dir="left">
+          <div class="fq-track">
+            <article class="fq">
+              <button class="fq-q" type="button" aria-expanded="false">
+                <span class="fq-t">How is it built?</span><span class="fq-pm" aria-hidden="true"></span>
+              </button>
+              <div class="fq-a"><div class="fq-a-in">
+                <p>On CesiumJS, over real Esri terrain. Everything you send is reprojected from your survey grid, so collars, claim corners and a magnetics grid all land in the same place.</p>
+                <a class="fq-more" href="/faq/#build">Full answer &#8594;</a>
+              </div></div>
+            </article>
+            <article class="fq">
+              <button class="fq-q" type="button" aria-expanded="false">
+                <span class="fq-t">What data do you need?</span><span class="fq-pm" aria-hidden="true"></span>
+              </button>
+              <div class="fq-a"><div class="fq-a-in">
+                <p>Whatever you already have. Nothing is required — we build from the slots you can fill, and standard database exports are fine.</p>
+                <a class="fq-more" href="/faq/#data">Full answer &#8594;</a>
+              </div></div>
+            </article>
+          </div>
+        </div>
+        <div class="fq-row" data-speed="52s" data-dir="right">
+          <div class="fq-track">
+            <article class="fq">
+              <button class="fq-q" type="button" aria-expanded="false">
+                <span class="fq-t">How long does it take?</span><span class="fq-pm" aria-hidden="true"></span>
+              </button>
+              <div class="fq-a"><div class="fq-a-in">
+                <p>About a week from a complete data room to a deck you can present, and faster without a block model.</p>
+                <a class="fq-more" href="/faq/#time">Full answer &#8594;</a>
+              </div></div>
+            </article>
+            <article class="fq">
+              <button class="fq-q" type="button" aria-expanded="false">
+                <span class="fq-t">Will we have edit access?</span><span class="fq-pm" aria-hidden="true"></span>
+              </button>
+              <div class="fq-a"><div class="fq-a-in">
+                <p>Yes. Your own workspace with roles you manage: cameras, wording, chapter order, new data, and who is allowed to open it.</p>
+                <a class="fq-more" href="/faq/#edit">Full answer &#8594;</a>
+              </div></div>
+            </article>
+          </div>
+        </div>
+        <div class="fq-row" data-speed="46s" data-dir="left">
+          <div class="fq-track">
+            <article class="fq">
+              <button class="fq-q" type="button" aria-expanded="false">
+                <span class="fq-t">Where is it hosted?</span><span class="fq-pm" aria-hidden="true"></span>
+              </button>
+              <div class="fq-a"><div class="fq-a-in">
+                <p>We host it. Viewer on a CDN, your data in a private bucket. Nothing for your IT group to run, patch or back up.</p>
+                <a class="fq-more" href="/faq/#host">Full answer &#8594;</a>
+              </div></div>
+            </article>
+            <article class="fq">
+              <button class="fq-q" type="button" aria-expanded="false">
+                <span class="fq-t">How do we put it on our site?</span><span class="fq-pm" aria-hidden="true"></span>
+              </button>
+              <div class="fq-a"><div class="fq-a-in">
+                <p>The console writes the embed for you and hands you the right thing for your platform — they do not all take the same one.</p>
+                <a class="fq-more" href="/faq/#embed">Full answer &#8594;</a>
+              </div></div>
+            </article>
+          </div>
+        </div>
+  </div>
+  <div class="wrap"><a class="btn btn-ghost fq-all" href="/faq/">READ THE FULL FAQ</a></div>
+</section>
+
 <section class="wordmark-close" id="demo">
   <span class="kicker" style="padding-top: 40px">START DISCOVERING</span>
   <div class="wc-copy">
@@ -923,6 +1079,7 @@ footer { position: relative; z-index: 1; background: #fff;
         <a href="#product">PRODUCT</a>
         <a href="#how-it-works">HOW IT WORKS</a>
         <a href="#company">COMPANY</a>
+        <a href="/faq/">FAQ</a>
       </div>
     </div>
     <!-- Pexels asks for attribution rather than requiring it. Every other image
@@ -1282,6 +1439,50 @@ if (renderer) {
   size(); pose(progress()); requestAnimationFrame(frame);
 
   if (reduce.matches) { title.classList.add('on'); panel.classList.add('on'); cards.forEach(c => c.classList.add('on')); }
+}
+
+/* ---- FAQ ----------------------------------------------------------------
+   Two jobs. Narrow: open and close a panel, which is a button and an attribute.
+   Wide: clone each row's cards once so the drift can loop seamlessly — the
+   track travels exactly -50%, so the copy arrives where the original started.
+
+   The clone is `aria-hidden` and its controls are taken out of the tab order,
+   because it is the same six answers a second time and a screen reader or a
+   keyboard should meet them once. */
+{
+  const rows = document.querySelectorAll('.fq-row');
+  const wide = matchMedia('(min-width: 900px)');
+  const still = matchMedia('(prefers-reduced-motion: reduce)');
+
+  // Toggling. Bound always: a narrow reader taps, and a wide one never sees the
+  // control because the card is open and the plus is hidden.
+  document.querySelectorAll('.fq-q').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const open = btn.getAttribute('aria-expanded') === 'true';
+      btn.setAttribute('aria-expanded', String(!open));
+    });
+  });
+
+  let cloned = false;
+  function marquee() {
+    const on = wide.matches && !still.matches;
+    for (const row of rows) {
+      const track = row.querySelector('.fq-track');
+      if (on && !cloned) {
+        const copy = track.cloneNode(true);
+        copy.querySelectorAll('button, a').forEach((el) => {
+          el.tabIndex = -1; el.setAttribute('aria-hidden', 'true');
+        });
+        [...copy.children].forEach((c) => track.appendChild(c));
+      }
+      track.style.setProperty('--fq-speed', row.dataset.speed || '44s');
+      track.style.setProperty('--fq-dir', row.dataset.dir === 'right' ? 'reverse' : 'normal');
+    }
+    if (on) cloned = true;
+  }
+  marquee();
+  wide.addEventListener('change', marquee);
+  still.addEventListener('change', marquee);
 }
 
 /* ---- the showcase slab --------------------------------------------------

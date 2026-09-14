@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FAQ — Bedrock</title>
+<meta name="description" content="Six questions we get before a Bedrock deck gets built: how it is built, what data we need, how long it takes, edit access, hosting, and putting it on your site.">
+<link rel="canonical" href="https://getbedrock.ca/faq/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&family=Archivo+Black&display=swap" rel="stylesheet">
+<style>
+/* The site's own tokens and chrome, lifted verbatim from the home page so this
+   reads as the same site rather than as a document that happens to live on it. */
+:root {
+  --bg: #ffffff; --bg-2: #f5f5f7; --border: #e3e4e7;
+  --ink: #16181a; --ink-dim: #55585d; --ink-mute: #6f7278;
+  /* Two accents, because one cannot do both jobs on white. The brand cyan
+     is 2.2:1 here — fine as a button fill under --accent-ink, and fine as
+     a link on the dark footer, but it cannot carry text on the page. Any
+     accent that has to be read as ink uses the deep teal instead. */
+  --accent: #33b6d8; --accent-ink: #06232a; --accent-deep: #00728f;
+  --heading: 'Space Grotesk', sans-serif; --mono: 'JetBrains Mono', monospace; --body: 'Inter', sans-serif; --wordmark: 'Archivo Black', sans-serif;
+  --leading: 28px; --half: 14px; --edge: clamp(20px, 5vw, 72px); --nav-h: 81px;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); text-wrap: pretty; }
+a { color: var(--accent-deep); text-decoration: none; }
+a:hover { color: color-mix(in srgb, var(--accent-deep) 80%, black); }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 0 var(--edge); }
+::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+:focus-visible { outline: 2px solid var(--accent-deep); outline-offset: 2px; }
+.nav { position: absolute; top: 0; left: 0; right: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: center; padding: 22px max(var(--edge), calc((100% - 1240px) / 2 + var(--edge)));
+  border-bottom: 1px solid var(--border); }
+.nav-links { display: flex; gap: 8px; align-items: center; }
+.nav-links a { font-family: var(--mono); font-size: 12px; letter-spacing: 0.03em; color: var(--ink-dim); border: 1px solid var(--border); border-radius: 4px; padding: 9px 14px; white-space: nowrap; }
+.nav-links a:hover { color: var(--ink); border-color: var(--ink-mute); }
+.kicker { display: flex; align-items: center; gap: 9px; font-family: var(--mono); font-size: 12.5px; font-weight: 500; letter-spacing: 0.06em;
+  color: var(--ink); margin: 0 0 18px; }
+.kicker::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-deep); }
+.btn { font-family: var(--mono); font-size: 13px; letter-spacing: 0.03em; border-radius: 4px; padding: 12px 20px; cursor: pointer; white-space: nowrap; border: 1px solid transparent; display: inline-block; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
+.btn-primary:hover { background: color-mix(in srgb, var(--accent) 85%, white); color: var(--accent-ink); }
+.btn-ghost { background: transparent; color: var(--ink); border-color: var(--border); }
+.btn-ghost:hover { border-color: var(--ink-mute); color: var(--ink); }
+@media (max-width: 760px) {
+  .nav-links { gap: 5px; }
+  .nav-links a { font-size: 11px; padding: 8px 10px; letter-spacing: 0.02em; }
+}
+footer { position: relative; z-index: 1; background: #fff;
+  padding: calc(3.34vw + 26px) 0 30px;
+  font-family: var(--mono); font-size: 12px; color: var(--ink-mute); }
+.foot-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
+.foot-links { display: flex; gap: 24px; }
+.foot-credit { margin: 16px 0 0; font-size: 11px; letter-spacing: 0.04em; color: var(--ink-mute); }
+.foot-credit a { color: var(--ink); }
+.foot-links a { color: var(--ink); }
+.foot-links a:hover, .foot-credit a:hover { color: var(--accent-deep); }
+
+/* ---- the FAQ itself ------------------------------------------------------
+   A reference page, so it is built to be scanned and linked into rather than
+   read start to finish: a sticky index, a question per section, and an id on
+   each one. Nothing animates — somebody opens this with a specific question. */
+.faq-mast { padding: calc(var(--nav-h) + 54px) 0 34px; border-bottom: 1px solid var(--border); }
+.faq-h1 { font-family: var(--heading); font-weight: 600; font-size: clamp(30px, 5vw, 46px);
+  line-height: 1.1; letter-spacing: -0.03em; margin: 0 0 14px; max-width: 20ch; text-wrap: balance; }
+.faq-stand { font-size: 16.5px; line-height: var(--leading); color: var(--ink-dim); margin: 0; max-width: 60ch; }
+
+.faq-shell { display: grid; gap: 40px; padding: 40px 0 72px; }
+/* Grid and flex items default to `min-width: auto`, which means they refuse to
+   shrink below their content's intrinsic width. The intake table declares
+   min-width 620px so its columns stay readable — and that 620 propagated up
+   through every ancestor and sized the whole single-column grid, pushing the
+   page 252px sideways on a phone. The table still scrolls inside its own
+   wrapper; these just stop it dictating the page. */
+.faq-shell > *, .qa, .qa section, .qa .body { min-width: 0; }
+@media (min-width: 960px) {
+  .faq-shell { grid-template-columns: 200px minmax(0, 1fr); gap: 64px; align-items: start; }
+  .faq-index { position: sticky; top: calc(var(--nav-h) + 22px); }
+}
+.faq-index h2 { font-family: var(--mono); font-size: 10.5px; font-weight: 500; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--ink-mute); margin: 0 0 12px; }
+.faq-index ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
+.faq-index a { display: grid; grid-template-columns: 20px 1fr; gap: 8px; padding: 7px 8px; margin-left: -8px;
+  border-radius: 4px; color: var(--ink-dim); font-size: 13.5px; line-height: 1.35; }
+.faq-index a:hover { background: var(--bg-2); color: var(--ink); }
+.faq-index .n { font-family: var(--mono); font-size: 11px; color: var(--ink-mute); }
+
+.qa { display: grid; gap: 46px; }
+.qa section { scroll-margin-top: calc(var(--nav-h) + 20px); }
+h2.q { font-family: var(--heading); font-weight: 600; font-size: clamp(21px, 2.7vw, 26px);
+  line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 15px; text-wrap: balance;
+  display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: baseline; }
+h2.q .n { font-family: var(--mono); font-size: 13px; font-weight: 400; color: var(--accent-deep); letter-spacing: 0; }
+.body { max-width: 66ch; }
+.body > * + * { margin-top: 13px; }
+.body p { margin: 0; font-size: 15.5px; line-height: var(--leading); color: var(--ink-dim); }
+.body strong { color: var(--ink); font-weight: 600; }
+h3 { font-family: var(--heading); font-weight: 600; font-size: 15px; letter-spacing: -0.01em;
+  margin: 24px 0 0; color: var(--ink); }
+code { font-family: var(--mono); font-size: 0.86em; background: var(--bg-2);
+  border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px; color: var(--ink-dim); white-space: nowrap; }
+
+ul.plain { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 9px; }
+/* Not a grid. A grid container makes EACH element child its own item, so
+   `<strong>Lead.</strong> rest of the sentence` became two items: the strong in
+   the text column and the sentence pushed into the next row's 13px bullet
+   column, where it wrapped one word per line. An absolutely positioned marker
+   does not care how the sentence is marked up. */
+ul.plain li { position: relative; padding-left: 22px;
+  font-size: 15px; line-height: var(--leading); color: var(--ink-dim); }
+ul.plain li::before { content: ""; position: absolute; left: 0; top: 11px;
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--accent-deep); opacity: .75; }
+
+/* Tables scroll on their own so the page never does. */
+.tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 13.5px; }
+th, td { text-align: left; padding: 11px 14px; vertical-align: top; border-bottom: 1px solid var(--border); }
+thead th { font-family: var(--mono); font-size: 10.5px; font-weight: 500; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--ink-mute); background: var(--bg-2); white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+td.slot { font-weight: 600; white-space: nowrap; }
+td.fmt { font-family: var(--mono); font-size: 12px; color: var(--ink-dim); }
+td.cols { font-family: var(--mono); font-size: 11.5px; color: var(--ink-mute); line-height: 1.5; }
+.stage { display: inline-block; font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+  text-transform: uppercase; padding: 2px 6px; border-radius: 4px; margin-left: 7px;
+  background: var(--bg-2); color: var(--accent-deep); border: 1px solid var(--border); }
+
+.note { border: 1px solid var(--border); background: var(--bg-2); border-radius: 6px;
+  padding: 15px 17px; font-size: 14px; line-height: 1.6; color: var(--ink-dim); }
+/* A caveat reads as a caveat: same box, warmer ground, so it is not mistaken
+   for another paragraph of the answer. */
+.note.flag { background: #fdf6e8; border-color: #ead9b4; color: #6b4f14; }
+.note .t { font-family: var(--heading); font-weight: 600; font-size: 13.5px; color: var(--ink);
+  display: block; margin-bottom: 5px; }
+.note.flag .t { color: #6b4f14; }
+
+.example { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.example > .hd { padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--bg-2);
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-mute); }
+.example dl { margin: 0; display: grid; grid-template-columns: 1fr; }
+@media (min-width: 560px) { .example dl { grid-template-columns: 1fr 1fr; }
+  .example dl > div:nth-child(odd) { border-right: 1px solid var(--border); } }
+.example dl > div { padding: 11px 16px; border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; gap: 14px; align-items: baseline; }
+.example dt { font-size: 13px; color: var(--ink-dim); }
+.example dd { margin: 0; font-family: var(--mono); font-size: 12.5px; font-weight: 500;
+  color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
+
+.tl { display: grid; border-left: 1px solid var(--border); margin-left: 5px; }
+.tl > div { position: relative; padding: 0 0 16px 20px; }
+.tl > div:last-child { padding-bottom: 0; }
+.tl > div::before { content: ""; position: absolute; left: -4.5px; top: 7px; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--accent-deep); border: 2px solid var(--bg); }
+.tl .when { font-family: var(--mono); font-size: 11px; letter-spacing: 0.05em; color: var(--accent-deep);
+  text-transform: uppercase; display: block; }
+.tl .what { font-size: 14px; color: var(--ink-dim); line-height: 1.55; }
+.tl .what b { color: var(--ink); font-weight: 600; }
+
+.hosts { display: grid; gap: 10px; }
+.host { border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; }
+.host .hn { font-family: var(--heading); font-weight: 600; font-size: 14px; margin-bottom: 4px;
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.host .how { font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 2px 6px; border-radius: 4px; background: var(--bg-2); color: var(--accent-deep);
+  border: 1px solid var(--border); font-weight: 400; }
+.host .how.no { background: #fdf6e8; color: #6b4f14; border-color: #ead9b4; }
+.host p { margin: 0; font-size: 13.5px; line-height: 1.6; color: var(--ink-dim); }
+
+.closing { margin-top: 8px; padding: 34px 0 0; border-top: 1px solid var(--border); }
+.closing h2 { font-family: var(--heading); font-weight: 600; font-size: 21px; letter-spacing: -0.02em; margin: 0 0 12px; }
+.closing .standfirst { font-size: 16px; line-height: var(--leading); color: var(--ink-dim); margin: 0 0 22px; max-width: 60ch; }
+.closing footer { margin-top: 30px; padding-top: 18px; border-top: 1px solid var(--border);
+  font-size: 12.5px; color: var(--ink-mute); max-width: 66ch; background: none; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-links">
+    <a href="/#product">PRODUCT</a>
+    <a href="/#how-it-works">ASSET</a>
+    <a href="/#company">COMPANY</a>
+    <a href="/faq/" aria-current="page">FAQ</a>
+    <a href="/dashboard/" style="border:none">LOG IN</a>
+  </div>
+</nav>
+
+<div class="wrap">
+  <header class="faq-mast">
+    <span class="kicker">BEFORE A DECK GETS BUILT</span>
+    <h1 class="faq-h1">Six questions we get asked first</h1>
+    <p class="faq-stand">Bedrock puts your drilling, geophysics and geology on real terrain in a
+      browser — a walkthrough you can send, embed or present.</p>
+  </header>
+
+  <div class="faq-shell">
+    <nav class="faq-index" aria-label="Questions">
+      <h2>Questions</h2>
+      <ol>
+        <li><a href="#build"><span class="n">1</span><span>How is it built</span></a></li>
+        <li><a href="#data"><span class="n">2</span><span>What data you need</span></a></li>
+        <li><a href="#time"><span class="n">3</span><span>How long it takes</span></a></li>
+        <li><a href="#edit"><span class="n">4</span><span>Edit access</span></a></li>
+        <li><a href="#host"><span class="n">5</span><span>Where it is hosted</span></a></li>
+        <li><a href="#embed"><span class="n">6</span><span>Putting it on your site</span></a></li>
+      </ol>
+    </nav>
+
+    <main class="qa">
+
+      <section id="build">
+        <h2 class="q"><span class="n">1</span><span>How is it built?</span></h2>
+        <div class="body">
+          <p>
+            On <strong>CesiumJS</strong> — real Esri terrain and satellite imagery, with
+            your data reprojected from your survey grid so collars, claim corners and a
+            magnetics grid all land in the same place.
+          </p>
+          <ul class="plain">
+            <li><strong>A chapter walkthrough.</strong> Each chapter frames one idea with the camera on rails. The last one unlocks it, so a reader can go looking.</li>
+            <li><strong>The viewer is a static page</strong> — no login, and it keeps working offline once loaded.</li>
+            <li><strong>The console</strong> is where you upload data, edit decks, issue links and see engagement.</li>
+            <li><strong>Devices without 3D still see it.</strong> Every chapter is pre-rendered, so a laptop that can't run WebGL gets a slide deck, not an error page.</li>
+          </ul>
+
+          <div class="note">
+            <span class="t">Exploration mode</span>
+            No block model means no tonnage, grade, contained metal or economics anywhere in
+            the interface — the readout says "Exploration stage", never <code>0 t @ 0 g/t</code>.
+            An absence of a measurement is not a measurement of zero.
+          </div>
+        </div>
+      </section>
+
+      <section id="data">
+        <h2 class="q"><span class="n">2</span><span>What data do you need?</span></h2>
+        <div class="body">
+          <p>
+            Whatever you already have. <strong>Nothing here is required</strong> — we build
+            from the slots you can fill, and standard database exports are fine.
+          </p>
+
+          <div class="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Layer</th>
+                  <th scope="col">Formats</th>
+                  <th scope="col">Columns / notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="slot">Drill holes</td>
+                  <td class="fmt">.csv .txt .tsv</td>
+                  <td class="cols">
+                    collars — hole_id, easting, northing, elevation, total_depth_m, azimuth, dip<br>
+                    surveys — hole_id, depth_m, azimuth, dip<br>
+                    assays — hole_id, from_m, to_m, length_m, au_gpt
+                  </td>
+                </tr>
+                <tr>
+                  <td class="slot">Geochemistry</td>
+                  <td class="fmt">.csv .txt .tsv</td>
+                  <td class="cols">east, north + one element column (e.g. au_ppb). Soil, till, stream sediment or rock chip. Below-detection values such as "&lt;5" are handled explicitly.</td>
+                </tr>
+                <tr>
+                  <td class="slot">Geophysics</td>
+                  <td class="fmt">.tif .asc<br>.png .jpg + .tfw</td>
+                  <td class="cols">Magnetics, radiometrics, gravity. A GeoTIFF or ASCII grid places itself; an image needs its world file beside it. Product type read from the filename — TMI, RTP, 1VD, analytic signal.</td>
+                </tr>
+                <tr>
+                  <td class="slot">Property &amp; claims</td>
+                  <td class="fmt">.geojson .kml</td>
+                  <td class="cols">Tenure polygons in your grid or WGS84. In BC we can pull these live from the Mineral Titles register instead, including your neighbours.</td>
+                </tr>
+                <tr>
+                  <td class="slot">Topography</td>
+                  <td class="fmt">.tif .asc .obj .ts .dxf</td>
+                  <td class="cols">Your own ground at your own resolution. Global terrain is ~30 m and smoothed; flown LiDAR is the difference between a generic hillside and yours.</td>
+                </tr>
+                <tr>
+                  <td class="slot">Surfaces</td>
+                  <td class="fmt">.obj .dxf .ts .omf</td>
+                  <td class="cols">Vein wireframes or grade shells as a triangulated mesh. An OMF project carries every surface in it under its own name.</td>
+                </tr>
+                <tr>
+                  <td class="slot">Block model <span class="stage">Resource stage</span></td>
+                  <td class="fmt">.csv .omf</td>
+                  <td class="cols">Only if a resource has been estimated. Skip this entirely for an exploration property.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>
+            A recent client's data room for a BC exploration property, sent exactly as it
+            stood:
+          </p>
+
+          <div class="example">
+            <div class="hd">Client data room · exploration stage, no block model</div>
+            <dl>
+              <div><dt>Drill holes</dt><dd>45 drilled · 13,056 m</dd></div>
+              <div><dt>Assay intervals</dt><dd>5,234</dd></div>
+              <div><dt>Soil samples</dt><dd>4,503</dd></div>
+              <div><dt>Rock samples</dt><dd>1,023</dd></div>
+              <div><dt>Magnetics</dt><dd>TMI · RTP · CVG</dd></div>
+              <div><dt>Induced polarisation</dt><dd>CHG + RES slices</dd></div>
+              <div><dt>Mineral tenure</dt><dd>11 claims</dd></div>
+              <div><dt>Resulting deck</dt><dd>12 chapters</dd></div>
+            </dl>
+          </div>
+
+          <div class="note">
+            <span class="t">A block model never leaves your machine</span>
+            If you have one, the browser reads it locally and uploads only the derived
+            display artifacts — a multi-gigabyte export becomes about 3.9 MB.
+          </div>
+        </div>
+      </section>
+
+      <section id="time">
+        <h2 class="q"><span class="n">3</span><span>How long does it take to build?</span></h2>
+        <div class="body">
+          <p>
+            About a week from a complete data room to a deck you can present, and faster
+            without a block model. The biggest variable is whether your coordinate system
+            is declared — guessing at it puts the property in the wrong valley.
+          </p>
+
+          <div class="tl">
+            <div>
+              <span class="when">Day 0</span>
+              <span class="what">Data room received — <b>160 files</b>, unmodified exports.</span>
+            </div>
+            <div>
+              <span class="when">Day 3</span>
+              <span class="what">A <b>12-chapter deck</b> on real terrain: every hole desurveyed, magnetics and IP draped, claims pulled live from the BC register.</span>
+            </div>
+            <div>
+              <span class="when">Day 8</span>
+              <span class="what">Refinement — hole ledger, downhole logs, and the fallback for devices without 3D.</span>
+            </div>
+          </div>
+
+          <div class="note flag">
+            <span class="t">One build, not an average</span>
+            More zones, a resource estimate, or data spread across several consultants will
+            take longer. We'd rather scope yours than quote you someone else's week.
+          </div>
+        </div>
+      </section>
+
+      <section id="edit">
+        <h2 class="q"><span class="n">4</span><span>Will we have edit access?</span></h2>
+        <div class="body">
+          <p>
+            Yes. Your own workspace, with <strong>owner</strong>, <strong>admin</strong> and
+            <strong>member</strong> roles you manage yourself. One company can't read
+            another's projects or figures — enforced at the database, not in the app.
+          </p>
+
+          <h3>What you can change</h3>
+          <ul class="plain">
+            <li><strong>The camera on any slide.</strong> Fly the view by hand, press Lock, and the deck flies exactly there from then on.</li>
+            <li><strong>The words</strong> — eyebrow, title and body on every chapter.</li>
+            <li><strong>Chapter order</strong>, and which zones a deck spans.</li>
+            <li><strong>New data.</strong> Upload a new drill programme or an updated grid without coming back to us.</li>
+            <li><strong>Who can open it.</strong> Passcode, expiry, embedding on or off, and revoke any link immediately.</li>
+          </ul>
+
+          <div class="note">
+            <span class="t">One thing to hand back to us</span>
+            Re-frame a camera and the pre-rendered stills for devices without 3D still show
+            the old version. Tell us you've re-cut a deck and we'll refresh them.
+          </div>
+        </div>
+      </section>
+
+      <section id="host">
+        <h2 class="q"><span class="n">5</span><span>Where is it hosted?</span></h2>
+        <div class="body">
+          <p>
+            We host it — the viewer on Vercel's CDN, your data in Supabase with a private
+            storage bucket. Nothing for your IT group to run, patch or back up.
+          </p>
+          <ul class="plain">
+            <li><strong>Files stay private.</strong> Opening a share link checks the token first, then hands back short-lived signed URLs. A revoked link answers exactly like one that never existed.</li>
+            <li><strong>Your own domain</strong> — <code>geology.yourcompany.com</code> is a DNS record and a certificate. Worth doing before a deck goes in a news release.</li>
+            <li><strong>Analytics without tracking.</strong> No cookies, no IP stored; a country is derived at the edge and the address discarded. You see which chapters held attention and for how long.</li>
+          </ul>
+
+          <div class="note flag">
+            <span class="t">Engagement figures, not audited ones</span>
+            The endpoint has to accept anonymous viewers, so anyone holding a link could
+            inflate that deck's numbers. A read on interest, not a disclosure-grade record.
+          </div>
+        </div>
+      </section>
+
+      <section id="embed">
+        <h2 class="q"><span class="n">6</span><span>How do we get it on our website?</span></h2>
+        <div class="body">
+          <p>
+            The console generates it for you. Every deck has an <strong>Embed</strong>
+            button that hands you the right thing for your platform — they don't all take
+            the same one.
+          </p>
+
+          <div class="hosts">
+            <div class="host">
+              <div class="hn">WordPress · Elementor · Squarespace <span class="how">HTML snippet</span></div>
+              <p>Paste into a Custom HTML block, an Elementor HTML widget, or a Squarespace code block. If it vanishes when you save, your host is stripping HTML — use the URL with an Embed block instead.</p>
+            </div>
+            <div class="host">
+              <div class="hn">Wix · Notion · Confluence <span class="how">URL</span></div>
+              <p>These take a link, not markup. Wix: Embed → Embed a Site. Notion: paste and choose Embed. Confluence: the iframe macro.</p>
+            </div>
+            <div class="host">
+              <div class="hn">PowerPoint <span class="how">URL</span> <span class="how">or PPTX</span></div>
+              <p>Live on the slide via the Web Viewer add-in, which needs a connection at the moment you present. Or export to PPTX — one slide per chapter, each linking back to the live deck. That is the version that survives a room with no wifi.</p>
+            </div>
+            <div class="host">
+              <div class="hn">Google Slides <span class="how no">Export only</span></div>
+              <p>Google Slides cannot embed live web content — no iframe, no add-in, nothing that changes it. Import the PPTX instead and every slide keeps its link back to the 3D. If you need the model moving inside Slides, record a flythrough and insert it as video.</p>
+            </div>
+          </div>
+
+          <div class="note flag">
+            <span class="t">Pinning a deck to your domain is a deterrent, not a lock</span>
+            A link can name the sites allowed to frame it, which stops casual re-posting but
+            isn't enforcement. <strong>Expiry, passcode and revocation are the controls that
+            actually hold.</strong>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <div class="closing">
+    <h2>What we need to start</h2>
+    <p class="standfirst">Your data room as it already exists, and one line telling us the
+      coordinate system it's in. Fifteen minutes with your project geologist at the start
+      beats any amount of guessing at column names later.</p>
+    <p><a class="btn btn-primary" href="/#top">SEE A DECK</a>
+       <a class="btn btn-ghost" href="/dashboard/">LOG IN</a></p>
+    <footer>Every figure on this page is from Bedrock as built or from a completed client
+      deck. Nothing here is projected.</footer>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-row">
+      <span>&copy; 2026 BEDROCK</span>
+      <div class="foot-links">
+        <a href="/#product">PRODUCT</a>
+        <a href="/#how-it-works">HOW IT WORKS</a>
+        <a href="/#company">COMPANY</a>
+        <a href="/faq/">FAQ</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
