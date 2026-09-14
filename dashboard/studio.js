@@ -114,6 +114,7 @@ function toolbarHtml() {
         <button class="tbtn" data-nudge="p-10" title="Tilt down">\u2193</button>
         <button class="tbtn" data-nudge="z0.8" title="Move closer">+</button>
         <button class="tbtn" data-nudge="z1.25" title="Pull back">\u2212</button>
+        <button class="tbtn" id="tb_cam" title="Hand the drag back to the camera">Camera</button>
         <button class="btn sm" id="tb_set" title="Store this framing on the slide">Set view</button>
       </div>
 
@@ -142,7 +143,7 @@ function toolbarHtml() {
         <button class="tbtn" id="tb_label" title="Type a name, then click the map">Label</button>
         <button class="tbtn" id="tb_draw" title="Drag to draw on the ground">Pencil</button>
         <button class="tbtn" id="tb_zone" title="Drag a box over a piece of ground">Zone</button>
-        <button class="tbtn" id="tb_move" title="Drag a mark or zone somewhere else">Move</button>
+        <button class="tbtn" id="tb_move" title="Click anything to select it, then drag, recolour or resize">Toggle</button>
         <span class="mkcols" role="group" aria-label="Mark colour">
           ${MARK_COLOURS.map((c, i) => `
             <button class="mkcol${i === 0 ? " on" : ""}" data-colour="${c}"
@@ -487,9 +488,16 @@ function wireTools() {
            text: ($("tb_text").value || "").trim(), colour }, active);
     note(on ? msg : "");
   };
+  /* An armed tool owns the drag, so there has to be a way to give it back —
+     otherwise picking up the pencil means the camera is stuck until something
+     is drawn. */
+  $("tb_cam").onclick = () => {
+    tell({ type: "tool", name: null }, active);
+    note("Camera has the drag.");
+  };
   $("tb_draw").onclick = () => arm("draw", "Drag on the map to draw.");
   $("tb_zone").onclick = () => arm("zone", "Drag a box over the ground you mean.");
-  $("tb_move").onclick = () => arm("move", "Drag a mark or a zone to move it.");
+  $("tb_move").onclick = () => arm("move", "Click anything on the deck to select it.");
   /* Caption size is the deck's, not a frame's, so it goes to BOTH previews and
      is saved once. Sent live for the look of it and written after a pause, so
      holding the button does not post a row per click. */
@@ -554,8 +562,13 @@ function paintTools(st) {
     const o = $("tb_cap");
     if (o) o.textContent = Math.round(ui.caption * 100) + "%";
   }
-  const d = $("tb_draw"); if (d) d.classList.toggle("on", ui.tool === "draw");
-  const l = $("tb_label"); if (l) l.classList.toggle("on", ui.tool === "label");
+  for (const name of ["label", "draw", "zone", "move"]) {
+    const btn = $("tb_" + name);
+    if (btn) btn.classList.toggle("on", ui.tool === name);
+  }
+  // Camera lights up when nothing else has the drag, so the armed state of the
+  // whole row reads at a glance.
+  const cam = $("tb_cam"); if (cam) cam.classList.toggle("on", !ui.tool);
   const sv = $("tb_save");
   if (sv) {
     // Offered when there is something to publish, and also when the author has
