@@ -617,11 +617,28 @@ async function saveText() {
   if (!titleEl) return;                     // inspector was replaced mid-flight
 
   const dwell = Math.min(120, Math.max(1, Number($("insp_dwell").value) || 9));
+  /* The eyebrow and the figures live in `layers` beside the switches, so this
+     MERGES rather than assigns. Writing the two of them as a fresh object would
+     take every layer off the slide — the caption would save and the scene would
+     go dark. */
+  const layers = Object.assign({}, c.layers || {});
+  const ey = ($("insp_ey").value || "").trim();
+  if (ey) layers.ey = ey; else delete layers.ey;
+
+  const fig = [];
+  for (let i = 0; i < 3; i++) {
+    const v = ($(`insp_fv${i}`).value || "").trim();
+    const l = ($(`insp_fl${i}`).value || "").trim();
+    if (v || l) fig.push([v, l]);
+  }
+  if (fig.length) layers.fig = fig; else delete layers.fig;
+
   const patch = {
     title: titleEl.value.trim() || null,
     body: $("insp_body").value.trim() || null,
     section: $("insp_section").value.trim() || null,
     dwell_ms: dwell * 1000,
+    layers,
   };
 
   setSaveNote("Saving…");
@@ -935,6 +952,12 @@ function paintInspector() {
     </div>
 
     <div class="field">
+      <label for="insp_ey">Eyebrow</label>
+      <input type="text" id="insp_ey" value="${esc((c.layers || {}).ey || "")}"
+             placeholder="Mineral Titles Online, as of 2026-09-01">
+    </div>
+
+    <div class="field">
       <label for="insp_title">Title</label>
       <input type="text" id="insp_title" value="${esc(c.title || "")}"
              placeholder="What this slide is about">
@@ -945,6 +968,25 @@ function paintInspector() {
       <textarea id="insp_body" rows="5"
         placeholder="Shown beside the scene, and read aloud when narration is on."
         >${esc(c.body || "")}</textarea>
+    </div>
+
+    <!-- The three figures under the caption. Value and label are separate
+         because they are set differently: the value is the number the slide is
+         making, the label is what it is the number OF. -->
+    <div class="field">
+      <label>Figures</label>
+      <div class="figrows">
+        ${[0, 1, 2].map((i) => {
+          const f = ((c.layers || {}).fig || [])[i] || ["", ""];
+          return `<div class="figrow">
+            <input type="text" id="insp_fv${i}" value="${esc(f[0] || "")}"
+                   aria-label="Figure ${i + 1} value" placeholder="11,490 ha">
+            <input type="text" id="insp_fl${i}" value="${esc(f[1] || "")}"
+                   aria-label="Figure ${i + 1} label" placeholder="held">
+          </div>`;
+        }).join("")}
+      </div>
+      <p class="hint">Leave a row empty to drop it.</p>
     </div>
 
     <div class="grid two">

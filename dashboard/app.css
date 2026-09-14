@@ -1079,3 +1079,8 @@ body.stripoff .stmain { grid-column: 1 / -1; }
 }
 .barsx .mx { color: var(--ink-dim); }
 @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+
+/* Figure rows in the inspector: value then label, on one line each. */
+.figrows { display: grid; gap: 6px; }
+.figrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+.figrow input { min-width: 0; }
