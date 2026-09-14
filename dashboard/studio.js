@@ -123,6 +123,13 @@ function toolbarHtml() {
         <output id="tb_geo_o" hidden>72%</output>
       </div>
 
+      <div class="stgrp" role="group" aria-label="Caption">
+        <span class="stgl">Caption</span>
+        <button class="tbtn" data-cap="-0.1" title="Smaller caption">\u2212</button>
+        <output id="tb_cap">100%</output>
+        <button class="tbtn" data-cap="0.1" title="Larger caption">+</button>
+      </div>
+
       <div class="stgrp" role="group" aria-label="Annotate">
         <span class="stgl">Mark</span>
         <input type="text" id="tb_text" placeholder="Label text" maxlength="40"
@@ -435,6 +442,26 @@ function wireTools() {
     tell({ type: "tool", name: on ? "draw" : null }, active);
     note(on ? "Drag on the map to draw." : "");
   };
+  /* Caption size is the deck's, not a frame's, so it goes to BOTH previews and
+     is saved once. Sent live for the look of it and written after a pause, so
+     holding the button does not post a row per click. */
+  let capK = ((deck && deck.theme && deck.theme.captionScale) || 1), capT;
+  for (const b2 of document.querySelectorAll("[data-cap]")) {
+    b2.onclick = () => {
+      capK = Math.max(0.8, Math.min(1.4, +(capK + +b2.dataset.cap).toFixed(2)));
+      tell({ type: "caption", v: capK });
+      const o = $("tb_cap"); if (o) o.textContent = Math.round(capK * 100) + "%";
+      clearTimeout(capT);
+      capT = setTimeout(async () => {
+        const theme = Object.assign({}, deck.theme || {}, { captionScale: capK });
+        const { error } = await db.from("decks").update({ theme }).eq("id", deck.id);
+        if (error) return fail("Caption size", error);
+        deck.theme = theme;
+        note("Caption size saved");
+      }, 700);
+    };
+  }
+
   $("tb_undo").onclick = () => tell({ type: "notes", op: "undo" }, active);
   // Marks are published on their own rather than folded into Set view. A camera
   // is the shot; an annotation is a claim about the ground, and putting one in
@@ -461,6 +488,10 @@ function paintTools(st) {
   }
   if (hasGeo && typeof ui.geoAlpha === "number") set("tb_geo", "tb_geo_o", ui.geoAlpha);
 
+  if (typeof ui.caption === "number") {
+    const o = $("tb_cap");
+    if (o) o.textContent = Math.round(ui.caption * 100) + "%";
+  }
   const d = $("tb_draw"); if (d) d.classList.toggle("on", ui.tool === "draw");
   const l = $("tb_label"); if (l) l.classList.toggle("on", ui.tool === "label");
   const sv = $("tb_save");

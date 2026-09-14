@@ -937,7 +937,17 @@ body.instudio header.page h1 { font-size: 22px; margin-top: 6px; }
   body.instudio .studio { grid-template-columns: 224px minmax(0, 1fr); }
   body.instudio .stchaps #stlist { display: block; }
   body.instudio .stchaps .stchap { flex: none; margin-bottom: 4px; }
-  body.instudio .stchaps { max-height: none; }
+  /* The slide list scrolls on its own, and stays put while it does.
+     `max-height: none` here let the column grow to however many slides the deck
+     has, so `overflow-y: auto` never had anything to engage against: the whole
+     page scrolled instead, and the preview — the one thing in the studio that
+     has to stay in view — slid off the top while you were looking for slide 11.
+     Bounded to the window and made sticky, the list scrolls and the frame does
+     not move. */
+  body.instudio .stchaps {
+    position: sticky; top: 12px;
+    max-height: calc(100vh - 24px);
+  }
 }
 @media (max-width: 899px) {
   body.instudio .studio { grid-template-columns: 1fr; }
