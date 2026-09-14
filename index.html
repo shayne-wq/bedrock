@@ -168,14 +168,23 @@ figure video { position: absolute; inset: 0; width: 100%; height: 100%; object-f
 
 .fq-rows { display: grid; gap: 14px; margin-top: 34px; }
 
-/* ---- narrow: an accordion ---- */
-.fq-row { }
-.fq-track { display: grid; gap: 10px; padding: 0 var(--edge); }
-.fq { border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
-.fq-q { display: flex; align-items: center; justify-content: space-between; gap: 14px;
+/* ---- narrow: a conversation ----
+   Read as a thread rather than a list of drawers: the question is the message
+   that came in, the answer is the reply, and tapping is asking it. Bubbles get
+   one squared corner on the side they are spoken from, which is what makes a
+   rounded rectangle read as speech instead of as a card. */
+.fq-stamp { display: block; text-align: center; margin: 30px 0 4px;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; color: var(--ink-mute); }
+.fq-track { display: grid; gap: 14px; padding: 0 var(--edge); }
+.fq { border: 0; background: none; }
+.fq-q { display: flex; align-items: center; gap: 10px;
   width: 100%; text-align: left; background: none; border: 0; cursor: pointer;
-  padding: 15px 16px; font: inherit; color: var(--ink); }
-.fq-t { font-family: var(--heading); font-weight: 600; font-size: 15.5px; letter-spacing: -0.01em; }
+  padding: 0; font: inherit; color: var(--ink); }
+.fq-t { flex: 0 1 auto; font-family: var(--heading); font-weight: 600; font-size: 15px;
+  letter-spacing: -0.01em; line-height: 1.35;
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: 16px 16px 16px 5px; padding: 11px 15px; }
+.fq-q[aria-expanded="true"] .fq-t { border-color: color-mix(in srgb, var(--accent-deep) 40%, var(--border)); }
 /* A plus that becomes a minus: two bars, one of which turns. Cheaper than an
    icon font and it cannot arrive late. */
 .fq-pm { position: relative; flex: 0 0 auto; width: 14px; height: 14px; }
@@ -191,8 +200,14 @@ figure video { position: absolute; inset: 0; width: 100%; height: 100%; object-f
 .fq-a { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .28s cubic-bezier(.22,1,.36,1); }
 .fq-q[aria-expanded="true"] + .fq-a { grid-template-rows: 1fr; }
 .fq-a-in { overflow: hidden; }
-.fq-a p { margin: 0 16px 0; padding-bottom: 12px; font-size: 14.5px; line-height: 1.6; color: var(--ink-dim); }
-.fq-more { display: inline-block; margin: 0 16px 15px; font-family: var(--mono);
+/* The reply: indented, filled, and squared on the corner it is spoken from.
+   `--accent-ink` is the deep teal the brand pairs with the cyan — the cyan is
+   2.2:1 on white and cannot carry text, but it carries this. */
+.fq-a p { margin: 9px 0 0 26px; padding: 11px 15px; max-width: 30ch;
+  background: var(--accent); color: var(--accent-ink);
+  border-radius: 16px 16px 5px 16px;
+  font-size: 14.5px; line-height: 1.55; }
+.fq-more { display: inline-block; margin: 8px 0 2px 26px; font-family: var(--mono);
   font-size: 11px; letter-spacing: 0.04em; color: var(--accent-deep); }
 
 /* ---- wide: the drifting rows ---- */
@@ -207,15 +222,27 @@ figure video { position: absolute; inset: 0; width: 100%; height: 100%; object-f
     padding: 0; width: max-content;
     animation: fq-drift var(--fq-speed, 44s) linear infinite;
     animation-direction: var(--fq-dir, normal); }
+  /* The loop travels one SET width, in pixels, not -50%. A percentage assumes
+     the track is exactly two copies — and with two cards in a row it is
+     1,552px, narrower than a wide desktop, so the row emptied out on the right
+     and the middle one looked like it had stopped. The count is now whatever it
+     takes to overflow the viewport, and the distance is one set however many
+     that turns out to be. */
   .fq-row:hover .fq-track, .fq-row:focus-within .fq-track { animation-play-state: paused; }
-  .fq { padding-bottom: 4px; }
+  .fq-stamp { display: none; }
+  .fq { padding-bottom: 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
   .fq-q { cursor: default; padding: 17px 18px 6px; }
+  .fq-t { background: none; border: 0; border-radius: 0; padding: 0; font-size: 15.5px; }
   .fq-pm { display: none; }
+  .fq-a p { margin: 0 18px; padding: 0 0 2px; max-width: none;
+    background: none; color: var(--ink-dim); border-radius: 0; }
+  .fq-more { margin: 10px 18px 15px; }
   /* Open, always. There is nothing to toggle when the card is the answer. */
   .fq-a { grid-template-rows: 1fr; }
   .fq-a p { font-size: 14px; }
 }
-@keyframes fq-drift { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes fq-drift { from { transform: translateX(0); }
+                      to   { transform: translateX(calc(-1 * var(--fq-set, 50%))); } }
 
 /* A reader who asked for less motion gets the list, at any width. */
 @media (prefers-reduced-motion: reduce) {
@@ -986,8 +1013,9 @@ footer { position: relative; z-index: 1; background: #fff;
        who has asked for less motion. Narrow: the same six items as a tap-to-open
        list, because a moving row you cannot read is worse than a static one you
        can. Both are the same DOM; only the layout changes. -->
+  <p class="fq-stamp" aria-hidden="true">Asked and answered — most days, before lunch</p>
   <div class="fq-rows">
-        <div class="fq-row" data-speed="40s" data-dir="left">
+        <div class="fq-row" data-speed="52s" data-dir="left">
           <div class="fq-track">
             <article class="fq">
               <button class="fq-q" type="button" aria-expanded="false">
@@ -1007,10 +1035,6 @@ footer { position: relative; z-index: 1; background: #fff;
                 <a class="fq-more" href="/faq/#data">Full answer &#8594;</a>
               </div></div>
             </article>
-          </div>
-        </div>
-        <div class="fq-row" data-speed="52s" data-dir="right">
-          <div class="fq-track">
             <article class="fq">
               <button class="fq-q" type="button" aria-expanded="false">
                 <span class="fq-t">How long does it take?</span><span class="fq-pm" aria-hidden="true"></span>
@@ -1020,6 +1044,10 @@ footer { position: relative; z-index: 1; background: #fff;
                 <a class="fq-more" href="/faq/#time">Full answer &#8594;</a>
               </div></div>
             </article>
+          </div>
+        </div>
+        <div class="fq-row" data-speed="64s" data-dir="right">
+          <div class="fq-track">
             <article class="fq">
               <button class="fq-q" type="button" aria-expanded="false">
                 <span class="fq-t">Will we have edit access?</span><span class="fq-pm" aria-hidden="true"></span>
@@ -1029,10 +1057,6 @@ footer { position: relative; z-index: 1; background: #fff;
                 <a class="fq-more" href="/faq/#edit">Full answer &#8594;</a>
               </div></div>
             </article>
-          </div>
-        </div>
-        <div class="fq-row" data-speed="46s" data-dir="left">
-          <div class="fq-track">
             <article class="fq">
               <button class="fq-q" type="button" aria-expanded="false">
                 <span class="fq-t">Where is it hosted?</span><span class="fq-pm" aria-hidden="true"></span>
@@ -1460,26 +1484,58 @@ if (renderer) {
     btn.addEventListener('click', () => {
       const open = btn.getAttribute('aria-expanded') === 'true';
       btn.setAttribute('aria-expanded', String(!open));
+      if (open) return;
+      /* An answer that opens below the fold looks exactly like a tap that did
+         nothing: the question stays put and the reply arrives off screen. Only
+         nudges when it actually needs to, and only far enough. */
+      const panel = btn.nextElementSibling;
+      setTimeout(() => {
+        const r = panel.getBoundingClientRect();
+        const over = r.bottom - (innerHeight - 16);
+        if (over > 0) scrollBy({ top: over, behavior: 'smooth' });
+      }, 300);
     });
   });
 
-  let cloned = false;
+  // The cards a row starts with, kept so a re-measure can rebuild from them
+  // rather than from a track that already has copies in it.
+  const seed = new Map();
+  for (const row of rows) seed.set(row, [...row.querySelector('.fq-track').children]);
+
   function marquee() {
     const on = wide.matches && !still.matches;
     for (const row of rows) {
       const track = row.querySelector('.fq-track');
-      if (on && !cloned) {
-        const copy = track.cloneNode(true);
-        copy.querySelectorAll('button, a').forEach((el) => {
-          el.tabIndex = -1; el.setAttribute('aria-hidden', 'true');
-        });
-        [...copy.children].forEach((c) => track.appendChild(c));
+      const originals = seed.get(row);
+      track.replaceChildren(...originals);
+      track.style.removeProperty('--fq-set');
+      if (!on) continue;
+
+      /* One set, measured. Then copies until the track is at least twice the
+         viewport, so there is always a full screen of cards arriving no matter
+         how wide the window is — two cards could not fill a desktop, which is
+         what left the middle row looking parked. */
+      const gap = parseFloat(getComputedStyle(track).columnGap) || 0;
+      const setW = originals.reduce((w, el) => w + el.getBoundingClientRect().width + gap, 0);
+      if (setW <= 0) continue;
+      const copies = Math.max(1, Math.ceil((innerWidth * 2) / setW));
+      for (let i = 0; i < copies; i++) {
+        for (const el of originals) {
+          const c = el.cloneNode(true);
+          // The same answers again: out of the tab order and out of the
+          // accessibility tree, so a keyboard and a screen reader meet them once.
+          c.setAttribute('aria-hidden', 'true');
+          c.querySelectorAll('button, a').forEach((k) => { k.tabIndex = -1; });
+          track.appendChild(c);
+        }
       }
+      track.style.setProperty('--fq-set', setW + 'px');
       track.style.setProperty('--fq-speed', row.dataset.speed || '44s');
       track.style.setProperty('--fq-dir', row.dataset.dir === 'right' ? 'reverse' : 'normal');
     }
-    if (on) cloned = true;
   }
+  // A window that changes width changes how many copies it takes to fill.
+  let t; addEventListener('resize', () => { clearTimeout(t); t = setTimeout(marquee, 180); });
   marquee();
   wide.addEventListener('change', marquee);
   still.addEventListener('change', marquee);
