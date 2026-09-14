@@ -1084,3 +1084,19 @@ body.stripoff .stmain { grid-column: 1 / -1; }
 .figrows { display: grid; gap: 6px; }
 .figrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
 .figrow input { min-width: 0; }
+
+/* Mark colours in the studio toolbar.
+   NOT `.swatch` — that name is already the brand-colour picker's tile further
+   up this file, and reusing it handed these buttons a bordered white panel
+   instead of a colour. Six fixed choices rather than a free picker: over a dark
+   3D scene an arbitrary colour mostly produces a mark nobody can see. */
+.mkcols { display: inline-flex; gap: 4px; align-items: center; }
+.mkcol {
+  width: 18px; height: 18px; padding: 0; cursor: pointer; flex: 0 0 auto;
+  border-radius: 50%; border: 1px solid var(--border);
+  background: var(--sw, #ccc);
+  transition: transform .12s, box-shadow .12s;
+}
+.mkcol:hover { transform: scale(1.12); }
+.mkcol.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--accent); }
+.mkcol:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

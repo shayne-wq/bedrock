@@ -143,11 +143,13 @@ function toolbarHtml() {
         <button class="tbtn" id="tb_draw" title="Drag to draw on the ground">Pencil</button>
         <button class="tbtn" id="tb_zone" title="Drag a box over a piece of ground">Zone</button>
         <button class="tbtn" id="tb_move" title="Drag a mark or zone somewhere else">Move</button>
-        <span class="swatches" role="group" aria-label="Colour">
+        <span class="mkcols" role="group" aria-label="Mark colour">
           ${MARK_COLOURS.map((c, i) => `
-            <button class="swatch${i === 0 ? " on" : ""}" data-colour="${c}"
+            <button class="mkcol${i === 0 ? " on" : ""}" data-colour="${c}"
                     style="--sw:${c}" title="${c}" aria-label="Colour ${c}"></button>`).join("")}
         </span>
+        <button class="tbtn" id="tb_small" title="Smaller">\u2212</button>
+        <button class="tbtn" id="tb_big" title="Larger">+</button>
         <button class="tbtn" id="tb_undo" title="Remove the last mark">Undo</button>
         <button class="btn sm" id="tb_save" title="Publish these marks and placements to the slide" disabled>
           Save marks</button>
@@ -508,6 +510,11 @@ function wireTools() {
     };
   }
 
+  // Size acts on whatever Move last selected, so the two read as one gesture:
+  // pick the thing up, then say how big it should be.
+  $("tb_small").onclick = () => tell({ type: "size", d: -0.1 }, active);
+  $("tb_big").onclick = () => tell({ type: "size", d: 0.1 }, active);
+
   $("tb_undo").onclick = () => tell({ type: "notes", op: "undo" }, active);
   // Marks are published on their own rather than folded into Set view. A camera
   // is the shot; an annotation is a claim about the ground, and putting one in
@@ -534,6 +541,15 @@ function paintTools(st) {
   }
   if (hasGeo && typeof ui.geoAlpha === "number") set("tb_geo", "tb_geo_o", ui.geoAlpha);
 
+  const note2 = $("tb_note");
+  if (note2 && st.picked) {
+    const p = String(st.picked);
+    const name = p.startsWith("d:") ? p.slice(2)
+               : p.startsWith("i:") ? "callout " + p.slice(2)
+               : p.startsWith("z:") ? "zone name " + p.slice(2)
+               : p;
+    note2.textContent = "Selected: " + name + " — colour and size act on it";
+  }
   if (typeof ui.caption === "number") {
     const o = $("tb_cap");
     if (o) o.textContent = Math.round(ui.caption * 100) + "%";
@@ -546,9 +562,9 @@ function paintTools(st) {
     // cleared a slide's marks — otherwise the deletion could never be committed.
     const c = chapters[st.ord] || {};
     const storedMarks = (c.areas || []).length;
-    const storedMoved = JSON.stringify((c.layers || {}).moved || {});
-    const nowMoved = JSON.stringify(st.moved || {});
-    sv.disabled = (st.areas || []).length === storedMarks && storedMoved === nowMoved;
+    const stored = JSON.stringify([(c.layers || {}).moved || {}, (c.layers || {}).styled || {}]);
+    const now = JSON.stringify([st.moved || {}, st.styled || {}]);
+    sv.disabled = (st.areas || []).length === storedMarks && stored === now;
   }
 }
 
@@ -634,6 +650,8 @@ async function save(state, what, which) {
     const layers = Object.assign({}, c.layers || {});
     if (state.moved && Object.keys(state.moved).length) layers.moved = state.moved;
     else delete layers.moved;
+    if (state.styled && Object.keys(state.styled).length) layers.styled = state.styled;
+    else delete layers.styled;
     patch.layers = layers;
   } else {
     patch[col] = state.camera.orbit || state.camera.free;
