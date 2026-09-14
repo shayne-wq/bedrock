@@ -133,7 +133,7 @@ figure video { position: absolute; inset: 0; width: 100%; height: 100%; object-f
 .specs li { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); color: var(--ink-mute); }
 .specs li:last-child { border-bottom: 1px solid var(--border); }
 .specs b { color: var(--ink); font-weight: 500; }
-.split-figure.is-video { aspect-ratio: 16/9; }
+.split-figure.is-video .fig-media { aspect-ratio: 16/9; }
 /* The mine-plan sequence, mirrored from the investor block above it: same
    20:11 split and same reach into a page gutter, flipped so the film leads on
    the left and the numbers stack on the right. The figure comes first in the
@@ -143,7 +143,13 @@ figure video { position: absolute; inset: 0; width: 100%; height: 100%; object-f
   column-gap: clamp(20px, 3vw, 44px); margin-left: calc(-1 * var(--edge)); }
 @media (max-width: 720px) {
   .split.is-film .split-grid { grid-template-columns: 1fr; margin-left: 0; } }
-.split-figure { position: relative; margin: 0; aspect-ratio: 16/10; border: 1px solid var(--border); background: var(--bg-2); overflow: hidden; }
+/* The figure is a container now, and `.fig-media` is the frame. The label used
+   to be pinned inside that frame, where it sat on the deck's own nameplate and
+   on the video's first seconds — and on a phone it covered a fifth of the
+   picture. A caption belongs under the thing it names. */
+.split-figure { position: static; margin: 0; }
+.fig-media { position: relative; aspect-ratio: 16/10; border: 1px solid var(--border);
+  background: var(--bg-2); overflow: hidden; }
 /* ---- the deck slab -------------------------------------------------------
    Named `slab`, not `showcase`: this page already has a `.showcase` section
    further down — the live embedded deck — and its rules come later in the
@@ -240,13 +246,20 @@ body { overflow-x: clip; }
   .slab-specs li:last-child { border-bottom: 1px solid var(--border); }
 }
 
-.fig-tag { position: absolute; z-index: 2; top: 12px; left: 12px; font-family: var(--mono); font-size: 11px; color: var(--ink-dim); border: 1px solid var(--border); border-radius: 3px; padding: 4px 8px; background: color-mix(in srgb, var(--bg) 80%, transparent); white-space: nowrap; }
+/* A caption, not a chip. Off the picture, under it, right-aligned and quiet —
+   it is a reference label, and nothing on the page needs to read it before the
+   image it belongs to. The box and the backing plate went with the overlay:
+   both existed to hold it legible against whatever it was lying on top of. */
+.fig-tag { display: block; margin-top: 9px; text-align: right;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.04em;
+  color: var(--ink-mute); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
 /* Under the slab, not on it. Every other figure on this page is a flat still
    and a corner tag sits on it harmlessly; this one is a screenshot of a deck
    that has its own nameplate in that exact corner, and the tag landed on top of
    it. Declared after .fig-tag rather than before, because the two rules have
    the same specificity and the loser of that is decided by source order. */
-.device-tag { position: static; display: inline-block; margin: 18px auto 0; }
+.device-tag { margin-top: 16px; }
 
 .showcase { padding: 0 0 76px; }
 .showcase-intro { padding-top: 76px; border-top: 1px solid var(--border); text-align: center; }
@@ -254,7 +267,7 @@ body { overflow-x: clip; }
 .showcase-intro .split-title { max-width: 24ch; margin-inline: auto; }
 .showcase-intro .note { max-width: 60ch; margin: 16px auto 0; }
 .showcase-head { margin: 40px 0 12px; display: flex; align-items: center; justify-content: center; gap: 18px; flex-wrap: wrap; }
-.showcase-head .fig-tag { position: static; }
+.showcase-head .fig-tag { display: inline; margin-top: 0; text-align: inherit; }
 .showcase-open { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; color: var(--accent-deep); white-space: nowrap; }
 /* Dark ground, so the frame does not flash a light panel before the deck
    paints, and a label behind the iframe that stands in as the loading state
@@ -748,14 +761,16 @@ footer { position: relative; z-index: 1; background: #fff;
         </ul>
       </div>
       <figure class="split-figure is-video">
-        <video id="fly-to-hole" poster="video/fly-to-hole.jpg" width="1280" height="720"
-               autoplay muted loop playsinline preload="metadata"
-               aria-label="Flying to drill hole WM22-02 on the Williams property. The hole is selected, the camera moves to it, and its 339 downhole gold assays open alongside, with the 96.92 m at 2.16 g/t intercept highlighted.">
-          <source src="video/fly-to-hole.webm" type="video/webm">
-          <source src="video/fly-to-hole.mp4" type="video/mp4">
-          <img src="video/fly-to-hole.jpg" alt="A drill hole selected in the 3D view with its downhole gold assays open alongside." width="1280" height="720">
-        </video>
-        <span class="fig-tag">FIG. 01 — FLY TO A DRILL HOLE</span>
+        <div class="fig-media">
+          <video id="fly-to-hole" poster="video/fly-to-hole.jpg" width="1280" height="720"
+                 autoplay muted loop playsinline preload="metadata"
+                 aria-label="Flying to drill hole WM22-02 on the Williams property. The hole is selected, the camera moves to it, and its 339 downhole gold assays open alongside, with the 96.92 m at 2.16 g/t intercept highlighted.">
+            <source src="video/fly-to-hole.webm" type="video/webm">
+            <source src="video/fly-to-hole.mp4" type="video/mp4">
+            <img src="video/fly-to-hole.jpg" alt="A drill hole selected in the 3D view with its downhole gold assays open alongside." width="1280" height="720">
+          </video>
+        </div>
+        <figcaption class="fig-tag">FIG. 01 — FLY TO A DRILL HOLE</figcaption>
       </figure>
     </div>
   </section>
@@ -763,13 +778,15 @@ footer { position: relative; z-index: 1; background: #fff;
   <section class="split is-film" id="mine-plan">
     <div class="split-grid">
       <figure class="split-figure is-video">
-        <video id="mine-plan-film" poster="video/mine-plan.jpg" width="1142" height="640"
-               autoplay muted loop playsinline preload="none"
-               aria-label="The mine plan sequence: the grade shell on the South Zone, then the 60 m starter pit cut into the hillside, then four stages down to the 240 m final pit, then a haul truck at true size on the ramp.">
-          <source src="video/mine-plan.mp4" type="video/mp4">
-          <img src="video/mine-plan.jpg" alt="A terraced open pit cut into a mountainside, with a haul truck on the ramp." width="1142" height="640">
-        </video>
-        <span class="fig-tag">FIG. 02 — MINE PLAN SEQUENCE</span>
+        <div class="fig-media">
+          <video id="mine-plan-film" poster="video/mine-plan.jpg" width="1142" height="640"
+                 autoplay muted loop playsinline preload="none"
+                 aria-label="The mine plan sequence: the grade shell on the South Zone, then the 60 m starter pit cut into the hillside, then four stages down to the 240 m final pit, then a haul truck at true size on the ramp.">
+            <source src="video/mine-plan.mp4" type="video/mp4">
+            <img src="video/mine-plan.jpg" alt="A terraced open pit cut into a mountainside, with a haul truck on the ramp." width="1142" height="640">
+          </video>
+        </div>
+        <figcaption class="fig-tag">FIG. 02 — MINE PLAN SEQUENCE</figcaption>
       </figure>
       <div class="split-copy">
         <span class="kicker">MINE PLAN</span>
