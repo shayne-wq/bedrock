@@ -149,7 +149,7 @@ function toolbarHtml() {
                     style="--sw:${c}" title="${c}" aria-label="Colour ${c}"></button>`).join("")}
         </span>
         <button class="tbtn" id="tb_undo" title="Remove the last mark">Undo</button>
-        <button class="btn sm" id="tb_save" title="Publish these marks to the slide" disabled>
+        <button class="btn sm" id="tb_save" title="Publish these marks and placements to the slide" disabled>
           Save marks</button>
       </div>
 
@@ -544,8 +544,11 @@ function paintTools(st) {
   if (sv) {
     // Offered when there is something to publish, and also when the author has
     // cleared a slide's marks — otherwise the deletion could never be committed.
-    const stored = ((chapters[st.ord] || {}).areas || []).length;
-    sv.disabled = (st.areas || []).length === stored && stored === (st.ui.notes || 0);
+    const c = chapters[st.ord] || {};
+    const storedMarks = (c.areas || []).length;
+    const storedMoved = JSON.stringify((c.layers || {}).moved || {});
+    const nowMoved = JSON.stringify(st.moved || {});
+    sv.disabled = (st.areas || []).length === storedMarks && storedMoved === nowMoved;
   }
 }
 
@@ -624,6 +627,14 @@ async function save(state, what, which) {
     // Annotations only. Saving labels must not also move the camera — the
     // author may have drawn them from a convenient angle that is not the shot.
     patch.areas = Array.isArray(state.areas) ? state.areas : [];
+    /* Where the deck's OWN labels were dragged to rides along, because it is
+       the same act: the author has decided where things sit on this slide.
+       Merged into layers, never assigned over it — the switches live there too
+       and writing a fresh object would take every layer off the slide. */
+    const layers = Object.assign({}, c.layers || {});
+    if (state.moved && Object.keys(state.moved).length) layers.moved = state.moved;
+    else delete layers.moved;
+    patch.layers = layers;
   } else {
     patch[col] = state.camera.orbit || state.camera.free;
     if (what === "all") {
