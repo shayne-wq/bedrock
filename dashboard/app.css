@@ -87,8 +87,7 @@ a:hover { text-decoration: underline; }
   background: linear-gradient(to right, var(--surface) 0 240px, var(--bg) 240px);
 }
 @media (max-width: 900px) {
-  #app { grid-template-columns: 1fr; background: var(--bg); }
-  #rail { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+  #app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; background: var(--bg); }
 }
 
 /* A label and its buttons on one line, the label taking the slack. Used by
@@ -128,6 +127,15 @@ a:hover { text-decoration: underline; }
 #rail .foot .who {
   font-family: var(--mono); font-size: 11.5px; color: var(--ink-mute);
   padding: 0 6px 10px; word-break: break-all;
+}
+
+/* Stacked on narrow screens. This sat ABOVE the #rail rule it overrides, so the
+   later one won and phones got a full-screen menu with the page pushed below it. */
+@media (max-width: 900px) {
+  #rail { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+  #rail .foot { margin-top: 12px; display: flex; align-items: center; gap: 12px; }
+  #rail .foot .who { padding: 0 6px; flex: 1; }
+  #rail .foot .btn { margin-top: 0 !important; }
 }
 
 main { padding: 40px 48px 80px; max-width: 1180px; min-width: 0; }
@@ -1069,3 +1077,88 @@ body.stripoff .stmain { grid-column: 1 / -1; }
 }
 .barsx .mx { color: var(--ink-dim); }
 @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+
+/* ------------------------------------------------------------ onboarding --
+ * The intake: a section rail on the left that tracks completion, the form on
+ * the right. Locked (submitted) intakes keep their layout and read as a record. */
+.onbcard { margin-bottom: 24px; }
+.onbcard .sub { margin: 4px 0 0; font-size: 13px; color: var(--ink-dim); }
+.savestate { font-family: var(--mono); font-size: 11px; color: var(--ink-mute); min-width: 7ch; }
+.savestate.bad { color: var(--bad); }
+
+.intake { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; align-items: start; }
+.inav { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 2px; }
+.inav a {
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px;
+  color: var(--ink-dim); font-size: 13px; text-decoration: none;
+}
+.inav a:hover { background: var(--surface); color: var(--ink); }
+.inav a .n {
+  flex: 0 0 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  border: 1px solid var(--border); font-family: var(--mono); font-size: 11px; background: var(--surface);
+}
+.inav a.done { color: var(--ink); }
+.inav a.done .n { background: var(--good-dim); color: var(--good); border-color: #bfe4d4; }
+.iprog { font-size: 12.5px; color: var(--ink-mute); padding: 0 10px 12px; }
+.iprog b { color: var(--ink); font-family: var(--mono); }
+.ibar { height: 4px; background: var(--border-2); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+.ibar i { display: block; height: 100%; background: var(--accent); }
+
+.isec { scroll-margin-top: 16px; }
+.isec + .isec { margin-top: 24px; }
+.isec h2 .secn {
+  font-family: var(--mono); font-size: 12px; color: var(--ink-mute); margin-right: 10px; font-weight: 500;
+}
+.isec .hint.warn { color: var(--warn); }
+em.req { font-style: normal; font-family: var(--mono); font-size: 10px; color: var(--ink-mute);
+  text-transform: uppercase; letter-spacing: .04em; margin-left: 6px; }
+
+.drows { display: flex; flex-direction: column; gap: 10px; }
+.drow { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; background: var(--raised); }
+.drow.dropping { border-color: var(--accent); background: var(--accent-dim); }
+.drow.dropping * { pointer-events: none; }
+.dhead { display: flex; gap: 14px; align-items: flex-start; }
+.dhead .grow { flex: 1; min-width: 0; }
+.dhead b { font-size: 13.5px; }
+.dhead .sub { display: block; font-size: 12.5px; color: var(--ink-dim); margin-top: 2px; }
+.dhead .fmt { display: block; font-family: var(--mono); font-size: 11px; color: var(--ink-mute); margin-top: 4px; }
+.dhead select { width: 150px; flex: 0 0 auto; }
+.dfoot { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+.dfoot .dnote { flex: 1; min-width: 200px; }
+.dropnote { font-size: 12px; }
+.uprog { font-family: var(--mono); font-size: 11.5px; color: var(--accent-700); margin-top: 8px; }
+.flist { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.fline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px;
+  padding: 6px 8px; background: var(--surface); border: 1px solid var(--border-2); border-radius: 6px; }
+.fline .fname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fline .fsize { font-size: 11.5px; color: var(--ink-mute); }
+.fline .fadvice { flex-basis: 100%; font-size: 12px; color: var(--warn); }
+
+.itable input { width: 100%; }
+/* Panel tables bleed to the panel edge on every side; inside a form section the
+   top and bottom bleed pulled the next control up over the table. */
+.isec > .tablewrap { margin: 0 -22px; width: calc(100% + 44px); }
+.field .checks label {
+  font-family: var(--sans); font-size: 13px; text-transform: none; letter-spacing: 0;
+  color: var(--ink); margin: 0;
+}
+.itable td { vertical-align: middle; }
+input.bad { border-color: var(--bad); }
+.nrow { border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 12px; background: var(--raised); }
+.checks { display: flex; gap: 18px; flex-wrap: wrap; }
+
+.stmts { margin: 0 0 16px; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.stmts li { font-size: 13.5px; line-height: 1.55; }
+.checkline.top { align-items: flex-start; margin: 0; }
+.checkline.top input { margin-top: 4px; }
+.sigrec { display: grid; grid-template-columns: 170px 1fr; gap: 6px 16px; margin: 0 0 16px; font-size: 13px; }
+.sigrec dt { color: var(--ink-mute); font-family: var(--mono); font-size: 11.5px; padding-top: 2px; }
+.sigrec dd { margin: 0; }
+
+@media (max-width: 900px) {
+  .intake { grid-template-columns: 1fr; }
+  .inav { position: static; flex-direction: row; flex-wrap: wrap; }
+  .inav .iprog { flex-basis: 100%; }
+  .dhead { flex-direction: column; }
+  .dhead select { width: 100%; }
+}

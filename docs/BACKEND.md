@@ -55,12 +55,17 @@ docker exec -i supabase_db_orebody psql -U postgres -d postgres \
   -v ON_ERROR_STOP=1 -f - < supabase/tests/rls_test.sql
 docker exec -i supabase_db_orebody psql -U postgres -d postgres \
   -v ON_ERROR_STOP=1 -f - < supabase/tests/client_role_test.sql
+docker exec -i supabase_db_orebody psql -U postgres -d postgres \
+  -v ON_ERROR_STOP=1 -f - < supabase/tests/intake_test.sql
 ```
 
 Fifteen assertions in the first, including a deliberate check that one
 organisation cannot read another's analytics through the rollup functions. The
-second covers the client role and invitations. Both exit non-zero if any
-assertion stops holding.
+second covers the client role and invitations. The third covers client
+onboarding: a client cannot skip the signature, change or delete what was
+signed, or write into another company's files, and the people invited are
+exactly the people the signer named. All three exit non-zero if any assertion
+stops holding.
 
 ## Roles, and how somebody gets an account
 
@@ -216,6 +221,18 @@ Be straight with customers about two limits:
   that actually hold.
 
 ## Where the customer's data goes
+
+**One exception, on purpose: onboarding files.** A client's onboarding page
+(`#/i/<project>`) uploads raw files — the block model export, drilling CSVs,
+grids — to the private `intake` bucket, because they are sent to us to work
+from, the way an email attachment would be. They are readable only by members
+of that client's organisation, never served to a deck viewer, and frozen once
+the client signs. The bucket allows 5 GB per file and files over 6 MB go
+through the resumable endpoint, but **the project-wide upload limit in
+Supabase (Storage → Settings) caps first** — raise it to match, or large block
+models will be refused.
+
+Everything below is about the deck pipeline.
 
 The raw block model is **not uploaded**. `dashboard/lib/extract.js` streams it in
 the browser and uploads only the derived artifacts — a multi-gigabyte MineSight export

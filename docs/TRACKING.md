@@ -32,6 +32,37 @@ model), and two sources of truth is one too many.
 
 ---
 
+## Client onboarding (2026-10-27)
+
+- [x] 🟢 **Onboarding page per project** (`#/i/<project>`, `dashboard/intake.js`).
+  Company and project details, a 14-row data checklist with uploads straight
+  into each row, 4–5 focal points, neighbouring properties (logos uploaded,
+  never fetched), audience and disclosure, people and access, timeline. Saves
+  per section as they type (`intake_save`), so two people in different
+  sections do not overwrite each other. Unreadable formats (Vulcan, Datamine,
+  Geosoft…) are flagged at upload with the export to use instead.
+- [x] 🟢 **Access is the client's signed decision.** The client names the
+  people; a named person ticks five statements (wording stored in
+  `intake_terms`, not the browser) and types their name and title.
+  `submit_intake` writes an append-only `intake_attestations` row — who, the
+  exact wording, the people, the files, the answers — then invites each named
+  person **as a client only**, linked by `invites.authorized_by`. The People
+  page shows "Requested by …, in their signed onboarding". Nobody holding a user
+  token can edit or delete a signed record, and the service side cannot
+  either.
+- [x] 🟢 **Fixed: phones got a full-screen menu.** The narrow-screen rule for
+  `#rail` sat above the rule it overrides.
+- [ ] 🔴 **Nobody is told when an intake is submitted.** It shows on the
+  projects list and the project page; an email needs Postmark (see below).
+- [ ] 🔴 **Invitations from an intake are not emailed automatically.** The
+  `invite` function only lets admins send; they appear on People with Resend.
+- [ ] 🔴 **The statement wording needs a lawyer's read** before real clients
+  sign it. Change it by inserting a new `intake_terms` version, never editing.
+- [ ] 🔴 **Raise Supabase's project-wide upload limit** to match the `intake`
+  bucket (5 GB), or big block models are refused.
+
+---
+
 ## Williams migrated off the standalone build (2026-09-10)
 
 **The authored deck is ported**: the standalone build's twelve chapters — their

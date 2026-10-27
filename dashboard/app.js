@@ -15,6 +15,7 @@ import { renderDeck } from "./deck.js";
 import { renderStudio, teardownStudio } from "./studio.js";
 import { STAGES, stageEvidence } from "./lib/stage.js";
 import { paletteFrom, BRAND_FALLBACK } from "./lib/palette.js";
+import { renderIntake, intakeSummary } from "./intake.js";
 
 const view = $("view");
 
@@ -172,6 +173,7 @@ async function route() {
   try {
     if (h[0] === "people") return await renderPeople();
     if (h[0] === "p" && h[1]) return await renderProject(h[1]);
+    if (h[0] === "i" && h[1]) return await renderIntake(h[1], view);
     if (h[0] === "s" && h[1]) return await renderStudio(h[1], view);
     if (h[0] === "d" && h[1]) return await renderDeck(h[1], view);
     return await renderHome();
@@ -253,6 +255,16 @@ async function renderPeople() {
     return;
   }
 
+  // Invitations created by a client's signed intake say so, and by whom. That
+  // is the record of who decided this person should see the data.
+  const authIds = [...new Set((invites || []).map((i) => i.authorized_by).filter(Boolean))];
+  const signedBy = {};
+  if (authIds.length) {
+    const { data: atts } = await db.from("intake_attestations")
+      .select("id, signer_name, signer_title, signed_at").in("id", authIds);
+    for (const a of atts || []) signedBy[a.id] = a;
+  }
+
   const me = state.session?.user?.id;
   view.innerHTML = `
     <header class="page"><div class="row">
@@ -287,7 +299,9 @@ async function renderPeople() {
           <div class="rowline">
             <div class="grow">
               <b>${esc(i.email)}</b>
-              <span class="sub">Invited ${fmtDate(i.created_at)} ·
+              <span class="sub">${signedBy[i.authorized_by]
+                ? `Requested by ${esc(signedBy[i.authorized_by].signer_name)}, ${esc(signedBy[i.authorized_by].signer_title)}, in their signed onboarding ${fmtDate(signedBy[i.authorized_by].signed_at)}`
+                : `Invited ${fmtDate(i.created_at)}`} ·
                 expires ${fmtDate(i.expires_at)}</span>
             </div>
             <span class="pill ${esc(i.role)}">${esc(i.role)}</span>
@@ -408,6 +422,11 @@ async function renderHome() {
     .select("id, name, commodity, location, stage, created_at, decks(id)")
     .order("created_at", { ascending: false });
   if (error) return fail("Projects", error);
+  // Where each project's onboarding stands. Empty on a deployment without the
+  // intake migration, which leaves the column reading "—" rather than failing.
+  const onb = await intakeSummary(projects.map((p) => p.id));
+  const ONB = { open: ["draft", "In progress"], submitted: ["warn", "Submitted"],
+                accepted: ["live", "Accepted"] };
 
   view.innerHTML = `
     <header class="page"><div class="row">
@@ -425,13 +444,14 @@ async function renderHome() {
         <button class="btn primary" id="newp2">Create the first one</button>
       </div>` : `
       <div class="panel"><div class="tablewrap"><table>
-        <thead><tr><th>Project</th><th>Commodity</th><th>Stage</th><th>Location</th>
+        <thead><tr><th>Project</th><th>Commodity</th><th>Stage</th><th>Onboarding</th><th>Location</th>
           <th class="n">Decks</th><th class="n">Created</th></tr></thead>
         <tbody>${projects.map((p) => `
           <tr style="cursor:pointer" data-go="#/p/${p.id}">
             <td><b>${esc(p.name)}</b></td>
             <td>${esc(p.commodity || "—")}</td>
             <td>${p.stage ? `<span class="chip">${esc(p.stage)}</span>` : "—"}</td>
+            <td>${onb[p.id] ? `<span class="chip ${ONB[onb[p.id].status][0]}">${ONB[onb[p.id].status][1]}</span>` : "—"}</td>
             <td>${esc(p.location || "—")}</td>
             <td class="n mono">${p.decks?.length || 0}</td>
             <td class="n mono">${fmtDate(p.created_at)}</td>
@@ -521,6 +541,32 @@ function newProject() {
 }
 
 // --------------------------------------------------------------- project ---
+/** The way into onboarding from the project. For a client with an open intake
+ *  it is the first thing on the page, because it is the first thing to do. */
+function onboardingCard(p, intake, client) {
+  const go = `#/i/${p.id}`;
+  if (!intake) {
+    return `<div class="panel onbcard"><div class="row">
+      <div class="grow"><h2 style="margin:0">Onboarding</h2>
+        <p class="sub">${client
+          ? "Tell us about the project, upload your data and name who should have access."
+          : "Not started. Invite the client's main contact as a client, then send them here — or open it to fill in with them."}</p></div>
+      <a class="btn ${client ? "primary" : ""}" href="${go}">${client ? "Start onboarding" : "Open onboarding"}</a>
+    </div></div>`;
+  }
+  const S = {
+    open: ["draft", "In progress", client ? "Continue where you left off." : `Last edited ${fmtDate(intake.updated_at)}.`],
+    submitted: ["warn", "Submitted", `Signed ${fmtDate(intake.submitted_at)}. ${client ? "Bedrock is reviewing it." : "Waiting for your review."}`],
+    accepted: ["live", "Accepted", "Reviewed and accepted."],
+  }[intake.status];
+  return `<div class="panel onbcard"><div class="row">
+      <div class="grow"><h2 style="margin:0">Onboarding <span class="chip ${S[0]}">${S[1]}</span></h2>
+        <p class="sub">${esc(S[2])}</p></div>
+      <a class="btn ${intake.status === "open" && client || intake.status === "submitted" && !client ? "primary" : ""}" href="${go}">${
+        intake.status === "open" ? (client ? "Continue onboarding" : "Open onboarding") : "View onboarding"}</a>
+    </div></div>`;
+}
+
 async function renderProject(id) {
   view.innerHTML = skeleton(5);
   const { data: p, error } = await db.from("projects")
@@ -534,13 +580,17 @@ async function renderProject(id) {
     return;
   }
 
-  const [{ data: zones }, { data: datasets }, { data: decks }] = await Promise.all([
+  const [{ data: zones }, { data: datasets }, { data: decks }, { data: intake }] = await Promise.all([
     db.from("zones").select("*").eq("project_id", id)
       .order("ord").order("created_at"),
     db.from("datasets").select("*").eq("project_id", id).order("created_at"),
     db.from("decks").select("id, title, status, updated_at, chapters(id)")
       .eq("project_id", id).order("updated_at", { ascending: false }),
+    // Errors (no intake migration yet) read as "no intake", which hides the card.
+    db.from("intakes").select("status, submitted_at, updated_at")
+      .eq("project_id", id).maybeSingle(),
   ]);
+  const client = myRole() === "client";
 
   const zs = zones || [];
   // The stage is the author's claim; the datasets are the evidence. Computed
@@ -624,6 +674,8 @@ async function renderProject(id) {
       ${esc(fabricated[0].synthetic_note || "not real")}.
       Every deck built from it carries the warning on screen and in exports.
     </div>` : ""}
+
+    ${onboardingCard(p, intake, client)}
 
     ${T ? `<div class="stats3">
       <div class="stat"><span class="l">Tonnage</span><b>${fmtT(T)}</b>
