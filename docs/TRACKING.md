@@ -32,6 +32,234 @@ model), and two sources of truth is one too many.
 
 ---
 
+## The collar file reports the drilling (2026-10-30) — LIVE
+
+The programme above shipped with the metres typed into a form. The same client
+came back the same day with the thing that was actually being asked for: log
+in, drop the drill file in as it comes off the rig, and have the deck update
+itself — metres, holes, where the rig is standing.
+
+Almost all of it was already on the server. `parseAux` has desurveyed every
+uploaded collar file since #6 and recorded `holes` and `metres` on the dataset
+row; `classify` has routed `*collar*.csv`, `*survey*.csv` and `*assay*.csv`
+from one multi-file drop since the drag-and-drop work; and `putAux` replaces
+the drills dataset rather than accumulating, which is exactly right for the
+weekly full re-export every logging package produces. The two halves of the
+console had simply never been introduced: a geologist was retyping a number
+that was already one table away, and the only thing a retyped number can do
+that a read one cannot is disagree with its own source.
+
+**A proposed hole is not a drilled hole, and that is worth 44%.** The one
+real defect found on the way in. `readCollars` read no status column, so every
+hole in the file counted. The client collar export this was tested against
+carries complete holes and proposed ones in the same file; counting the
+proposed metres overstates the programme by 44% — on the one figure a
+shareholder repeats out loud. (That client's bespoke `extract.py` had always
+split them. The console never had.) `plannedStatus`
+now reads it, and the direction is deliberate: a hole is DRILLED unless the
+status says "not yet". Requiring the word `complete` would throw away metres
+genuinely turned — logged, sampled, awaiting assays, abandoned at 40 m all
+consumed a rig and a day.
+
+**Where the rig stands, without typing a coordinate.** The newest collar with
+a readable finish date, which is the closest honest answer: the rig is on the
+*next* hole, which by definition has no finish date yet, and a pad is tens of
+metres across. It moves when the programme has no position at all, or when
+that newest finished hole was not in the previous upload — which is the rig
+having moved, and is how a file with no dates still works. `finish_date`
+before `start_date`, falling back per ROW rather than per file: that export
+fills `start_date` on every row and `finish_date` on barely half, and choosing
+the fuller column reads January for holes that finished in June. ISO only —
+`13/06/2024` and `06/13/2024` are indistinguishable in the data and guessing
+moves a rig by eleven months, so an unreadable date leaves the typed position
+alone.
+
+**The upload fills the report in. It never posts it.** `published_at` stays
+null and the deck only ever selects published rows, so no figure reaches a
+shareholder because somebody dropped a file. That is the same line the schema
+already draws and it is the right one: reading a figure off a file is
+arithmetic, telling the shareholders of a public company what it is, is
+disclosure. Only one of those can be automatic. What the drop does is leave a
+draft with the metres, the holes and a one-line body already in it, and a
+toast saying so.
+
+Four behaviours that are the difference between this being used and not:
+
+- **A total LOWER than the last report is a partial export, not progress.**
+  Saved as a draft, and said loudly in red — the same ambiguity the form
+  already guards, arriving by a different door.
+- **Re-uploading an unchanged file writes nothing.** The expected workflow is a
+  full weekly re-export and most weeks nothing has changed. A second upload of
+  the same file leaves no trace at all.
+- **No programme yet opens the plan form, seeded.** Name from the newest hole's
+  year, position from its collar — and `target_m` left deliberately EMPTY,
+  because nothing in a data file records what a company committed to and a
+  target guessed from metres already drilled reads as 100% complete on the day
+  it is created.
+- **A file of nothing but proposed holes says so** rather than filing a report
+  of zero, which reads as a failed parse.
+
+**Drop files on "Add zone" and it makes the zone.** "Drag it in, or create a
+new zone" was two jobs: find the button, name it, come back, drop again. The
+button is a drop target now — same routing as a zone card, so one drop of
+collars, surveys and assays fills all three parts of a zone that did not exist
+a moment ago. It refuses BEFORE creating the zone when it cannot route the
+files, because a zone created and then left empty is one the user has to go
+and delete.
+
+Panel-side, every programme now shows what the collar file holds beside what
+has been reported, whether or not they agree — "they agree" is the useful half
+of the time, it is the line that tells a geologist the deck is carrying the
+same number as the file on their desk.
+
+Suites: `tools/verify_formats.mjs` (68, +14 on status, dates and what rides on
+a trace) and `tools/verify_drilling_console.mjs` (44, +21 on the figures, the
+draft, the rig and the seeded plan). `verify_dragdrop.mjs` (66) and
+`verify_drilling.mjs` (34) unchanged and green.
+
+Still typed, and should stay typed: **metres planned**. Known gap: the console
+desurveys a hole with no survey as vertical even when the collar row carries an
+azimuth and an inclination — `williams/extract.py` projects those properly and
+`desurvey` ignores them, so proposed holes are drawn straight down. Separate
+change; it affects what is DRAWN, not what is counted.
+
+---
+
+## Drilling programmes: the deck stops being a snapshot (2026-10-30) — LIVE
+
+Asked for by the first client: a marker where the rig stands, tapped to fly in,
+showing how many metres are drilled against how many were committed to, and a
+way for the issuer to log in and tell shareholders "we are at 4,012 metres".
+
+**Why it is the most valuable thing in the deck.** Everything else here
+describes rock that has already been measured — a block model, an assay, a
+tenure boundary. All of it is true on the day it is published and still true a
+year later, which is another way of saying the deck ages the moment it ships.
+Drilling is the one thing still happening, it is what a shareholder opens the
+deck to check, and today that number lives in a news release the deck knows
+nothing about. One share link, posted once, that shows today's figure for three
+months is a different product from a slide deck.
+
+**Two tables.** `drill_programs` is the plan — metres, holes, dates, operator,
+and where the rig stands in the project's own grid. `drill_updates` is one
+dated row per report. Both carry RLS at `is_org_member` for writes, which is
+the same exception chapters take and for the same reason: the people who know
+the rig turned 412 m yesterday are the issuer's geologists, and a workflow that
+routes a daily number through us is a workflow nobody uses by week two.
+Deleting a programme stays at `is_org_editor` — it takes every report with it.
+
+**Metres are CUMULATIVE, and that is the whole ergonomic design.** The number a
+shareholder repeats is "4,012 m to date", so that is what is stored: a wrong
+total is wrong once and superseded by the next report, where a wrong delta
+poisons every figure after it and cannot be corrected without rewriting
+history. The console computes and shows the delta (+412 m since 24 Oct), and —
+the guard that matters — if the figure entered is LOWER than the last total it
+says so in red before the post button is pressed, because "we're at 4,000
+metres today" is ambiguous in English and this is the field where that
+ambiguity becomes a published mistake.
+
+**Posting is a separate act from writing.** `published_at` is null until the
+issuer posts, the `deck` function only ever selects published rows, and the
+console offers both buttons. These numbers go to the shareholders of a public
+company; a half-typed figure must not be visible for the seconds before it is
+finished.
+
+**The marker has two scales, and that is honesty rather than convenience.** A
+diamond drill mast is twelve metres: at true scale it is invisible from the
+2 km the deck opens at, and drawn at 300 m so it can be seen it is a lie about
+a structure. So beyond 1.1 km it is a thin beacon and a label, plainly a map
+pin; inside it, the rig at the size it really is. **No coordinates, no pin** — the programme still appears in the panel, because the
+metres are the point, but nothing is drawn on the ground. Dropping the rig at
+the centre of the property to have something to show would be a fabricated
+location in a deck whose entire argument is that its locations are real.
+
+**Nothing fabricated ships in the demo.** `__PROGRAMS__` is `[]` in the baked
+build. Every other invented layer in that export is labelled fabricated in five
+places; an invented metre count attributed to a named issuer is a different
+kind of claim and there is no banner that makes it safe.
+
+**The rig is drawn from a photograph, not from the word "derrick" (2026-10-30).**
+The first version was a four-legged pyramid, which is an OIL rig. A BC or Yukon
+exploration drill is a boxed rig: the drill lives in a container-sized shelter,
+a single slim lattice mast leans out of the front at about 65 degrees, rods are
+racked on the deck beside it, and the whole thing stands on a level timber deck
+cribbed into a hillside that is not level. To the only audience that matters
+that difference is visible at a glance — the same class of error as having the
+property in the wrong district. It is procedural geometry rather than a glTF
+model on purpose: everything else in that scene is drawn, and a photoreal rig
+among wireframe geology reads as pasted in.
+
+Two details in it are worth keeping:
+- The mast leans toward the centre of what the deck is about, because nothing
+  in the data says which way a pad faces and a field asking an issuer for the
+  azimuth of a drill pad is a field nobody fills in. The hole is pointed at the
+  target anyway.
+- The crib height is **clamped to 3.5 m**. `globe.getHeight()` answers from
+  whichever terrain tile is resident, and a coarse one is flat where the ground
+  is not: a corner seven metres from the centre came back twenty-five metres
+  below it and the pad grew stilts into the hillside. How high the crib really
+  is was never data we hold.
+
+Carried through to the audit trail (who reported it, as of when, and that it is
+not an assay or a resource) and to the text edition, which is the edition for
+the reader with no GPU and the one most likely to be opened for exactly this
+number.
+
+**Four defects the browser caught that static checks could not**, all in
+`tools/verify_drilling.mjs` as assertions now:
+- `Number(null)` is `0` and `0` is finite, so a programme with no coordinates
+  read as one placed at easting 0 — a rig off the coast of Africa.
+- Cesium has no `Entity.distanceDisplayCondition` and ignores one **silently**;
+  it belongs on each graphics object. The symptom was the far-field pin and the
+  true-scale rig drawn at the same time, one programme labelled twice.
+- The rig view re-sampled terrain the rig was already standing on, so a click
+  did nothing for two to four seconds. The height is now sampled once, kept on
+  the programme, and shared by the marker and the camera — which also means
+  they cannot disagree about where the ground is.
+- The progress bar transitioned between two inline widths across a
+  `requestAnimationFrame`, and under a heavy terrain load that frame does not
+  arrive: it was measured still reading 0% a second and a half after opening.
+  It is a keyframe from zero now. State that has to be right cannot depend on
+  an animation frame.
+
+**And one that a screenshot caught:** the panel first took the id `prog`, which
+is the caption's own progress strip, and then `rig` — which is what
+`paintUI()` resizes on every chapter change. An id collision in this file does
+not throw; it silently resizes somebody else's element. Both are asserted now.
+
+Suites: `tools/verify_drilling.mjs` (34, viewer, against a stubbed deck
+function) and `tools/verify_drilling_console.mjs` (23, console, against a
+stubbed Supabase client).
+
+**Deployed 2026-10-30.** Migration `20261030000100` applied to
+`czuaqwtngduvlisxonkh` by `execute_sql` and recorded in the ledger by hand —
+`db push` is not safe on this project, because `20260917000200` and
+`20260917000300` are in the folder and NOT in the remote ledger while
+`20260929000100` is, so a push would replay two migrations that are already in
+the database. The `deck` function is redeployed and live decks now carry
+`programs: []` with no other change. The site is on both `-fawn` aliases and
+`pit/index.html` there is byte-identical to the file the suite ran against.
+`touch_drill_program` has its search_path pinned, which the linter asked for
+and the older `touch_deck` beside it still does not.
+
+**Nothing was seeded to look at.** Macpass is Fireweed's real land package and
+Williams is a client's: inventing metres on either would be attributing
+fabricated progress to a named company, which is the one thing this feature
+must never do. The first real programme is the client's to enter.
+
+Still open, in the order they are likely to be asked for:
+- **Per-hole progress.** A programme knows its metres; it does not know which
+  holes. Collars uploaded mid-programme would let the rig sit on the hole it is
+  actually drilling.
+- **A chapter that is about the drilling.** `layers.drilling: false` opts a
+  slide out; there is no candidate slide that opts in and frames the rig.
+- **Email on post.** The issuer posts; nobody is told. A share link that
+  notified its leads when the metres moved would be worth more than the panel.
+- **Assay discipline.** The report body is free text and the placeholder says
+  not to put undisclosed results in it. That is a hint, not a control.
+
+---
+
 ## Williams migrated off the standalone build (2026-09-10)
 
 **The authored deck is ported**: the standalone build's twelve chapters — their
@@ -113,6 +341,539 @@ Drills 45 holes / 13,055 m / 5,234 intervals (planned holes excluded), claims
 
 ---
 
+## Gated decks + lead capture (2026-09-17) — IN PROGRESS
+
+Shayne: *"if someone wants to watch it, they have to punch in certain fields…
+then they can export as a CSV… give them the option to either be open or fields
+necessary."* Decisions taken: **name + email**, **skippable** (a "continue
+without" link — an investor who refuses still sees the deck, which is the point
+of sending it), **stored in Bedrock with CSV export AND an email per capture**,
+and **the privacy policy ships in the same change** because it currently states
+that viewers' names and emails are not collected.
+
+The contract, so the five pieces cannot drift apart:
+- `decks.settings.gate = { on: true, company: false }` — per deck, travels in the
+  payload the viewer already fetches from the `deck` function.
+- `deck_leads` (migration `20260917000100`): deck_id, share_link_id, name, email,
+  company, referrer host/path, created_at. **Anon can neither read nor write it**;
+  org members read, editors delete. Retention **24 months**, added to
+  `purge_expired_data()`.
+- `lead` edge function, anonymous like `track`: the share token is the only
+  credential, the deck id comes from the token and never from the caller, a
+  revoked link answers exactly like a wrong one, and the owner is emailed via the
+  Postmark path `invite` already uses (never fatal — the capture is saved first).
+- Viewer: the gate sits on the launch cover (`#cover` / `#cv_go`), asked once per
+  browser tab.
+- Console: toggle in the deck page's **Audience** panel, list of leads, Export CSV.
+
+- [x] 🟢 Migration + `lead` function written.
+- [x] 🟢 Viewer gate, console panel, CSV export, privacy section, deployed.
+  End-to-end on production: the form refused an empty name and a malformed
+  address, opened the deck once filled in, and the skip link worked; the row
+  landed in `deck_leads`. The test lead was then deleted and Williams' gate
+  turned back **off** — a real client's deck is not a test fixture.
+
+---
+
+## The console is multi-org; invitations reach the right company (2026-09-18) — LIVE
+
+Shayne: *"this is for Elk gold mining - let's create one for omega pacific - it should only
+have williams project in there"* — and then, on invitations: *"I should note which project
+I want to provide them access to"*.
+
+No new org was needed. Omega Pacific Resources already existed and already held only
+Williams; the console was misrepresenting the data.
+
+- [x] 🟢 **The `orgs[0]` trap.** Every screen read `state.orgs[0]`, and `loadOrgs()` orders
+  by NAME — so the console showed whichever company sorted first (Elk Gold), while
+  `renderHome`'s projects query had **no `org_id` filter at all** and RLS returned every
+  org's projects. One company's name over three companies' projects. Worse, `New project`
+  (`org_id: state.orgs[0].id`) filed into Elk Gold regardless of what was on screen, and
+  `myRole()` read the role from the wrong org.
+- [x] 🟢 **`currentOrg()`** — `state.orgId`, persisted to `localStorage`, validated against
+  the loaded orgs so a stale id falls back rather than stranding the console. Rail switcher
+  drawn only when there is more than one org, so single-company accounts gain no chrome.
+- [x] 🟢 **Invitations name what they grant.** Access is per ORGANISATION — there is no
+  project-level membership in the schema — but one org holds one project today, so the
+  modal reads "Invite someone to Omega Pacific Resources / They will be able to reach
+  **Williams**", listing all projects if an org ever holds more. The email already named
+  the org.
+- [x] 🟢 **Verified in a browser, 15/15**, with a second org seeded whose name sorted FIRST
+  so the old behaviour would have been caught: switching moved header and list together,
+  survived a reload, fell back on a stale id, and the invitation row landed on the
+  **selected** org — read back from the database, not from the modal's own claim.
+
+**Known limit:** the switcher scopes lists, not deep links. `renderProject` fetches by id
+and RLS permits any org you belong to, so a pasted URL from another org still opens.
+
+---
+
+## Internal directories were publicly served (2026-09-18) — FIXED
+
+`.vercelignore` excluded `.fixtures/` and one CSV but not `docs/`, `tools/` or `supabase/`,
+so all three answered 200 on getbedrock.ca: **`/docs/TRACKING.md` was 186 KB of this very
+file** — client names, decisions, 7 Elk Gold / Siwash mentions — plus
+`tools/seed_demo_deck.mjs` (which carries the hard-coded Elk demo token this file calls
+"one guess away") and the whole `supabase/` schema, RLS policies and edge-function source.
+All three excluded; every path now 404s and every page the site needs still serves.
+
+Also deleted: `img/model.jpg`, `neighbours.jpg`, `pit.jpg` — unreferenced, still serving,
+Elk-derived. Now 404.
+
+**Method note, because it matters.** The "Elk Gold sweep before deploy" used repeatedly
+that day was `strings | grep -i` over binaries. It returned two FALSE POSITIVES — `<Y~ElK`
+inside the *sanctioned* `og-williams.jpg` and `0/elK` inside an H.264 frame, both confirmed
+byte noise by hex dump — and MISSED a 186 KB plain-text file with seven real mentions.
+Grepping binaries for words is theatre. What works: inspecting extracted frames, and
+enumerating what the deployment actually serves.
+
+---
+
+## Three defects behind "the gate is on but it still launches" (2026-09-17) — LIVE
+
+Shayne, with the toggle ticked: *"i have this on but it's still letting me
+launch"*, and the panel under it reading "Could not read the list."
+
+- [x] 🟢 **`deck_leads` was unreadable by its owner.** `20260917000100` ended
+  with `revoke all ... from anon, authenticated`, to stop a leaked publishable
+  key stuffing a customer's lead list. But PostgREST runs a SIGNED-IN console
+  user as `authenticated`, so the revoke locked out the org members `leads_read`
+  was written to admit: RLS said yes, the grant said no. `20260917000300` grants
+  `select, delete` to `authenticated` and nothing to `anon`; `insert`/`update`
+  stay with the edge function's service role, because a capture a console user
+  can forge is evidence of nothing. **A grant is not a policy.**
+- [x] 🟢 **The gate toggle could fail silently.** `db.update()` on a row the
+  policy declines returns NO error and no rows, so the switch said "the deck
+  will ask for a name and email", stayed ticked, and wrote nothing — reporting
+  success for the one outcome it exists to prevent. Now `.select()`s and treats
+  an empty result as a refusal. (The same RLS-silent trap as the storage delete
+  in `ingest.js`. It was NOT the cause here — Shayne is an org owner and the
+  write is permitted; a local headless repro shows PATCH 200 and the row
+  changing — but a setting about disclosure must never fail quietly.)
+- [x] 🟢 **Preview was broken for every deck.** `$("preview")` built
+  `?t=<token>` by hand with no `api`, and the viewer is a static file with no
+  idea which Supabase project it belongs to: it boots and throws "this build has
+  no API configured, so it cannot open a shared deck". The button that exists to
+  show you what a recipient sees showed an error. Now uses `shareUrl()`, the
+  same link a recipient gets. Found only because a bare `?t=` URL was the wrong
+  thing to test the gate with.
+- [x] 🟢 **Builder thumbnails were stale, not broken.** Driving the production
+  author bridge with Williams' 12 real chapter cameras returns **12 distinct**
+  frames (5.0–14.7 KB; the district map with competitor logos, the rainbow
+  magnetics grid, a drill-hole close-up). The cards showed twelve identical
+  green rectangles because a frame shot before the deck's layers arrived is
+  cached under a key made only of camera+layers, and `sessionStorage` keeps it
+  for the life of the tab — correct forever, and never re-shot. The stored
+  namespace is now `bedrock.thumb.2.`, retiring every old frame once.
+
+**Verified on production**: with the real share URL the gate mounts
+(`#gate` visible, publisher read as "Omega Pacific Resources"); Williams'
+`settings.gate.on` is `true`.
+
+---
+
+## The deck builder is gone; the deck page seeds and links (2026-09-17) — LIVE
+
+Shayne, looking at the tray: *"lets remove this section in console - and have them
+go to the edit slide - way better way to assess the deck - get rid of the 'more
+slides'"* and *"i dont want any of these unused slides there"*.
+
+- [x] 🟢 **The two-column builder is deleted.** A 64×40 card cannot answer "is the
+  subject in frame", and a tray of nineteen slides that will never be used is a
+  chore rather than a choice. Edit slides flies the real deck at full size, which
+  is the only honest way to judge a shot. `deck.js` 1397 → 844 lines.
+- [x] 🟢 **What replaced it:** a Slides panel with the chapter count, one
+  **"Use the suggested order (N slides)"** button, and a link to Edit slides.
+  Once a deck has slides the button relabels to "Add any missing suggested
+  slides" and Edit slides becomes the primary action.
+- [x] 🟢 **`seedSuggested()` is INSERT ONLY.** It appends at `chapters.length + i`
+  and skips candidates already present, matching on `source` (the candidate id
+  `toChapter` writes), never on title — the old builder matched on title and lost
+  a chapter the moment anybody renamed a slide. It never deletes: `saveOrder`'s
+  reconcile could, and an ancestor of it destroyed authored cameras and bodies by
+  delete-and-reinsert. Seeding has no business touching worked-on slides.
+- [x] 🟢 **Removed with it:** the candidate pool, HTML5 drag-and-drop, the
+  running-order reconcile, the hidden-viewer thumbnail engine + sessionStorage
+  cache, and the click-to-preview modal built earlier the same day.
+- [x] 🟢 **Also removed — already dead.** `renderChapters`/`move`/`renumber`/
+  `addChapter`/`editChapter` painted into `#chlist`, which the builder had removed
+  from this page long ago. It guarded with an early return, so it failed silently
+  and survived. Left in place it is exactly the kind of orphan that misleads the
+  next change.
+- [x] 🟢 **CSS trimmed surgically.** `.builder .bcol .droplist .scard .sglyph
+  .spreview .slead` gone — but lines 450–463 of that block were the INGEST SLOT
+  rules (`.empty.sm`, `.slot.dropping`, `.dropmini`, `.dzname`, `.zone.dropping`),
+  live on the project page, and `.scard .tagline` was shared with the Edit-slides
+  filmstrip (`.stchap`). Deleting the range wholesale would have broken file
+  drag-and-drop. Two deletions around the island, not one.
+
+**The bug worth remembering.** Removing the builder also removed
+`let order = [], suggestion = {...}` — one line holding two bindings — while
+`renderDeck` still assigned `suggestion`. A module is implicitly strict, so that
+threw `ReferenceError: suggestion is not defined` and the ENTIRE deck page failed
+to render. `node --check` parses an undeclared assignment happily, the
+dangling-symbol sweep found nothing, and the CSS balanced — **every static check
+passed on a completely dead page.** Only a browser caught it. Second time in one
+day that a green static pass hid a broken page.
+
+Verified locally end to end, 15/15 twice: all four panels render with no page
+errors, no `.scard`/`.droplist` in the DOM, the button claimed "(3 slides)" —
+matching the count computed independently from the slide engine — and exactly 3
+rows landed with sources `open:property`, `z:drills`, `z:intercepts`. A second
+press relabelled and left the count at 3.
+
+---
+
+## Clicking a builder card previews the slide (2026-09-17) — SUPERSEDED
+
+Built and shipped earlier the same day; removed hours later with the builder it
+belonged to. Kept here because the reasoning still holds if a preview is ever
+needed again: the card already carried a real rendered frame under
+`data-thumb`, so the modal reused the message handler that paints thumbnails
+rather than adding a second render path.
+
+## Clicking a builder card previews the slide (2026-09-17) — LIVE
+
+Shayne: *"also when we click these - it should pull up a quick preview so we can
+see if we want to use them or not"*.
+
+- [x] 🟢 **The card opens the frame full size.** The thumbnail is 64×40 — enough
+  to tell a section from a plan view, nowhere near enough to answer "is the
+  subject in frame, is it too far out", which is the actual question when
+  choosing between nineteen candidates.
+- [x] 🟢 **The same frame, not a second render path.** The preview box wears the
+  card's own `data-thumb` id, so the message handler that paints finished
+  thumbnails into cards paints the preview too — no new plumbing, and the two
+  can never disagree about what the slide looks like. A slide not yet shot jumps
+  to the HEAD of the queue rather than waiting its turn in builder order, and
+  says "Rendering this slide…" meanwhile, because one-at-a-time is deliberate
+  and an empty box reads as broken.
+- [x] 🟢 **It carries the decision.** Add / Remove is in the preview, since the
+  question it answers is "do we want this one" and making somebody close it to
+  find the card's own button is asking them to answer twice.
+- [x] 🟢 **A drag is not a click.** `[data-toggle]` clicks are excluded, and a
+  click within 250 ms of `dragend` is ignored — a card that opens a preview
+  every time you fail to drop it is a card that fights you.
+
+Verified headless against a zone-less local project: the builder offers slides,
+a click opens the modal, it names the slide, the frame box carries a thumb id,
+the decision button is there and Close dismisses it. 17 assertions, all passing.
+
+---
+
+## Property & claims belong to the project; zones are optional (2026-09-17) — LIVE
+
+Shayne: *"property & claims are in zones - it should be for the full project -
+also we need to have full project data for companies that may not have zones -
+have zones be option"*.
+
+`datasets.zone_id is null` now means **the whole project**, not "unassigned".
+
+- [x] 🟢 **`site` and `topography` are project-level, always.** Tenure is
+  registered against the property, so a three-zone project had to upload the
+  same claim block three times with nothing making the three agree — and that
+  file is what the district slide, the register lookup and the claim colour-pop
+  are all read from, so three copies meant three answers to "where is this
+  company's ground". Migration `20260917000200_project_level_datasets.sql` moves
+  every row, keeps the newest where a project somehow holds two, and adds
+  `datasets_one_per_kind_per_project on (project_id, kind) where zone_id is null`.
+  Applied local + prod: three `site` rows moved (Elk Gold, Macpass, Williams),
+  no `topography` anywhere, nothing deleted.
+- [x] 🟢 **Zones are optional.** With none, the project takes the zone's place:
+  the console shows a "Project data" card, "Add zone" reads "Split into zones",
+  and deck creation gates on ANY data instead of `zonesWithData` — which used to
+  tell a company with one undivided package that it had nothing to present.
+- [x] 🟢 **Storage.** Project-level uploads write
+  `<org>/<project>/_project/<dataset>/` — the same depth, so purgeDatasetFiles'
+  "anything shallower than three segments is a project root" guard still holds.
+  Existing paths are deliberately NOT rewritten: a path records where the bytes
+  actually went, and storage refuses deletes made from SQL.
+- [x] 🟢 **Slides.** `kindsOf` already compared `(d.zone_id ?? null)`, so a
+  pseudo-zone `{id: null, name: project.name}` is "the whole project" for free.
+  `projectCandidates` runs it through `zoneCandidates` with `skipOverview`,
+  because `open:property` is already that slide and two of them back to back is
+  how a generated deck starts looking generated. Driven in Node: an unzoned
+  project generates a full seven-slide deck at project level, a two-zone project
+  keeps the claim block at project level, an empty project invents nothing.
+- [x] 🟢 **Viewer.** `sideAssetsOf` takes the union of a zone's assets and the
+  project's, or a multi-zone deck would lose the very boundary it is drawn on.
+  The deposit switcher keeps the STRICT match on purpose — a project-level block
+  model must not turn up as every zone's model. Ported into
+  `tools/build_present.py`, which GENERATES `pit/index.html`: the hand-edit alone
+  would have been erased by the next build. `/williams/` needed nothing —
+  `hydrate.js` finds `site` with a flat search and falls back to the project name
+  for an unknown zone.
+
+**Found on the way and NOT fixed:** a zone's overview slide sorts *after* its own
+content — "T-Bill" lands at #8, behind T-Bill's geochem and drilling at #5–7.
+`stageRank` scores `needs: []` as 99 while `drills` scores 3, so the section
+header always loses to the slides it introduces. Pre-existing and independent of
+this change; fixing it reorders every deck that already exists, so it is Shayne's
+call rather than a silent side effect of a data-model change.
+
+---
+
+## Studio is now PRESENTER mode; the editor is "Edit slides" (2026-09-16) — LIVE
+
+Shayne: *"the studio function is operating as an edit function… Studio should pop
+up a player, walk the slides, record the screen, capture his voice, mark up, move
+the camera"* — i.e. the Coaches Reel desktop pattern. Split accordingly.
+
+- [x] 🟢 **Rename.** `#/s/<deck>` is **Edit slides** (h1, deck-page button, prose);
+  the share-link modal's default label is "Console", not "Studio".
+- [x] 🟢 **Studio = `/williams/?t=…&api=…&present=1` in its own window.** Recording
+  from inside the console frame would record the console — toolbar, filmstrip and
+  all — which is why it pops out. Not `noopener`: Exit closes the window.
+- [x] 🟢 **Presenter bar** (`#pres`, gated on `PRESENT`): record-to-MP4 with
+  narration, Draw (the deck's own terrain-clamped freehand), Area (box), three ink
+  colours, Undo/Clear, Layers, slide ← → with the count mirrored off `#count`,
+  Exit. Keys R/D/G/L, capture-phase with an input guard. `body.present` unhides the
+  deck's existing `#strip` (layers + ground) and `#cam` pad rather than rebuilding them.
+- [x] 🟢 **Per-slide marks reset** for presenters as they do for authors.
+- [x] 🟢 **Camera controls moved INTO the bar** (2026-09-16). The floating `#cam`
+  pad is positioned between the legend and the caption and landed *on* the caption
+  at any width the caption grew to. `body.present #cam{display:none}`; the bar's
+  `data-cam` buttons click the pad's own `data-a` buttons, so the maths stays in
+  one place. Verified: heading 360° → 340° from the bar.
+- [x] 🟢 **Measure tool** (`Measure`, key `M`) — **a drag, not click-to-click**:
+  press where it starts, pull with the number updating live, release to fix. One
+  line per drag; the next drag replaces it. `setTool({name:'measure'})` takes the
+  drag from Cesium so the globe cannot spin under the line — the annotation
+  engine ignores that tool name, so Measure gets the cursor and the camera lock
+  and nothing else. Own `CustomDataSource`, midpoint label, Undo/Clear wipe.
+  Verified: heading unchanged through a 200px measuring drag.
+- [x] 🟢 **The stroke paints pixel by pixel** (2026-09-17). The engine previews a
+  stroke as a `clampToGround` polyline, which Cesium re-tessellates against
+  terrain on *every* mouse move — so the line arrived in steps and only settled
+  on release. Presenter mode now traces the drag on a 2D overlay (`#pr_ink`) in
+  screen space, one `lineTo` per pointer event and no terrain work, and drops the
+  engine's `'live'` entity inside a rAF so only the fast trace paints. The
+  ground-locked stroke replaces it two frames after LEFT_UP, so the mark never
+  blinks out. Decimation tightened `1e-4°` (~11 m, sixteen pixels when zoomed in)
+  → `2e-5°` (~2 m), so what is committed matches what was drawn: 16 points where
+  the same drag used to keep 11. Verified by counting painted pixels on the
+  overlay mid-drag — 334 → 514 → 830 → 1187 → 1383, growing on every move.
+- [x] 🟢 **Presenter camera** (`Camera`, key `C`) — a round, un-mirrored webcam
+  bubble for recorded walkthroughs. **Off by default**: a face belongs to a
+  recording, and on a live Zoom call it is a second copy of something already on
+  screen. Starts top-right, drags to any corner and snaps there, remembered in
+  `localStorage['bedrock.pres.corner']` — every corner of this deck holds
+  something on some slide. Tracks are stopped on Off and on Exit so the camera
+  light actually goes out. A tab capture picks the bubble up for free; the canvas
+  fallback now composites it (centre-cropped square, circular clip) along with
+  the live-ink overlay, so a presenter who declines the share prompt does not get
+  a video missing both things they were doing with their hands. Verified with a
+  fake camera device: on → 184px live circle; drag → snapped and persisted across
+  reload; off → track `readyState` `ended`.
+- [x] 🟢 **Recordings are exactly 1920×1080** (2026-09-17), YouTube's standard and
+  the shape every camera in this deck is framed for. A tab capture hands back the
+  whole VIEWPORT — 1600×1000 on the machine this was tested on — so recording it
+  raw baked the browser's letterbox bands into the upload. The capture now feeds
+  a hidden `<video>`, and each frame crops the **stage** (`body`, per the 16:9
+  rule at the top of the stylesheet) and scales it to 1080p; the largest centred
+  16:9 rect is taken, so a window below the 1000px stage breakpoint is letterboxed
+  rather than stretched. The canvas fallback outputs the same 1920×1080, because
+  which prompt the presenter clicked should not change the file they send out.
+  The share track is stopped by name on finish — it is not in `tracks`, so the tab
+  kept saying it was being shared. **Verified with ffprobe: h264, 1920×1080, from
+  a 1600×1000 window.**
+- [x] 🟢 **Grab / Pen is now THE switch** (2026-09-17). Shayne: *"it needs to be
+  very easy to navigate between moving around and marking it up."* The two modes
+  are a segmented pill at the front of the bar — hand icon + pencil icon, gold
+  when active — instead of a 30px `✥` lost among the camera icons and a "Draw"
+  text button lost among five. **Tab** flips them, `H`/`P` pick them directly,
+  **Escape always lands in Grab**, Grab cannot toggle itself off into "no mode",
+  and presenter mode opens in Grab so the deck is navigable on arrival.
+- [x] 🟢 **Bug: the pencil disarmed itself after every stroke.** The annotation
+  engine calls `setTool(null)` in its own LEFT_UP — right for an author placing
+  one mark, wrong for a presenter: the button said Pen while the drag had gone
+  back to the camera. Presenter re-arms it in a rAF after the engine's handler.
+  Verified: two strokes committed without re-picking the pen, drag still locked.
+- [x] 🟢 **Tools are STICKY, as a property of presenter mode** (2026-09-17).
+  Shayne: *"if I click on the pen, it should stay on the pen until I click off
+  the pen."* The rAF above only covered the stroke path — Area had the same bug,
+  and so would any other path that clears the tool. A 160 ms watchdog now
+  re-arms whenever `tool` stops matching the armed mode: cheap, idempotent, and
+  it does not depend on having found every path that calls `setTool(null)`.
+  Verified: pen held across three strokes **and a bare click with no drag**,
+  Area across two boxes, Ruler across two drags; clicking a lit tool still puts
+  it down and returns to Grab.
+- [x] 🟢 **Two layout traps fixed.** (1) `arm('camera')` at the end of the
+  presenter block was a **temporal-dead-zone throw** — `setTool` assigns `tool`,
+  declared ~2,000 lines later — and an uncaught throw at module top level
+  abandons the rest of the file (annotation engine, chapters, boot). Deferred to
+  `queueMicrotask`. (2) The bar looked stuck on two rows: `flex-wrap:wrap` inside
+  a `width:max-content` parent makes the container size itself wrap-aware and the
+  row folds inside the box it just produced — identical width at 1600/1440/1280
+  was the tell. Now `nowrap` with `overflow-x:auto`, so a genuinely narrow window
+  scrolls the bar instead of stacking it. Undo/Clear became icons at the same time.
+- [x] 🟢 **The toolbar is out of the recording — and stays on screen**
+  (2026-09-17, REVERSING the same day's first attempt). The first answer to
+  *"on the final video, it should not capture the toolbar"* was to fade `#pres`
+  to zero while recording, with a 64px pointer-reach `.peek` to bring it back.
+  That solved the wrong half: Shayne, using it — *"when you're recording the
+  tool bar goes away - this makes it extremely hard to use the tools - they
+  should stay on screen."* Hiding a control at the exact moment it is being used
+  is not a trade-off worth making, and hunting for a bar that flashes in and out
+  is worse than one that never moved. The hide rules and the peek handler are
+  both deleted; two mechanisms arguing over whether a control is visible is how
+  a toolbar ends up flickering.
+  **Out-of-frame is geometry now.** The recorder crops
+  `body.getBoundingClientRect()`, and the 16:9 stage IS `body` — so the
+  letterbox band outside the stage is on screen and outside the video at the
+  same time. `placeChrome()` measures that band when recording starts and parks
+  the bar in it at a negative `bottom` (and `#strip` in the top band when it is
+  deep enough), with `body.inband{overflow:visible}` because the stage otherwise
+  clips its own overflow and the bar would just disappear.
+  **Honest limit, and it is the common case.** The bar is 58px and needs 72px of
+  band; a window at exactly 16:9 has none. Measured at 1604 wide: viewport 893 →
+  0px, 1000 → 49, 1100 → 99, 1180 → 139. Below the threshold nothing moves — the
+  bar stays visible and IS recorded, and the status line says to make the window
+  taller. The studio popup went 1180 → **1260** so the band survives at 1920
+  wide, where the stage is 1080 tall and 1180 left only ~20px.
+  Shrinking the stage to manufacture a band does NOT work, and the reason is
+  worth keeping: body's `transform` makes it the containing block for every
+  `position:fixed` element, so the bar shrinks with the stage and stays inside
+  the crop.
+  Verified on production at both window shapes — 17 assertions, all passing:
+  bar visible while recording in both, outside the cropped rect when a band
+  exists, stationary when it does not, and chrome restored on stop.
+- [x] 🟢 **The legend no longer covers the Bedrock watermark** (2026-09-17).
+  `body.present #mark` is lifted to `bottom:96px` to clear the bar — and
+  `#legend` sat on that same 96px floor, so the AU g/t ramp covered "Powered by
+  Bedrock" entirely (measured: legend y738–797, mark y775–797, identical bottom
+  edges). `stackBottomLeft()` already owned that corner as a *measured* stack
+  rather than fixed offsets, but had never included the mark. It now measures
+  `#mark`, starts the legend above it, and stacks `#zkey`/`#rail` off the
+  legend's real floor.
+- [x] 🟢 **Bar cut to what has no hotkey.** Camera nudges, the slide arrows and
+  Exit came off: nudges are ⇧+arrows, `0` re-runs the slide's shot, `Q` exits,
+  and the deck's own caption card already carries ← 01/12 → so the bar's copy was
+  redundant. Bar is now Record · Camera · Grab/Pen · Area · Ruler · inks · ↶ · ✕ ·
+  Layers, 768px wide.
+- [x] 🟢 **The Area box rubber-bands live**, like the pen: the engine's clamped
+  preview re-tessellates per mouse-move, so the corner you released was not the
+  corner you were looking at. Drawn on the 2D overlay instead (dashed outline +
+  16% fill), and **wiped on release** — a filled rectangle left behind is not a
+  faint artifact, it sits over the deck until the slide changes. Verified:
+  28,515 painted px mid-drag → 0 after release, zone committed.
+- [x] 🟢 **Studio opens a WINDOW sized to the video**, not a tab:
+  `window.open(..., 'popup=yes,width=1920,height=1180')`, and the viewer trims
+  its own chrome height (`resizeBy`, clamped to `screen.avail*`) so the viewport
+  lands at 1920×1080 and the deck is captured 1:1 instead of upscaled. Falls back
+  to a tab if the popup is blocked.
+- [x] 🟢 **Bug: Area boxes could not be deleted** (2026-09-17). Shayne: *"I
+  cannot delete the area layers when I click X."* Clear and Undo only emptied
+  `annos` — but a box is not an annotation, it is a deck-level **zone**
+  (`SHAPES` + `shapeOn`), because a zone is meant to outlive the slide it was
+  drawn on. Presenter now tracks the zones **it** created and Clear/Undo remove
+  those; zones that arrived with the deck are left alone, since they belong to
+  whoever authored it. `marks` keeps the order so Undo takes the last thing
+  made, stroke or box.
+  **The trap inside the fix:** the first version tracked `SHAPES.length` before
+  a drag. `dropZones` REASSIGNS `SHAPES` (filter), so after any Clear the count
+  was stale, the next box failed the `length >` test, was never tracked, and
+  became permanently undeletable. Tracks ids now, not counts. Verified: two
+  boxes → Clear removes both; **a box drawn after a Clear is still deletable**;
+  Undo takes the stroke first, then the box.
+- [x] 🟢 **Grab and Pen are icon-only** — an open hand and a pen, 17px, no
+  words; the labels were making the pair wider than the thing it switches. The
+  status line is one short sentence, **"Hold shift to tilt"**, which is the only
+  part of the camera nobody can guess.
+- [x] 🟢 **Watermark clears the bar** — `body.present #mark{bottom:96px}`. It is the
+  one piece of chrome that must survive into a recording, so it moves rather than
+  hides. Measured: 20px gap, no overlap.
+- [x] 🟢 **Move (`✥`, key `V`) + Space to hold.** Move's real job is putting the
+  pencil down — before it, the only way to un-arm Draw was pressing Draw again.
+  Space grabs the point under screen centre ONCE and every tilt/pan then orbits
+  that pivot (`presNudge`), instead of re-picking centre each press and walking
+  the subject out of frame; glyph flips to `⦿`, Space releases. Space still means
+  "next slide" in every other mode (capture-phase handler, `stopImmediatePropagation`
+  only while camera mode is armed). Hold releases on slide change and on Reset.
+  **Geodesic on WGS84** (`EllipsoidGeodesic.surfaceDistance`), checked
+  against `pyproj.Geod.inv` at **Δ 0.0000 m** on two reference pairs. The readout
+  says "map distance" on purpose — it is neither terrain-following nor
+  straight-line 3D, and a number that quietly meant one of those would be worse
+  than no number. Zero-length legs filtered (the cursor stands on the point just
+  clicked, which otherwise printed "0 m" and a premature total).
+- [ ] 🟡 The bar wraps to two rows below ~1150px wide. Fine on a laptop, worth a
+  compact mode if presenting from a small window.
+- [ ] 🟡 Measure is map distance only. Over-ground (terrain-sampled) and
+  straight-line 3D were offered and deferred; both are additive.
+- [x] 🟢 Verified headless end to end: a real `williams-walkthrough.mp4` with
+  narration (`--use-fake-ui-for-media-stream --auto-accept-this-tab-capture`).
+- [ ] 🟡 **Anyone holding a share link can add `&present=1`** and get the presenter
+  tools. Nothing writes to the deck and marks are local, but decide if Studio should
+  require a flag on the share link.
+- [ ] 🟡 No pre-roll countdown, no pause/resume, no upload — the MP4 downloads locally.
+- [ ] 🟡 Event-track + voice replay (the Coaches Reel architecture: tiny files,
+  re-editable, server-rendered MP4) deliberately deferred.
+- [ ] 🔴 `pit/index.html` did NOT get presenter mode — it has its own recorder and is
+  generated by `tools/build_present.py`. Block-model decks still present the old way.
+
+---
+
+## Williams is the demo; Elk Gold is off everything public (2026-09-15) — LIVE
+
+- [x] 🟢 **Marketing page embeds the studio Williams deck**, not the baked
+  `/williams/?embed` build: hero "See a sample project", Fig. 04 iframe and
+  "Open full screen" all pass `t=` + `api=` through a dedicated share link,
+  **"getbedrock.ca marketing site"**, so site traffic is separable from Omega
+  Pacific's review link and revocable on its own. Studio edits show there live.
+- [x] 🟢 **Elk Gold "Demo" link revoked.** Its token is hard-coded in
+  `tools/seed_demo_deck.mjs` in this PUBLIC repo, so the Elk deck was one guess
+  away for anyone reading GitHub. Do not re-seed it.
+- [x] 🟢 **Social card / hero still are Williams** (`img/og-williams.jpg`,
+  `img/hero-williams.jpg`); `img/hero.jpg` overwritten, Elk `drillhole.jpg` removed.
+- [x] 🟢 **Phone legend** (Williams renderer, <900px): top-right under the brand
+  block, ~140×39 instead of ~225×52. Callouts are placed in 3D, so one can still
+  graze it on some slides.
+- [ ] 🟡 `img/model.jpg`, `neighbours.jpg`, `pit.jpg` — unreferenced "Bedrock
+  Demo" renders (model.jpg is Elk's block model geometry relabelled). Delete?
+
+---
+
+## Privacy policy + the fixes it needed (2026-09-15) — LIVE
+
+Deployed 2026-09-15: `db push` (cron job active, purge verified on hosted),
+`track` (`--no-verify-jwt`) + `invite` functions, `vercel --prod`. The
+uncommitted studio WIP (`app.css`, `studio.js`) was stashed for the deploy
+and is NOT live.
+
+Published policy lives at `/privacy/` and binds the code: **change a retention
+window or a sub-processor and the policy changes in the same commit.** Operator
+is 1238723 B.C. Ltd. (Bedrock); contact hello@getbedrock.ca; written to PIPEDA,
+BC PIPA, Quebec Law 25, GDPR/UK GDPR and US state law.
+
+- [x] 🟢 **Retention.** `20260915000100_privacy_retention.sql`: pg_cron runs
+  `purge_expired_data()` daily — viewer sessions/events 13 months, diag reports
+  90 days, never-accepted invites 30 days past expiry. Nothing was ever deleted
+  before.
+- [x] 🟢 **Files follow their dataset.** Removing a dataset or zone, or replacing
+  a dataset on re-upload, now deletes its storage folder (`purgeDatasetFiles`).
+  Storage refuses SQL deletes (`protect_objects_delete`), so this has to happen
+  client-side, before the row goes. Files orphaned before this remain.
+- [x] 🟢 **Clients cannot delete files.** `artifacts_delete` was `is_org_member`,
+  so the client role could delete every object in the org; now `is_org_editor`.
+- [x] 🟢 **GPC / Do Not Track honoured** in the viewer and in `track`.
+- [x] 🟢 **`view_events.meta` no longer stores client-supplied JSON.**
+- [x] 🟢 **Google Fonts self-hosted** (`assets/site-fonts.css`) on marketing, FAQ,
+  console and policy — Google no longer receives visitors' IPs. `williams/`
+  still links Google Fonts (not in this repo).
+- [x] 🟢 **Deletion requests:** `tools/privacy_erase.mjs` (dry-run by default).
+- [ ] 🔴 **hello@getbedrock.ca cannot receive mail** — getbedrock.ca has no MX
+  record. Must exist before the policy is published.
+- [ ] 🟡 Country is never captured (all prod sessions `country = null`); the
+  FAQ/console no longer claim it is. Policy says "at most, a country".
+- [ ] 🟡 Demo form still mails `shayne.taker@gmail.com`; switch `TO` once the
+  inbox exists.
+- [ ] 🟡 Orphaned files from datasets deleted before 2026-09-15 — sweep with a
+  one-off script comparing `storage.objects` to `datasets.storage_path`.
+- [ ] 🟡 No self-serve account / org deletion in the console (request-based for now).
+- [ ] 🟡 No CSP / HSTS headers in `vercel.json`.
+
+---
+
 ## Shipped to production (2026-09-10)
 
 All four migrations applied to `czuaqwtngduvlisxonkh`, `deck` and `invite`
@@ -147,15 +908,304 @@ deployed, site live on getbedrock.ca.
   invisible to everyone including its owner. Ownership granted.
 - [x] 🟢 **Fixed: auth `site_url` pointed at the bare Vercel project**, so every
   magic link landed on the marketing root instead of the console.
+- [x] 🟢 **Sign-in is email + password** (2026-09-18). The magic link is gone:
+  one screen with three modes — Sign in, Create an account, Forgot password.
+  A link every time meant a mailbox round trip to read your own deck, and put
+  mail delivery in the path of every login; email now appears once, to prove
+  the address. Forgot password *replaces* the magic link rather than sitting
+  beside it — both were "mail me something that signs me in".
+  - **The reset link signs you in before you have chosen a password**, so
+    `route()` would see a valid session and render Projects while the
+    set-password screen flashed past. `app.js` latches `state.recovery` on the
+    `PASSWORD_RECOVERY` event and checks it before rendering anything else.
+  - Wrong password and unknown address return the *same* message, and the reset
+    screen never says whether the address exists — telling them apart is how an
+    address list gets enumerated.
+  - `password_min_length` raised 6 → 10 in production and in `config.toml`.
+  - **Accounts predating this have no password**: their way in is Forgot
+    password, not signup. The sign-in error says so.
+  - Verified in a real browser end to end against a local stack configured like
+    production (confirmations ON): signup → confirmation email read out of
+    Mailpit → password sign-in → reset → set password → old password rejected,
+    new one accepted. 24 assertions. Note local `config.toml` keeps
+    `enable_confirmations = false`, which silently skips the confirm step —
+    testing signup against that default passes on a path no real user takes.
+- [x] 🟢 **"Continue with Google"** (2026-09-18), on sign in and create account,
+  not on password reset where it means nothing.
+  - **No callback route was needed.** The vendored client is supabase-js 2.45.0
+    with `flowType: "implicit"`, so Google returns to `/dashboard/#access_token=…`
+    and `detectSessionInUrl` consumes it — `exchangeCodeForSession` is the PKCE
+    path and does not apply here. The console itself is the redirect target.
+  - **Nothing to create for a new Google user.** There is no `profiles` table;
+    membership comes from `redeem_invites()`, which `route()` already calls and
+    which keys off `auth.users.email` + `email_confirmed_at`. Google returns a
+    verified address, so an invited client signing in with Google redeems their
+    invitation with no extra code.
+  - **The cancel path is the part that was actually broken-by-default.**
+    Declining consent returns `#error=access_denied…` with no session, which the
+    client has no reason to keep — so the fragment is read in `boot()` *before*
+    the client sees it, latched on `state.authError`, and stripped from the URL.
+    Without that, cancelling looked identical to never having tried.
+  - `prompt=select_account` is passed through, so a shared browser does not
+    silently reuse whichever Google account happens to be signed in.
+  - Verified against production from a real browser, stopping at Google's door
+    (the request to accounts.google.com is aborted and inspected, never
+    followed): 16 assertions locally, 10 against getbedrock.ca.
+  - **Still unverified: the account-collision case.** GoTrue is expected to link
+    a verified Google address to the existing password account rather than make a
+    duplicate, but proving it requires completing a real consent screen, which
+    these tests deliberately do not do. Baseline recorded for a manual check:
+    one user, one `email` identity.
+- [ ] 🔴 **Google's consent screen says `czuaqwtngduvlisxonkh.supabase.co`,
+  not Bedrock.** The app name and logo on the Google Cloud OAuth consent screen
+  are what users read there, and they are free to set. Making the *URL* read as
+  Bedrock additionally needs a Supabase custom auth domain, which is a paid
+  add-on (Pro plan) — checked 2026-09-18 and not currently on this project.
 
-- [ ] 🔴 **Postmark not yet configured.** `POSTMARK_TOKEN` / `POSTMARK_FROM`
-  unset, so `invite` returns 501 and the console falls back to "forward the
-  link". Auth SMTP is also unset — **2 emails/hour project-wide**.
+---
+
+## Studio gets its own page (2026-09-18)
+
+- [x] 🟢 **`/studio/` — a marketing page for the presenter**, with a STUDIO tab
+  added to the nav and footer of `index.html`, `faq/` and `privacy/` (the nav is
+  copy-pasted per page; there is no include, so a tab means six edits).
+  - Built in the **FAQ's idiom, not the home page's** — text-forward, read in
+    order and then stopped reading. Modelled on `faq/index.html` because that is
+    the site's precedent for a sub-page: same head shape (canonical + og:title +
+    og:image + twitter:card, no favicon/og:type/og:url), same `:root`, same
+    chrome. `/studio/` needs nothing in `vercel.json` — directory-index resolves.
+  - Copy written from the **code**, not from the tracker, because this page is
+    public. What it deliberately does NOT claim: no laser pointer, no eraser, no
+    stroke width, no slide jump in the bar, no pause/resume, no upload or
+    hosting, no bitrate, and no named browsers. The area tool is described as
+    marking ground, **not measuring** it, because it computes no number; the
+    ruler is called map distance because that is what it is.
+  - The claim the page leans on — marks are stored as terrain coordinates, so
+    they stay on the rock as the camera orbits — is real (`williams:5409-5413`).
+  - Verified in a browser at 1280 and at 390: 34 assertions, local and again
+    against production. Nav went from five items to six, so the phone-width
+    overflow check is the one that mattered.
+- [ ] 🔴 **`/studio/` has no picture of Studio.** The figure slot is in the page
+  as a comment, deliberately empty. The two home-page clips are **Edit slides**,
+  not the presenter, and `img/platform.jpg` is the deck rather than the toolbar —
+  labelling either as Studio is the one thing this site does not do. Needs ~12s
+  showing a pen stroke staying on the ground through a camera orbit, encoded to
+  `video/studio-walkthrough.{webm,mp4,jpg}`; the markup is written and waiting.
+- [x] 🟢 **Fixed: two clips ignored `prefers-reduced-motion`.** The home page's
+  video script keyed off a hard-coded id list (`['fly-to-hole','mine-plan-film']`)
+  that was never extended when the authoring clips landed — so `set-the-shot` and
+  `mobile-framing-film` honoured neither reduced motion nor on-screen-only
+  playback. Now selects `.fig-media video`, which cannot fall out of date.
+- [x] 🟢 **Removed the Elk Gold / Siwash strings from `.vercelignore`.** That file
+  is not deployed, but **the GitHub repo is public** (`shayne-wq/bedrock`,
+  confirmed 2026-09-18), so naming the project in its comments defeated the rule
+  it was explaining. The explicit `Siwash_North_BM_Nov_2021.csv` line was also
+  redundant — `*_BM_*.csv` already matches it. **Git history still contains
+  both**; fixing that means rewriting history and is not done.
+- [ ] 🔴 **The home page's real-vs-fabricated disclosure is wrong.**
+  `index.html` still says "Figure 04 is Omega Pacific's Williams deck" and
+  "Figures 01 to 03 are the Bedrock demo project, which is fabricated end to
+  end". After the authoring sections shifted the numbering, neither is true:
+  Williams-live is FIG. 06, and FIG. 03 and 04 are real Williams console
+  recordings. Worse, **FIG. 05 (`img/platform.jpg`) shows real Williams data
+  under the project name "Moonshot"** — verified against the database, where no
+  such project exists and the chapters match Williams exactly ("11,490 ha,
+  eleven tenures", "Magnetics over all eleven tenures", "96.92 m @ 2.16 g/t Au").
+  So the page currently calls a client's real project invented, and shows that
+  same project pseudonymously with no disclosure at all. Not rewritten here: on
+  a page selling to issuers, which data is real is the owner's call, not a
+  guess.
+- [x] 🟢 **`/studio/` rebuilt from the Claude Design artifact** (2026-09-18).
+  Layout, structure, copy, icons and figure labels are the design's; the palette
+  and navigation are the site's, per Shayne's call.
+  - **Getting the design took a detour worth remembering.** The design MCP needs
+    `/design-login`, which cannot run in a non-interactive session, and the
+    project URL 403s. It arrived instead as a published artifact whose gallery
+    name says "Bedrock Brand Guidelines" but whose `<title>` is "Bedrock Studio".
+    `Artifact action:"read"` returns only the bundler shell — the real page is
+    gzip+base64 inside `<script type="__bundler/manifest">`, so it has to be
+    decoded off the saved file rather than read.
+  - **Five of the design's nine spec rows were not true of the product**, and
+    were corrected rather than published. Verified directly against
+    `williams/index.html`:
+
+    | Design said | Code says |
+    |---|---|
+    | Resolution UP TO 4K | `OUT_W = 1920, OUT_H = 1080`; no 3840/2160/"4K" anywhere — and the design's own figure label reads "1080P · MP4" |
+    | Pen, highlighter, **eraser** | `eraser` = 0 matches; there is undo and clear-slide |
+    | PEN / **HIGHLIGHT / ARROW** | no arrow tool, no highlighter; all 25 "arrow" hits are CSS comments |
+    | Microphone **LIVE METER** | `AudioContext` / `analyser` / `getByteFrequency` all zero |
+    | Recording length NO FIXED LIMIT | no coded cap, but chunks accumulate in RAM with no warning |
+
+    Shipped instead: `PEN · AREA · RULER`, `1920 × 1080`, `MP4`, mic `OPTIONAL`,
+    and "sound from your computer or a call — NEVER CAPTURED" (true, and a
+    better claim than the one it replaced).
+  - **Two CTAs changed.** "SEE A SAMPLE RECORDING" promises a video that does
+    not exist. "BOOK A DEMO" depends on the home page's dialog (three blocks,
+    home-only, and it hard-codes a personal Gmail). Both use the FAQ page's
+    established link pattern instead.
+  - Verified in a browser at 1280 and 390: **36 assertions, local and again
+    against production**, including the three new in-page anchors.
+- [x] 🟢 **FIG. 01 and FIG. 02 now carry real Studio recordings** (2026-09-18) —
+  both of Omega Pacific's Williams deck, both genuine captures rather than
+  mockups. Checked frame by frame before use: Williams throughout, no Elk Gold.
+  - `video/studio-deck.jpg` — FIG. 01, the recording dock. **A still, captured
+    from the live deck in `?present=1`**, replacing the 18.4s walkthrough clip
+    on 2026-09-21. A still on purpose: the figure's job is to let a reader
+    examine the dock and the ground under it — zones, drill traces, intercept
+    callouts — which a moving loop does not allow, and the hero widget already
+    demonstrates the dock in motion.
+  - `video/studio-camera.{webm,mp4,jpg}` — FIG. 02, webcam and narration.
+    **Trimmed from 4.5s on purpose**: the source opens with the webcam bubble
+    still an empty black disc while the camera wakes, and a loop starting on a
+    black hole in the corner undersells the thing the figure exists to show.
+  - **Both encoded silent.** The source takes are narrated, but every other clip
+    on this site is a silent loop and sound nobody asked for is not a feature.
+    Offer the audio with controls only if that changes.
+  - `.split-figure.is-video` is **16:9**, not the 16:10 default — Studio records
+    1920×1080, and a 16:10 frame crops the dock off the bottom.
+  - The page grew the reduced-motion / on-screen-only script, selecting
+    `.split-figure video` rather than a list of ids, so a third clip is covered
+    the day it lands.
+  - **The 888 KB walkthrough clip is retired**, which was three times heavier
+    than anything else on the page — full-screen high-frequency colour in the
+    magnetics layer is brutal to compress, and no setting got it near the others.
+    Replaced by a 90 KB still, in line with `studio-camera.jpg` (84 KB) and
+    `studio-markup.jpg` (85 KB).
+  - **Capturing that still took six attempts, and the cost was mine.** Every one
+    aimed at `#stat`, on an assumption about which element carried the client's
+    name that I never verified. `#stat` hides itself once loaded (it gains a
+    `.gone` class); the mark actually on screen lives in `div#brand > img`, which
+    a single DOM query found immediately. Two other self-inflicted faults along
+    the way: deleting the logo element instead of swapping its `src` (which
+    collapsed the nameplate), and a leak check that counted 0×0 nodes inside
+    `#prov` as visible. **What worked was the guard** — it refused every bad
+    frame rather than handing over one with the issuer's name on it. An
+    `innerText` check would have passed the first two.
+  - The capture hides `#brand` outright rather than relabelling: that removes the
+    mark, the company name, the project and the district line together, so no
+    "Moonshot" rename is needed. **Hole IDs are left in** (Shayne's call), so it
+    is a client deck with the branding removed — not an anonymised or invented
+    property, and the caption must not imply otherwise.
+  - Harness rewritten and now at **48 assertions, 0 failing**, covering every
+    clip on the page rather than the first; the STUDIO-tab checks were inverted
+    to require its absence, since the page is unlisted.
+- [x] 🟢 **FIG. 03 and the closing panel filled** (2026-09-21), both from material
+  already to hand — no new capture was needed.
+  - **FIG. 03 came out of the FIG. 02 source.** A dense frame scan of the webcam
+    take found a gold freehand loop drawn on the terrain at ~11.3s, closed by
+    ~12.3s and cleared by ~13.3s. Cut 11.0–13.6s (lands at 2.9s after keyframe
+    drift), so the loop shows the whole gesture: clean ground, stroke drawn, loop
+    closed, cleared. Deliberately the shortest clip on the page — the copy says
+    marks belong to the moment, and that is the moment at its real length rather
+    than stretched to match the others. 68 KB webm.
+  - **The closing panel reuses `img/footer-terrain.jpg`**, the Pexels photograph
+    the home page already carries — same licence, same attribution (now repeated
+    in the Studio footer), and 2200×962 is within a rounding error of that
+    figure's 16:7.
+  - **The design's `mix-blend-mode: overlay` on the wordmark had to go.** Tried it
+    as drawn; on this photograph it vanishes, because overlay with white only
+    lightens and the terrain along the bottom edge is dark and busy. Kept the
+    intent, dropped the mechanism: `rgba(255,255,255,.74)`, no blend.
+  - Harness now covers all three clips: **54 assertions, 0 failing.**
+- [x] 🟢 **The hero is an interactive demonstration** (2026-09-21), not a still.
+  Shayne's idea, and the right one: the page's central claim is that a mark is
+  written to the ground rather than to the screen, which a still cannot show and
+  a loop only half-shows. Now you drag, and the mark stays on the rock.
+  - **No library.** A heightfield projected in 2D canvas — a yaw rotation, a
+    perspective divide and two loops, about 140 lines. three.js is vendored on
+    this site at **671 KB**; the Studio page is 25 KB, and the idea does not need
+    an engine. A heightfield rather than a flat plane because draping over relief
+    is the part that makes the point.
+  - Opens with a mark already drawn and defaults to **Move**, so the first drag
+    is the payoff rather than a blank invitation. Redraws only on interaction —
+    no idle loop.
+  - **The full dock, mirrored from `williams/index.html`** (2026-09-21): same
+    five groups, same labels, the same hand and pencil SVGs, and the same keys
+    (R C H P 0 G M L), all honoured. Pen with the three real inks
+    (`#F2C14E` / `#5EC8E8` / `#FFFFFF`), Area, Ruler, Undo, Clear, Reset and
+    Layers all genuinely work against the heightfield. The area box fills with
+    its own ink at 18%, as Studio's does.
+  - **Record and Camera animate the control and say so.** There is nothing to
+    capture on a marketing page, and asking for a webcam would be hostile — so
+    Record runs the dot and timer while the status line reads "Recording is
+    shown here, not captured", and Camera cycles a placeholder bubble through
+    the four corners. Shayne's call, 2026-09-21.
+  - Ruler returns a real distance against a declared ground scale
+    (`GROUND_M = 2400`), in metres under 1 km and kilometres above, matching
+    Studio's own rule.
+  - Terrain upgraded to directional lighting, with the two zones and their
+    drill collars draped on it, so it reads as a property rather than a surface
+    plot. **Collars are clamped to the extent** — unclamped they drew as dots
+    floating on the sky past the edge of the ground, which a screenshot caught
+    and no assertion would have.
+  - Driven through the dock: **38 interaction assertions** — the mark survives a
+    turn, a blue stroke lands blue, the ruler returns a distance, Clear removes
+    marks but *not* the zones, Layers toggles them, the keys work. Page harness
+    unchanged at **54**.
+  - **`project()` and `unproject()` share named constants** (`HOR`, `VS`, `XS`).
+    They were literals; changing the view would then have silently put every
+    drawn mark somewhere other than under the cursor.
+  - Labelled **"SIMPLIFIED DEMONSTRATION"** with a caption saying Studio clamps
+    to real terrain. This page already corrected five overstated claims from the
+    original design; the widget must not become the sixth.
+  - Two tuning passes were needed and both were caught by looking, not by tests:
+    first the ground filled a quarter of the frame and floated in black; then
+    `DIST = 3.6` put the camera *inside* the terrain, filling the resting view
+    with flat olive. Settled at `DIST 4.2 / CAM_H 1.15 / VS 0.58`, which spans
+    roughly 38–108% of frame height so the ground bleeds off the bottom.
+  - Driven, not just screenshotted: **10 interaction assertions** — the mark
+    survives a turn, drawing adds ink, clear empties it, no sideways scroll at
+    390px. Page harness unchanged at **54**.
+- [ ] 🔴 **Two things to look at before `/studio/` goes public.** Neither blocks
+  the local preview. (1) The first seconds of FIG. 01 show the "Who else is here"
+  slide, with third-party marks — Thesis Gold, Centerra/Kemess, Amarc, plus
+  Lawyers-Ranch, Baker-Shasta and Joy District. Already public via the Williams
+  embed on the home page, but other companies' logos inside *Bedrock's own*
+  marketing is a different question. (2) FIG. 02 shows an identifiable person on
+  camera.
+- [x] 🟢 **`/studio/` pulled back from the public site** (2026-09-18), at
+  Shayne's request, pending the captures above.
+  - **Removing the links would not have hidden it.** `.vercelignore`'s own
+    header already says why: a static host serves whatever it is given, so an
+    unreferenced page still answers 200 to anyone who guesses the URL. So the
+    directory was added to `.vercelignore` and the page left the DEPLOYMENT, not
+    just the navigation.
+  - STUDIO removed from the nav and footer of `index.html`, `faq/` and
+    `privacy/` — and from the Studio page's own chrome, so all five pages carry
+    identical navigation again.
+  - Verified after deploying: `getbedrock.ca/studio/` and `/studio/index.html`
+    both **404**; `/`, `/faq/`, `/privacy/` and `/dashboard/` all still **200**;
+    and **zero** `href="/studio/"` links remain anywhere, so nothing on the live
+    site points at the page that is now gone.
+  - **Preview it locally** — `.vercelignore` affects deploys only, so the file
+    is still in the repo and serves fine:
+    `python3 -m http.server 8899` from `Bedrock/orebody`, then
+    `http://localhost:8899/studio/`.
+  - **To publish it again:** delete the `studio/` line from `.vercelignore`,
+    restore the STUDIO nav and footer links on the three public pages (after
+    COMPANY, before FAQ, which is where they were), and redeploy.
+
+- [x] 🟢 **Auth SMTP is Postmark** (verified 2026-09-18): `smtp_host` is
+  `smtp.postmarkapp.com` and `rate_limit_email_sent` is **30/hour**, not the old
+  2/hour default. This matters more under password auth than it did under magic
+  links — `mailer_autoconfirm` is False, so every new account needs a
+  confirmation email to arrive before it can be used at all.
+- [ ] 🔴 **`invite` edge function secrets still unverified.** `POSTMARK_TOKEN` /
+  `POSTMARK_FROM` are separate from Auth SMTP; if unset, `invite` returns 501
+  and the console falls back to "forward the link". Auth SMTP being configured
+  does **not** cover this — check the function's own secrets.
 - [ ] 🔴 **Inclusion has no console UI.** The rule and the per-slide picker have
   to be set by hand in SQL until built.
-- [ ] 🔴 **The console is single-org** (`state.orgs[0]` throughout). There are
-  now two orgs in production, so People invites always target the first one
-  alphabetically.
+- [x] 🟢 **Fixed: the console is no longer single-org.** It used to read
+  `state.orgs[0]` throughout, which is the alphabetically first company — so
+  People invites silently targeted the wrong one. There is now an org switcher
+  (`currentOrg()` / `setOrg()`, persisted at `bedrock.console.org`) and an
+  "All organisations" view for someone who owns several. That view deliberately
+  refuses New project and People, because both need one unambiguous org.
+- [ ] 🔴 **The org switcher scopes lists, not deep links.** `renderProject`
+  fetches by id alone, so a pasted project URL renders whatever the id points
+  at regardless of the selected org.
 - [ ] 🔴 **Inclusion wiring unverified in a browser.** Supabase-local signs
   storage URLs against the internal Docker host, so the drills artifact never
   reaches the page locally. Check it against production.

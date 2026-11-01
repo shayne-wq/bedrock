@@ -483,6 +483,50 @@ export function readDXF(text, what = "DXF") {
 
 const HOLE_NAMES = ["holeid", "hole_id", "hole", "bhid", "dhid", "drillhole", "id"];
 
+/**
+ * Was this hole DRILLED, or is it still a line on a plan?
+ *
+ * The distinction is not cosmetic. The client collar export that found this
+ * carried both kinds in one file, complete holes and proposed ones, and
+ * counting the proposed metres overstated the programme by 44% — on the one
+ * figure a shareholder repeats out loud.
+ *
+ * A hole is treated as drilled UNLESS the status says "not yet", and that
+ * direction is deliberate. Requiring the word "complete" would throw away
+ * metres that were genuinely turned: a hole can be logged, sampled, awaiting
+ * assays or abandoned at 40 m, and every one of those consumed a rig and a day.
+ * Only a word that means plan takes a hole out of the count. A file with no
+ * status column has every hole drilled, which is what a file with no status
+ * column means.
+ */
+const plannedStatus = (v) => {
+  const s = String(v ?? "").toLowerCase().replace(/[^a-z]/g, "");
+  return !!s && /^(plan|propos|design|future|notstart|notdrill|prospect)/.test(s);
+};
+
+/**
+ * The date a hole was finished, ISO only.
+ *
+ * Finish before start: a finish date is when the rig left the hole, which is
+ * what "where is the rig standing now" is asking. It falls back per ROW rather
+ * than per file — that same export fills `start_date` on every row and
+ * `finish_date` on barely half, and choosing the fuller column would read
+ * January for holes that finished in June.
+ *
+ * `2024-06-13` and `2024/06/13` are read; `13/06/2024` is not. A slashed
+ * day-first date is indistinguishable from a month-first one in the data, and
+ * guessing moves a rig by up to eleven months. Unreadable means the programme's
+ * typed position is left alone rather than moved to a hole picked by row order.
+ */
+const dateOf = (r, ...idx) => {
+  for (const i of idx) {
+    if (i < 0) continue;
+    const s = String(r[i] ?? "").trim().slice(0, 10).replace(/\//g, "-");
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  }
+  return null;
+};
+
 /** Collars: one row per hole, with a position and usually a total depth. */
 export function readCollars(text, what = "collars") {
   const { header, rows } = parseTable(text, what);
@@ -491,6 +535,14 @@ export function readCollars(text, what = "collars") {
   const iy = col(header, "north", "northing", "y", "ycollar", "collary");
   const iz = col(header, "elev", "elevation", "rl", "z", "zcollar", "collarz");
   const it = col(header, "td", "totaldepth", "depth", "maxdepth", "eoh", "length");
+  // Not "type": a collar file's `type` column is DD or RC, the drilling method,
+  // and `col` would match it on four characters and read every hole as planned.
+  const is_ = col(header, "status", "hole_status", "holestatus", "drillstatus");
+  const ifin = col(header, "finish_date", "finishdate", "date_completed",
+                   "datecompleted", "completed", "end_date", "enddate",
+                   "date_finished", "datefinished");
+  const ist = col(header, "start_date", "startdate", "date_started",
+                  "datestarted", "drill_date", "drilldate", "date");
   const missing = [["hole id", ih], ["easting", ix], ["northing", iy], ["elevation", iz]]
     .filter(([, i]) => i < 0).map(([n]) => n);
   if (missing.length) {
@@ -502,7 +554,11 @@ export function readCollars(text, what = "collars") {
     const id = String(r[ih] ?? "").trim();
     const x = num(r[ix]), y = num(r[iy]), z = num(r[iz]);
     if (!id || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
-    out.push({ id, x, y, z, td: it >= 0 ? num(r[it]) : NaN });
+    const c = { id, x, y, z, td: it >= 0 ? num(r[it]) : NaN };
+    if (is_ >= 0 && plannedStatus(r[is_])) c.planned = true;
+    const on = dateOf(r, ifin, ist);
+    if (on) c.on = on;
+    out.push(c);
   }
   if (!out.length) throw new Error(`${what}: no rows with a hole id and a complete position.`);
   return out;
@@ -539,8 +595,8 @@ export function readAssays(text, what = "assays") {
   const ih = col(header, ...HOLE_NAMES);
   const ifr = col(header, "from", "depthfrom", "start", "top");
   const ito = col(header, "to", "depthto", "end", "bottom");
-  // au_ppm is what a real assay export calls it — Omega Pacific's Williams data
-  // and most lab deliverables ship that column and nothing named "grade". For
+  // au_ppm is what a real assay export calls it — client data and most lab
+  // deliverables ship that column and nothing named "grade". For
   // GOLD, ppm and g/t are the same number, so it needs no conversion; this is
   // deliberately gold-only, because cu_ppm is a different thing entirely.
   const ig = col(header, "aueq", "au_gt", "au_gpt", "au_ppm", "augt", "auppm",
@@ -579,7 +635,13 @@ export function desurvey(collars, surveysByHole, step = 5) {
   const traces = [], assumedVertical = [];
   for (const c of collars) {
     let st = surveysByHole?.get(c.id);
-    if (!st || !st.length) { st = [{ d: 0, az: 0, dip: -90 }]; assumedVertical.push(c.id); }
+    if (!st || !st.length) {
+      st = [{ d: 0, az: 0, dip: -90 }];
+      // A planned hole has no survey because it has not been drilled. Saying
+      // "assumed vertical" about it would file a consequence of the plan as a
+      // defect in the data, and that list is read as a list of defects.
+      if (!c.planned) assumedVertical.push(c.id);
+    }
     if (st[0].d > 0) st = [{ d: 0, az: st[0].az, dip: st[0].dip }, ...st];
     const td = Number.isFinite(c.td) && c.td > 0 ? c.td : st[st.length - 1].d;
     if (!(td > 0)) continue;
@@ -621,7 +683,14 @@ export function desurvey(collars, surveysByHole, step = 5) {
       prev = d;
       if (d >= td) break;
     }
-    traces.push({ id: c.id, collar: [c.x, c.y, c.z], td, pts, step });
+    // `planned` and `on` ride along so that whatever consumes a trace can
+    // count the drilled holes without re-reading the collar file, and so the
+    // console can say which hole the rig left last. Omitted rather than false
+    // or null: these payloads are stored per project and a key on every hole of
+    // a thousand-hole property is paid for a thousand times.
+    traces.push({ id: c.id, collar: [c.x, c.y, c.z], td, pts, step,
+                  ...(c.planned ? { planned: true } : {}),
+                  ...(c.on ? { on: c.on } : {}) });
   }
   if (!traces.length) throw new Error("No holes could be desurveyed — check the collar depths.");
   return { traces, assumedVertical };

@@ -9,9 +9,10 @@ import {
   toast, fail, modal, closeModal, skeleton, wire,
 } from "./lib/ui.js";
 import { CONFIG } from "./config.js";
-import { ingestWizard, uploadAux, putAux, routeFiles } from "./ingest.js";
+import { ingestWizard, uploadAux, putAux, routeFiles, purgeDatasetFiles } from "./ingest.js";
 import { sniff } from "./lib/formats.js";
 import { renderDeck } from "./deck.js";
+import { renderDrilling, syncFromUpload } from "./drilling.js";
 import { renderStudio, teardownStudio } from "./studio.js";
 import { STAGES, stageEvidence } from "./lib/stage.js";
 import { paletteFrom, BRAND_FALLBACK } from "./lib/palette.js";
@@ -29,7 +30,31 @@ async function boot() {
   // the failure this guards against: RLS answers an unauthenticated read with an
   // empty set, not an error, so anything that queries too early looks like a
   // brand new account rather than a broken one.
-  db.auth.onAuthStateChange(() => { booted = true; route(); });
+  // Read the fragment BEFORE the client does. supabase-js is on implicit flow,
+  // so a successful Google sign-in comes back as "#access_token=…" and it
+  // consumes that itself. A refusal comes back as "#error=access_denied…" with
+  // no session, which it has no reason to keep — so if we do not take it here
+  // it is gone, and a cancelled sign-in looks identical to never having tried.
+  const frag = new URLSearchParams(location.hash.replace(/^#/, ""));
+  if (frag.get("error")) {
+    const why = (frag.get("error_description") || frag.get("error") || "")
+      .replace(/\+/g, " ");
+    state.authError = /access_denied/.test(frag.get("error") || "")
+      ? "Google sign-in was cancelled. Nothing was shared."
+      : why || "Google sign-in did not complete.";
+    // Strip it, or a reload re-shows an error about something already resolved.
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+
+  db.auth.onAuthStateChange((event) => {
+    booted = true;
+    // A reset link arrives as a real session, so this is the only moment the
+    // console can tell "they came here to set a password" from "they signed in".
+    // Latched rather than handled inline: route() runs straight after and would
+    // otherwise render Projects over the top of it.
+    if (event === "PASSWORD_RECOVERY") state.recovery = true;
+    route();
+  });
 
   // INITIAL_SESSION always fires, but never leave the console on a skeleton if
   // it somehow does not.
@@ -73,37 +98,186 @@ function renderSetup() {
   };
 }
 
-function renderAuth() {
+/* Sign in, create an account, or ask for a reset — one screen, three modes.
+ *
+ * Email + password, not a magic link. A link every single time is a mailbox
+ * round trip to read your own deck, and it puts mail delivery in the path of
+ * every login. Email now appears exactly once, to prove the address.
+ *
+ * "Forgot password" replaces the magic link rather than sitting beside it: both
+ * were the same gesture — mail me something that signs me in — and offering two
+ * doors to one room only makes the room harder to describe.
+ *
+ * The minimum length is the server's (10). Stating it up front beats letting
+ * somebody choose, submit, and be refused by GoTrue in language written for a
+ * developer. */
+const PW_MIN = 10;
+function renderAuth(mode = "in") {
   chromeOff();
+  const H = {
+    in:     ["Sign in", "Your email and password."],
+    up:     ["Create an account", `Pick a password of at least ${PW_MIN} characters. We email you once to confirm the address.`],
+    forgot: ["Reset your password", "We email you a link to set a new one."],
+  }[mode];
   view.innerHTML = `
     <header class="page">
       <span class="eyebrow">Bedrock</span>
-      <h1>Sign in</h1>
-      <p>We email you a link. There is no password to choose, forget or reuse.</p>
+      <h1>${H[0]}</h1>
+      <p>${H[1]}</p>
     </header>
     <div class="panel" style="max-width:420px">
+      ${mode === "forgot" ? "" : `
+      <button class="btn google authbtn" id="goog">
+        <svg width="16" height="16" viewBox="0 0 18 18" aria-hidden="true">
+          <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/>
+          <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/>
+          <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"/>
+          <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/>
+        </svg>
+        Continue with Google
+      </button>
+      <p class="hintline orsplit">or</p>`}
       <div class="field">
         <label for="em">Work email</label>
         <input type="email" id="em" autocomplete="email" placeholder="you@company.com">
       </div>
-      <button class="btn primary" id="send">Email me a link</button>
+      ${mode === "forgot" ? "" : `
+      <div class="field">
+        <label for="pw">Password</label>
+        <input type="password" id="pw" placeholder="${mode === "up" ? `At least ${PW_MIN} characters` : ""}"
+               autocomplete="${mode === "up" ? "new-password" : "current-password"}">
+      </div>`}
+      <button class="btn primary authbtn" id="go">${
+        mode === "in" ? "Sign in" : mode === "up" ? "Create account" : "Email me a reset link"}</button>
       <p class="hintline" id="authmsg"></p>
+      <p class="hintline" style="margin-top:12px">${
+        mode === "in"
+          ? `<a href="#" id="toup">Create an account</a> · <a href="#" id="tofg">Forgot password?</a>`
+          : `<a href="#" id="toin">Back to sign in</a>`}</p>
+      <p class="hintline">How we handle your email and your data:
+        <a href="/privacy/" target="_blank" rel="noopener">privacy policy</a>.</p>
     </div>`;
-  const send = async () => {
-    const email = $("em").value.trim();
+
+  const msg = (t) => { $("authmsg").textContent = t; };
+  // Deliberately NOT cleared on render. boot() can route more than once — the
+  // auth listener and the two-second safety timeout both call route() — so a
+  // message that clears itself on first paint is wiped by the second pass. That
+  // is not hypothetical: it silently swallowed provider errors while the
+  // cancelled-sign-in case survived on timing alone. It is cleared when the
+  // person does something instead, which is the only moment it stops being true.
+  if (state.authError) msg(state.authError);
+
+  if ($("goog")) $("goog").onclick = async () => {
+    state.authError = null;
+    $("goog").disabled = true;
+    const { error } = await db.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        // Back to whichever origin we started from, so the same build works on
+        // localhost and in production without a second baked-in URL. Both are
+        // in Supabase's allow list; anything not in it is refused by GoTrue.
+        redirectTo: location.origin + location.pathname,
+        // Without this Google silently reuses whichever account the browser is
+        // already signed into — wrong person entirely on a shared machine.
+        queryParams: { prompt: "select_account" },
+      },
+    });
+    // Reached only if the redirect never happened.
+    if (error) { $("goog").disabled = false; msg(error.message); }
+  };
+  const go = async () => {
+    state.authError = null;            // they have moved on from that trip
+    const email = $("em").value.trim().toLowerCase();
+    const pw = $("pw") ? $("pw").value : "";
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
       return toast("That does not look like an email address.", true);
     }
-    $("send").disabled = true; $("send").textContent = "Sending…";
-    const { error } = await db.auth.signInWithOtp({
-      email, options: { emailRedirectTo: location.origin + location.pathname },
-    });
-    $("send").disabled = false; $("send").textContent = "Email me a link";
-    if (error) return fail("Sign in", error);
-    $("authmsg").textContent = `Link sent to ${email}. It expires in an hour.`;
+    if (mode !== "forgot" && pw.length < (mode === "up" ? PW_MIN : 1)) {
+      return toast(mode === "up"
+        ? `A password needs at least ${PW_MIN} characters.`
+        : "Enter your password.", true);
+    }
+    const btn = $("go"); const label = btn.textContent;
+    btn.disabled = true; btn.textContent = "…";
+    const done = () => { btn.disabled = false; btn.textContent = label; };
+    const back = location.origin + location.pathname;
+
+    if (mode === "in") {
+      const { error } = await db.auth.signInWithPassword({ email, password: pw });
+      done();
+      // GoTrue answers a wrong password and an unknown address identically, on
+      // purpose — telling them apart is how an address list gets enumerated. So
+      // the message covers both rather than implying which.
+      if (error) return msg(/invalid login/i.test(error.message || "")
+        ? "That email and password do not match. If you have not set a password yet, use Forgot password."
+        : error.message);
+      return;                                   // onAuthStateChange routes on
+    }
+    if (mode === "up") {
+      const { data, error } = await db.auth.signUp({
+        email, password: pw, options: { emailRedirectTo: back },
+      });
+      done();
+      if (error) return msg(error.message);
+      // A session here would mean confirmations are off. They are not, and
+      // redeem_invites refuses an unconfirmed address, so this is the path.
+      if (!data.session) {
+        return msg(`Check ${email} and click the link to confirm. Then sign in with your password.`);
+      }
+      return;
+    }
+    const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: back });
+    done();
+    // Never say whether the address exists.
+    msg(error ? error.message
+              : `If ${email} has an account, a reset link is on its way. It expires in an hour.`);
   };
-  $("send").onclick = send;
-  $("em").onkeydown = (e) => { if (e.key === "Enter") send(); };
+
+  $("go").onclick = go;
+  for (const id of ["em", "pw"]) {
+    if ($(id)) $(id).onkeydown = (e) => { if (e.key === "Enter") go(); };
+  }
+  const swap = (m) => (e) => { e.preventDefault(); state.authError = null; renderAuth(m); };
+  if ($("toup")) $("toup").onclick = swap("up");
+  if ($("tofg")) $("tofg").onclick = swap("forgot");
+  if ($("toin")) $("toin").onclick = swap("in");
+}
+
+/* Where a reset link lands. The link has already signed them in, so this is not
+ * a gate — it is the one screen that must be shown before the console, because
+ * otherwise they are inside with a password they still do not know. */
+function renderSetPassword() {
+  chromeOff();
+  view.innerHTML = `
+    <header class="page">
+      <span class="eyebrow">Bedrock</span>
+      <h1>Set a password</h1>
+      <p>Choose one of at least ${PW_MIN} characters. You will use it to sign in from now on.</p>
+    </header>
+    <div class="panel" style="max-width:420px">
+      <div class="field">
+        <label for="np">New password</label>
+        <input type="password" id="np" autocomplete="new-password"
+               placeholder="At least ${PW_MIN} characters">
+      </div>
+      <button class="btn primary" id="setpw">Save it and continue</button>
+      <p class="hintline" id="pwmsg"></p>
+    </div>`;
+  const save = async () => {
+    const pw = $("np").value;
+    if (pw.length < PW_MIN) return toast(`At least ${PW_MIN} characters.`, true);
+    $("setpw").disabled = true; $("setpw").textContent = "Saving…";
+    const { error } = await db.auth.updateUser({ password: pw });
+    $("setpw").disabled = false; $("setpw").textContent = "Save it and continue";
+    if (error) { $("pwmsg").textContent = error.message; return; }
+    // Drop the latch before routing, or route() sends us straight back here.
+    state.recovery = false;
+    toast("Password saved");
+    location.hash = "#/";
+    route();
+  };
+  $("setpw").onclick = save;
+  $("np").onkeydown = (e) => { if (e.key === "Enter") save(); };
 }
 
 $("signout").onclick = async () => { await db.auth.signOut(); location.hash = ""; };
@@ -123,6 +297,10 @@ async function route() {
   const { data: sess } = await db.auth.getSession();
   state.session = sess.session;
   if (!state.session) return renderAuth();
+  // A reset link signs you in first, so this has to come before anything that
+  // renders the console proper — otherwise they land on Projects and the
+  // password they came to set never gets set.
+  if (state.recovery) return renderSetPassword();
   $("signout").style.display = "";
   $("who").textContent = state.session.user.email;
 
@@ -166,9 +344,28 @@ async function route() {
   document.body.classList.toggle("instudio", h[0] === "s" && !!h[1]);
 
   const onPeople = h[0] === "people";
-  document.querySelector("#rail nav").innerHTML =
+  // The switcher only appears when there is something to switch between. One
+  // company is the common case and it should not pay for the other one with a
+  // dropdown that never changes anything.
+  const org = currentOrg();
+  const all = viewingAll();
+  const switcher = state.orgs.length > 1
+    ? `<span class="sec">Organisation</span>
+       <select id="orgsel" class="orgsel" aria-label="Which organisation">
+         <option value="${ALL_ORGS}"${all ? " selected" : ""}>All organisations</option>
+         ${state.orgs.map((o) => `<option value="${esc(o.id)}"${
+           !all && org && o.id === org.id ? " selected" : ""}>${esc(o.name)}</option>`).join("")}
+       </select>`
+    : "";
+  // People is per-organisation by construction — `org_people` takes one org, the
+  // invites query filters on one, and a role means nothing across three. So it
+  // leaves the rail in All mode rather than offering a page that cannot answer
+  // "whose people?".
+  document.querySelector("#rail nav").innerHTML = switcher +
     `<a href="#/" class="${onPeople ? "" : "on"}">Projects</a>` +
-    (isAdmin() ? `<a href="#/people" class="${onPeople ? "on" : ""}">People</a>` : "");
+    (!all && isAdmin() ? `<a href="#/people" class="${onPeople ? "on" : ""}">People</a>` : "");
+  const sel = document.querySelector("#orgsel");
+  if (sel) sel.onchange = () => setOrg(sel.value);
   try {
     if (h[0] === "people") return await renderPeople();
     if (h[0] === "p" && h[1]) return await renderProject(h[1]);
@@ -204,10 +401,56 @@ async function loadOrgs() {
   }
 }
 
-/** Role in the org the console is currently showing. One org per console
- *  today — orgs[0] everywhere else in this file — so this follows that. */
+/** The organisation the console is currently showing.
+ *
+ *  Everything used to read `orgs[0]`, which is the alphabetically first company
+ *  because `loadOrgs` orders by name. With one org that was invisible; with
+ *  three it meant the People page, every invitation and New project all attached
+ *  to whichever company sorted first, regardless of what was on screen.
+ *
+ *  The stored id is verified against the orgs actually loaded before it is
+ *  trusted: an org that was left, revoked or deleted would otherwise strand the
+ *  console pointing at something the database will not return. */
+const ORG_KEY = "bedrock.console.org";
+/* "All organisations" is a VIEW, not a permission.
+ *
+ * Holding several companies, you already reach every one of them — membership
+ * is what grants access and you are a member of each. What was missing was
+ * seeing them at once, which the switcher took away by scoping to one. So this
+ * is a sentinel the selector understands, NOT a super-admin role: no RLS bypass,
+ * no privilege that outlives the session, nothing that could show an org you are
+ * not in. RLS still decides what comes back; this only stops the console
+ * narrowing it further. */
+const ALL_ORGS = "__all__";
+export const viewingAll = () => state.orgId === ALL_ORGS && state.orgs.length > 1;
+
+export function currentOrg() {
+  if (!state.orgs.length) return null;
+  const stored = state.orgId ||
+    (() => { try { return localStorage.getItem(ORG_KEY); } catch { return null; } })();
+  // Null means "all" — every caller that writes (New project, invitations) must
+  // therefore check, because "which company?" has no answer in this mode and
+  // guessing one is the exact bug the switcher was built to fix.
+  if (stored === ALL_ORGS && state.orgs.length > 1) { state.orgId = ALL_ORGS; return null; }
+  const found = state.orgs.find((o) => o.id === stored);
+  const org = found || state.orgs[0];
+  state.orgId = org.id;
+  return org;
+}
+function setOrg(id) {
+  if (id !== ALL_ORGS && !state.orgs.some((o) => o.id === id)) return;
+  state.orgId = id;
+  try { localStorage.setItem(ORG_KEY, id); } catch { /* private window: this session only */ }
+  // Back to the list: the project you were looking at belongs to the company you
+  // just switched away from, and a project page that 404s is a worse answer than
+  // the list of what the new one holds.
+  if (location.hash.startsWith("#/") && location.hash !== "#/") location.hash = "#/";
+  else route();
+}
+
+/** Role in the org the console is currently showing. */
 export function myRole() {
-  return state.roles?.[state.orgs[0]?.id] || null;
+  return state.roles?.[currentOrg()?.id] || null;
 }
 const isAdmin = () => ["owner", "admin"].includes(myRole());
 
@@ -227,7 +470,19 @@ async function renderPeople() {
   view.innerHTML = `<header class="page"><span class="eyebrow">Bedrock</span>
     <h1>People</h1></header>${skeleton(3)}`;
 
-  const org = state.orgs[0];
+  const org = currentOrg();
+  // A null org here means "All organisations", NOT "you have none". Sending
+  // somebody who owns three companies to "create your organisation" would be
+  // both wrong and alarming. People is per-org — org_people() takes one, the
+  // invites query filters on one — so ask which, rather than guessing.
+  if (!org && state.orgs.length) {
+    view.innerHTML = `<header class="page"><h1>People</h1></header>
+      <div class="empty"><h3>Which organisation?</h3>
+      <p>Access is granted per organisation, so this page needs one. Pick a
+         company in the sidebar — you are viewing all ${state.orgs.length}.</p>
+      <a class="btn" href="#/">Back to projects</a></div>`;
+    return;
+  }
   if (!org) return renderFirstOrg();
   if (!isAdmin()) {
     view.innerHTML = `<div class="empty"><h3>Admins only</h3>
@@ -236,11 +491,16 @@ async function renderPeople() {
     return;
   }
 
-  const [{ data: people, error: pe }, { data: invites, error: ie }] = await Promise.all([
-    db.rpc("org_people", { p_org: org.id }),
-    db.from("invites").select("*").eq("org_id", org.id)
-      .is("accepted_at", null).order("created_at", { ascending: false }),
-  ]);
+  // The org's projects come along so the invitation can say what it grants
+  // rather than naming an organisation and leaving the reader to guess.
+  const [{ data: people, error: pe }, { data: invites, error: ie }, { data: projs }] =
+    await Promise.all([
+      db.rpc("org_people", { p_org: org.id }),
+      db.from("invites").select("*").eq("org_id", org.id)
+        .is("accepted_at", null).order("created_at", { ascending: false }),
+      db.from("projects").select("name").eq("org_id", org.id).order("name"),
+    ]);
+  const projectNames = (projs || []).map((p) => p.name);
 
   // The one error worth stopping for: both of these arrive together only when
   // the migration has been applied, and saying so beats an empty page.
@@ -304,7 +564,7 @@ async function renderPeople() {
     </div>`;
 
   wire(view);
-  $("inv").onclick = () => inviteModal(org);
+  $("inv").onclick = () => inviteModal(org, projectNames);
   view.querySelectorAll("[data-resend]").forEach((b) => b.onclick = async () => {
     b.disabled = true;
     await sendInvite(b.dataset.resend);
@@ -326,10 +586,26 @@ async function renderPeople() {
   });
 }
 
-function inviteModal(org) {
-  modal(`<h2>Invite someone</h2>
+/** @param {{id:string,name:string}} org
+ *  @param {string[]} projectNames  what this organisation actually holds */
+function inviteModal(org, projectNames = []) {
+  /* Say what the invitation grants, in the words of the thing being granted.
+     Access is per ORGANISATION — there is no project-level membership in the
+     schema — so an invitation reaches every project the org holds. Today that
+     is one project each, which makes "invite them to Williams" true; naming the
+     projects keeps it true if an org ever holds two, instead of quietly
+     granting more than the sentence implies. */
+  const what = projectNames.length === 1
+    ? `They will be able to reach <b>${esc(projectNames[0])}</b>.`
+    : projectNames.length > 1
+      ? `They will be able to reach all ${projectNames.length} of this
+         organisation's projects — ${esc(projectNames.join(", "))}.`
+      : `This organisation has no projects yet — they will see whatever it holds
+         when it has one.`;
+  modal(`<h2>Invite someone to ${esc(org.name)}</h2>
     <p class="sub">They sign in at this console with the address you enter. The
        invitation attaches itself the first time they do.</p>
+    <p class="hintline" style="margin:-8px 0 16px">${what}</p>
     <div class="field"><label for="ivmail">Email</label>
       <input type="email" id="ivmail" placeholder="name@company.com"></div>
     <div class="field"><label for="ivrole">Role</label>
@@ -402,33 +678,58 @@ async function renderHome() {
     <h1>Projects</h1></header>${skeleton(4)}`;
 
   if (!state.orgs.length) return renderFirstOrg();
+  const org = currentOrg();
+  const all = viewingAll();
 
-  const { data: projects, error } = await db
-    .from("projects")
-    .select("id, name, commodity, location, stage, created_at, decks(id)")
+  // Scoped to the org on screen, unless you have asked for all of them. The
+  // query had no org filter at all once, so RLS returned every organisation's
+  // projects under one organisation's name — which is the state this mode makes
+  // deliberate and legible instead of accidental.
+  let q = db.from("projects")
+    .select("id, name, commodity, location, stage, created_at, org_id, decks(id)")
     .order("created_at", { ascending: false });
+  if (!all) q = q.eq("org_id", org.id);
+  const { data: projects, error } = await q;
   if (error) return fail("Projects", error);
+  const orgName = Object.fromEntries(state.orgs.map((o) => [o.id, o.name]));
 
   view.innerHTML = `
     <header class="page"><div class="row">
       <div class="grow">
-        <span class="eyebrow">${esc(state.orgs[0].name)}</span>
+        <span class="eyebrow">${all
+          ? `All organisations · ${state.orgs.length}`
+          : esc(org.name)}</span>
         <h1>Projects</h1>
       </div>
-      <button class="btn primary" id="newp">New project</button>
+      ${all
+        // No New project here on purpose: it writes `org_id`, and in this mode
+        // there is no answer to which company it belongs to. Offering it and
+        // picking one for you is how a project lands in the wrong company.
+        ? `<span class="hint">Pick an organisation to add a project</span>`
+        : `<button class="btn primary" id="newp">New project</button>`}
     </div></header>
     ${!projects.length ? `
       <div class="empty">
         <h3>No projects yet</h3>
         <p>A project holds one deposit: its block model, its drilling, and the
            decks you build from them.</p>
-        <button class="btn primary" id="newp2">Create the first one</button>
+        ${all
+          // Same reason as the header: this button writes an org_id, and in All
+          // mode there is none to write. It would throw on currentOrg().id.
+          ? `<p class="hintline">Pick an organisation in the sidebar to create one.</p>`
+          : `<button class="btn primary" id="newp2">Create the first one</button>`}
       </div>` : `
       <div class="panel"><div class="tablewrap"><table>
-        <thead><tr><th>Project</th><th>Commodity</th><th>Stage</th><th>Location</th>
+        <thead><tr>${all ? "<th>Organisation</th>" : ""}
+          <th>Project</th><th>Commodity</th><th>Stage</th><th>Location</th>
           <th class="n">Decks</th><th class="n">Created</th></tr></thead>
         <tbody>${projects.map((p) => `
           <tr style="cursor:pointer" data-go="#/p/${p.id}">
+            ${all
+              // Whose project this is, said outright. A merged list without this
+              // column is the bug the switcher fixed, wearing a different hat.
+              ? `<td class="mono" style="color:var(--ink-mute)">${esc(orgName[p.org_id] || "—")}</td>`
+              : ""}
             <td><b>${esc(p.name)}</b></td>
             <td>${esc(p.commodity || "—")}</td>
             <td>${p.stage ? `<span class="chip">${esc(p.stage)}</span>` : "—"}</td>
@@ -474,6 +775,14 @@ function renderFirstOrg() {
 }
 
 function newProject() {
+  /* Which company this belongs to, resolved ONCE here rather than at the insert.
+     A project is owned by an organisation from the moment it exists, and in
+     "All organisations" there is no answer — so refuse rather than pick one.
+     The button is not drawn in that mode, so this is the second line of
+     defence; it exists because the UI being unable to reach a write is not the
+     same as the write being safe. */
+  const org = currentOrg();
+  if (!org) return toast("Pick an organisation in the sidebar first", true);
   modal(`
     <h2>New project</h2>
     <p class="sub">A project holds one or more zones — add the first after it
@@ -507,7 +816,15 @@ function newProject() {
     if (!name) return toast("A project needs a name.", true);
     $("pgo").disabled = true;
     const { data, error } = await db.from("projects").insert({
-      org_id: state.orgs[0].id, name, slug: slugify(name),
+      // The org on screen, not the alphabetically first one. This line is why a
+      // project created while looking at one company landed in another.
+      // (Client names deliberately not written here: this file is served to
+      // anyone who asks for /dashboard/app.js, comments and all.)
+      // Guarded below before we get here — the button is not drawn in All mode
+      // — but this is a WRITE of ownership, and "the UI cannot reach it" is the
+      // reasoning that shipped a ReferenceError on every deck page earlier
+      // today. A wrong org_id here is a project in another company's console.
+      org_id: org.id, name, slug: slugify(name),
       commodity: $("pc").value.trim() || null,
       location: $("pl").value.trim() || null,
       stage: $("pstage").value || null,
@@ -546,15 +863,25 @@ async function renderProject(id) {
   // The stage is the author's claim; the datasets are the evidence. Computed
   // here so the page can say when the two disagree.
   const ev = stageEvidence(p, datasets || []);
+  // Keyed by zone, with "project" holding the datasets that belong to the whole
+  // property rather than to any one deposit. A null key would stringify to
+  // "null" and work by accident; naming it is the difference between a lookup
+  // that reads as deliberate and one that reads as a bug.
   const dsByZone = {};
-  (datasets || []).forEach((d) => { (dsByZone[d.zone_id] ||= []).push(d); });
-  const zoneKind = (z, k) => (dsByZone[z.id] || []).find((d) => d.kind === k);
+  (datasets || []).forEach((d) => { (dsByZone[d.zone_id ?? "project"] ||= []).push(d); });
+  const dsAt = (z) => dsByZone[(z && z.id) || "project"] || [];
+  const zoneKind = (z, k) => dsAt(z).find((d) => d.kind === k);
   const zonesWithBlocks = zs.filter((z) => zoneKind(z, "blocks"));
   // What makes a zone presentable is having ANY data, not having a resource.
   // Gating deck creation on a block model meant an exploration project — the
   // common case — could load its claims, magnetics and drilling and still be
   // told it had nothing to show.
-  const zonesWithData = zs.filter((z) => (dsByZone[z.id] || []).length);
+  const zonesWithData = zs.filter((z) => dsAt(z).length);
+  // And a deck needs DATA, not zones. Gating on zonesWithData told a company
+  // that had loaded its claim block and its magnetics — at project level,
+  // because it has one undivided package and never named a zone — that it had
+  // nothing to present.
+  const anyData = (datasets || []).length > 0;
   const fabricated = (datasets || []).filter((d) => d.synthetic);
 
   // Project totals sum every zone's block model. Grade is tonnage-weighted —
@@ -575,24 +902,47 @@ async function renderProject(id) {
   //
   // Order is exploration-first for the same reason: the property outline and
   // the magnetics are what an early-stage project actually has.
-  const KINDS = [
+  //
+  // WHERE A DATASET HANGS is not a filing decision, it is a fact about the
+  // data. Tenure is registered against the PROPERTY and a topographic survey
+  // covers it: one claim block and one ground surface, however many deposits
+  // sit inside them. Loading those per zone meant a three-zone project uploaded
+  // the same tenure file three times with nothing making the three agree — and
+  // that file is what the district slide, the neighbouring-ground lookup and
+  // the claim colour-pop are all read from, so three copies meant three answers
+  // to "where is this company's ground".
+  const PROPERTY_KINDS = [
     { key: "site", label: "Property & claims" },
+    { key: "topography", label: "Topography", note: "DEM or LiDAR surface" },
+  ];
+  // Everything else describes one body of rock.
+  const ZONE_KINDS = [
     { key: "geophysics", label: "Geophysics" },
     { key: "geochem", label: "Geochemistry" },
     { key: "drills", label: "Drill holes" },
-    { key: "blocks", label: "Block model", note: "resource stage" },
     { key: "surfaces", label: "Surfaces" },
-    { key: "topography", label: "Topography", note: "DEM or LiDAR surface" },
+    { key: "blocks", label: "Block model", note: "resource stage" },
   ];
+  // The project standing in for a zone. Zones are OPTIONAL: a company with a
+  // single undivided land package should not have to invent a deposit in order
+  // to describe a property that has none. `zone_id is null` means the whole
+  // project, and this is the object every zone-shaped path takes when that is
+  // where the data lives.
+  const PROJECT_ZONE = { id: null, name: p.name };
+  const zoneOf = (key) => (key ? zs.find((x) => x.id === key) : PROJECT_ZONE) || null;
+
   const slot = (z, k) => {
     const ds = zoneKind(z, k.key);
+    // Empty, not "null" — the project-level slots carry no zone id, and the
+    // handlers read a missing value as "the whole project".
+    const zk = z.id || "";
     return `<div class="slot ${ds ? "on" : ""}">
       <span class="k">${k.label}${k.note ? ` <em class="opt">${k.note}</em>` : ""}</span>
       <span class="acts">
       ${ds ? `<span class="chip ${ds.synthetic ? "warn" : "live"}">${ds.synthetic ? "Fabricated" : "Loaded"}</span>
-        <button class="btn sm" data-load="${k.key}" data-zone="${z.id}">Replace</button>
+        <button class="btn sm" data-load="${k.key}" data-zone="${zk}">Replace</button>
         <button class="btn sm danger" data-del="${ds.id}">Remove</button>`
-       : `<button class="btn sm" data-load="${k.key}" data-zone="${z.id}">Add</button>`}
+       : `<button class="btn sm" data-load="${k.key}" data-zone="${zk}">Add</button>`}
       </span>
     </div>`;
   };
@@ -602,13 +952,13 @@ async function renderProject(id) {
       <div class="grow">
         <span class="eyebrow"><a href="#/">Projects</a> / ${esc(p.commodity || "Project")}</span>
         <h1>${esc(p.name)}</h1>
-        <p>${esc(p.location || "No location set")} · EPSG ${p.epsg}
-           · ${zs.length} zone${zs.length === 1 ? "" : "s"}${
+        <p>${esc(p.location || "No location set")} · EPSG ${p.epsg}${
+             zs.length ? ` · ${zs.length} zone${zs.length === 1 ? "" : "s"}` : ""}${
              ev.label ? ` · ${esc(ev.label)}` : ""}</p>
       </div>
       <div class="row-actions">
         <button class="btn" id="editproj">Project settings</button>
-        <button class="btn primary" id="newdeck" ${zonesWithData.length ? "" : "disabled"}>New deck</button>
+        <button class="btn primary" id="newdeck" ${anyData ? "" : "disabled"}>New deck</button>
       </div>
     </div></header>
 
@@ -635,12 +985,24 @@ async function renderProject(id) {
     </div>` : ""}
 
     <div class="panel">
-      <div class="row"><h2 class="grow">Zones</h2>
-        <button class="btn" id="addzone">Add zone</button></div>
+      <div class="row"><h2 class="grow">The property</h2></div>
+      <p class="lead" style="margin:0 0 14px">Tenure is registered against the
+         property, not against a deposit, and one survey covers the ground. These
+         are loaded once, and every zone and every deck reads the same boundary.</p>
+      <div class="slots">${PROPERTY_KINDS.map((k) => slot(PROJECT_ZONE, k)).join("")}</div>
+    </div>
+
+    <div class="panel">
+      <div class="row"><h2 class="grow">${zs.length ? "Zones" : "Project data"}</h2>
+        <button class="btn" id="addzone" data-newzonedrop="1">${
+          zs.length ? "Add zone" : "Split into zones"}</button></div>
+      <p class="hintline" style="margin:-8px 0 14px">Drop files on a zone to
+         load them, or drop them on <b>${zs.length ? "Add zone" : "Split into zones"
+         }</b> to name a new zone and load them straight into it.</p>
       ${zs.length ? zs.map((z) => {
         const s = zoneKind(z, "blocks")?.stats?.total;
-        const nk = (dsByZone[z.id] || []).length;
-        return `<div class="zone">
+        const nk = dsAt(z).length;
+        return `<div class="zone" data-zonekey="${z.id}">
           <div class="row"><div class="grow"><b>${esc(z.name)}</b>
             ${s ? `<span class="zsub">${fmtT(s.tonnes)} · ${s.grade_gt} g/t · ${fmtOz(s.oz)}</span>`
                 : nk ? `<span class="zsub">Exploration stage — ${nk} dataset${nk === 1 ? "" : "s"} · no resource estimate</span>`
@@ -648,18 +1010,35 @@ async function renderProject(id) {
             <button class="btn sm" data-renamezone="${z.id}"
               data-zname="${esc(z.name)}">Rename</button>
             <button class="btn sm danger" data-delzone="${z.id}">Delete zone</button></div>
-          <div class="slots">${KINDS.map((k) => slot(z, k)).join("")}</div>
+          <div class="slots">${ZONE_KINDS.map((k) => slot(z, k)).join("")}</div>
         </div>`;
-      }).join("") : `
-        <div class="empty">
-          <h3>No zones yet</h3>
-          <p>A zone is one deposit or target. Add your first, then load whatever
-             it has — property outline, geophysics, drilling. Files are read in
-             this browser and never leave your machine. A block model is only
-             needed once the project has a resource.</p>
-          <button class="btn primary" id="addzone2">Add the first zone</button>
-        </div>`}
+      }).join("") : (() => {
+        // No zones, and that is a normal shape for a property rather than an
+        // unfinished one. The project itself takes the zone's place, so a
+        // company with one undivided package loads its drilling and its
+        // magnetics here and never has to name a deposit it does not have.
+        const nk = dsAt(PROJECT_ZONE).filter(
+          (d) => ZONE_KINDS.some((k) => k.key === d.kind)).length;
+        return `<div class="zone" data-zonekey="">
+          <div class="row"><div class="grow"><b>${esc(p.name)}</b>
+            ${nk ? `<span class="zsub">${nk} dataset${nk === 1 ? "" : "s"} across the whole project</span>`
+                 : `<span class="zsub">Empty — load whatever this project has</span>`}</div></div>
+          <p class="hintline" style="margin:-8px 0 14px">One undivided package.
+             Split it into zones when the property has more than one deposit
+             worth talking about separately; until then this is where its data
+             lives. Files are read in this browser and never leave your machine,
+             and a block model is only needed once there is a resource.</p>
+          <div class="slots">${ZONE_KINDS.map((k) => slot(PROJECT_ZONE, k)).join("")}</div>
+        </div>`;
+      })()}
     </div>
+
+    <!-- Drilling. Between the data and the deck because that is where it sits
+         in the work: the datasets are what has been measured, a programme is
+         what is being measured now, and both feed the deck below. Filled by
+         drilling.js, and hidden until that query comes back — on a console
+         deployed ahead of its migration there is nothing to show. -->
+    <div class="panel" id="drillpanel" hidden></div>
 
     <div class="panel">
       <div class="row"><h2 class="grow">How this project introduces itself</h2></div>
@@ -740,9 +1119,9 @@ async function renderProject(id) {
       ${!decks?.length ? `
         <div class="empty">
           <h3>No decks yet</h3>
-          <p>${zonesWithData.length ? "A deck is the walkthrough you present, share and embed — one deck flies across every zone in this project."
-                      : "Add a zone and load whatever this project has — a property outline, magnetics, drilling. A block model is only needed once there is a resource."}</p>
-          ${zonesWithData.length ? `<button class="btn primary" id="newdeck2">Create a deck</button>` : ""}
+          <p>${anyData ? "A deck is the walkthrough you present, share and embed — one deck flies across the whole property."
+                      : "Load whatever this project has — a property outline, magnetics, drilling. A block model is only needed once there is a resource."}</p>
+          ${anyData ? `<button class="btn primary" id="newdeck2">Create a deck</button>` : ""}
         </div>` : `
         <div class="tablewrap"><table>
           <thead><tr><th>Deck</th><th>Status</th><th class="n">Chapters</th>
@@ -756,6 +1135,13 @@ async function renderProject(id) {
             </tr>`).join("")}</tbody>
         </table></div>`}
     </div>`;
+
+  // Every upload that goes through a modal or a slot comes back here. Only a
+  // drills upload has anywhere else to go; everything else just re-renders.
+  const afterUpload = (res) => {
+    if (res && res.kind === "drills") syncFromUpload(p, zs, datasets || [], res, route);
+    else route();
+  };
 
   wire(view);
   $("editproj").onclick = () => editProject(p);
@@ -773,6 +1159,7 @@ async function renderProject(id) {
     };
   });
   renderHolders(p, datasets || []);
+  renderDrilling(p, zs, datasets || [], $("drillpanel"));
   $("bsave").onclick = () => saveBrand(p, { summary: $("bsum").value.trim() });
   $("blogo").onchange = async () => {
     const f = $("blogo").files?.[0];
@@ -813,7 +1200,14 @@ async function renderProject(id) {
   });
   view.querySelectorAll("[data-del]").forEach((b) => {
     b.onclick = async () => {
-      if (!confirm("Remove this dataset? Decks that use it will stop rendering it.")) return;
+      if (!confirm("Remove this dataset and its uploaded files? Decks that use it will stop rendering it.")) return;
+      // Files first: once the row is gone nothing says where they were. If the
+      // files cannot be removed the row stays, so the removal can be retried.
+      try {
+        const { data: rows } = await db.from("datasets")
+          .select("storage_path").eq("id", b.dataset.del);
+        await purgeDatasetFiles(rows);
+      } catch (e) { return fail("Remove files", e); }
       const { error: e2 } = await db.from("datasets").delete().eq("id", b.dataset.del);
       if (e2) return fail("Remove", e2);
       toast("Dataset removed");
@@ -823,6 +1217,11 @@ async function renderProject(id) {
   view.querySelectorAll("[data-delzone]").forEach((b) => {
     b.onclick = async () => {
       if (!confirm("Delete this zone and every dataset in it? This cannot be undone.")) return;
+      try {
+        const { data: rows } = await db.from("datasets")
+          .select("storage_path").eq("zone_id", b.dataset.delzone);
+        await purgeDatasetFiles(rows);
+      } catch (e) { return fail("Remove files", e); }
       const { error: e2 } = await db.from("zones").delete().eq("id", b.dataset.delzone);
       if (e2) return fail("Delete zone", e2);
       toast("Zone deleted");
@@ -832,10 +1231,10 @@ async function renderProject(id) {
   view.querySelectorAll("[data-load]").forEach((b) => {
     b.onclick = () => {
       const kind = b.dataset.load;
-      const z = zs.find((x) => x.id === b.dataset.zone);
+      const z = zoneOf(b.dataset.zone);
       if (!z) return;
       if (kind === "blocks") ingestWizard(p, z, route);
-      else uploadAux(p, z, kind, route);
+      else uploadAux(p, z, kind, afterUpload);
     };
   });
 
@@ -853,8 +1252,11 @@ async function renderProject(id) {
   // decision the person uploading makes — so a routed upload records real, and
   // the slot's chip is how you say otherwise.
   view.querySelectorAll(".zone").forEach((zel) => {
-    const zid = zel.querySelector("[data-delzone]")?.dataset.delzone;
-    const z = zs.find((x) => x.id === zid);
+    // The card carries its own key: a real zone id, or empty for the card that
+    // stands in for the whole project. Reading it off the Delete button, as
+    // this did, meant the project card — which has nothing to delete — routed
+    // no drops at all.
+    const z = zoneOf(zel.dataset.zonekey);
     if (!z) return;
     ["dragenter", "dragover"].forEach((t) => zel.addEventListener(t, (e) => {
       if (!e.dataTransfer?.types?.includes("Files")) return;
@@ -880,18 +1282,24 @@ async function renderProject(id) {
         return toast(`Could not tell what ${files.length === 1 ? "that file is" : "those files are"}. Use Add on the right slot.`, true);
       }
       const done = [];
+      let drills = null;
       for (const kind of kinds) {
         const chosen = byKind[kind];
         // The block model is never routed silently: its column mapping has to
         // be confirmed before any tonnage is computed from it.
         if (kind === "blocks") { ingestWizard(p, z, route, chosen[0].file); return; }
         try {
-          await putAux(p, z, kind, chosen, false, "");
+          const res = await putAux(p, z, kind, chosen, false, "");
+          if (kind === "drills") drills = res;
           done.push(`${kind} (${chosen.length})`);
         } catch (err) { fail(`Save ${kind}`, err); return; }
       }
       const miss = unknown.length ? `, ${unknown.length} not recognised` : "";
       toast(`Loaded ${done.join(", ")} into ${z.name}${miss}`);
+      // A collar file is not just a file: it carries the metres this project's
+      // drilling programme reports. Hand it on before re-rendering, or the
+      // issuer types a number the server already has.
+      if (drills) return syncFromUpload(p, zs, datasets || [], drills, route);
       route();
     });
   });
@@ -900,7 +1308,7 @@ async function renderProject(id) {
     const btn = el.querySelector("[data-load]");
     if (!btn) return;
     const kind = btn.dataset.load;
-    const z = zs.find((x) => x.id === btn.dataset.zone);
+    const z = zoneOf(btn.dataset.zone);
     if (!z) return;
     ["dragenter", "dragover"].forEach((t) => el.addEventListener(t, (e) => {
       e.preventDefault(); el.classList.add("dropping");
@@ -912,16 +1320,68 @@ async function renderProject(id) {
       const f = e.dataTransfer?.files?.[0];
       if (!f) return;
       if (kind === "blocks") ingestWizard(p, z, route, f);
-      else uploadAux(p, z, kind, route, f);
+      else uploadAux(p, z, kind, afterUpload, f);
     });
   });
   for (const k of ["addzone", "addzone2"]) if ($(k)) $(k).onclick = () => addZone(p);
-  // Every zone that HAS DATA, not every zone that has a block model. The
-  // button is already enabled on zonesWithData, and the viewer loads a deck's
-  // side artifacts from `assetsOf(zones[0].id)` — so a deck created for an
-  // exploration project recorded no zones and then silently loaded none of its
-  // own drilling, geochemistry or geophysics. It rendered: terrain, chapters,
-  // captions, and no data. Found importing a real client's project.
+
+  // Files dropped on "Add zone": name the zone, then load them into it. The
+  // same routing a zone card does, so a multi-file drop of collars, surveys and
+  // assays fills all three parts of a zone that did not exist a moment ago.
+  view.querySelectorAll("[data-newzonedrop]").forEach((btn) => {
+    ["dragenter", "dragover"].forEach((t) => btn.addEventListener(t, (e) => {
+      if (!e.dataTransfer?.types?.includes("Files")) return;
+      e.preventDefault(); btn.classList.add("dropping");
+    }));
+    ["dragleave", "drop"].forEach((t) => btn.addEventListener(t, (e) => {
+      e.preventDefault(); btn.classList.remove("dropping");
+    }));
+    btn.addEventListener("drop", async (e) => {
+      const files = [...(e.dataTransfer?.files || [])];
+      if (!files.length) return;
+      const { byKind, unknown } = routeFiles(files);
+      const kinds = Object.keys(byKind);
+      // Refuse BEFORE creating the zone. Making a zone and then failing to put
+      // anything in it leaves the project with an empty zone the user did not
+      // ask for and has to go and delete.
+      if (!kinds.length) {
+        const named = unknown.map((f) => sniff(f)).filter((x) => x.label && x.advice);
+        return toast(named.length ? `${named[0].label}: ${named[0].advice}`
+          : `Could not tell what ${files.length === 1 ? "that file is" : "those files are"}.`, true);
+      }
+      if (kinds.includes("blocks")) {
+        return toast("A block model needs its columns confirmed, so it cannot create a zone on the way in. Add the zone, then drop it on the zone's Block model slot.", true);
+      }
+      const name = prompt("Name the new zone", "");
+      if (name === null) return;
+      if (!name.trim()) return toast("A zone needs a name.", true);
+      const z = await createZone(p, name.trim());
+      if (!z) return;
+      const done = [];
+      let drills = null;
+      for (const kind of kinds) {
+        try {
+          const res = await putAux(p, z, kind, byKind[kind], false, "");
+          if (kind === "drills") drills = res;
+          done.push(`${kind} (${byKind[kind].length})`);
+        } catch (err) { fail(`Save ${kind}`, err); return; }
+      }
+      const miss = unknown.length ? `, ${unknown.length} not recognised` : "";
+      toast(`Created ${z.name} and loaded ${done.join(", ")}${miss}`);
+      if (drills) return syncFromUpload(p, zs.concat(z), datasets || [], drills, route);
+      route();
+    });
+  });
+  // Every zone that HAS DATA, not every zone that has a block model. The viewer
+  // loads a deck's side artifacts from the zones the deck records, so a deck
+  // created for an exploration project used to record no zones and then
+  // silently load none of its own drilling, geochemistry or geophysics. It
+  // rendered: terrain, chapters, captions, and no data. Found importing a real
+  // client's project.
+  //
+  // An empty list is now a legitimate answer rather than that bug: a project
+  // with no zones keeps everything at project level, and the viewer reads those
+  // through its own project-level fallback.
   for (const k of ["newdeck", "newdeck2"]) if ($(k)) $(k).onclick = () => newDeck(p, zonesWithData);
 }
 
@@ -929,8 +1389,10 @@ async function renderProject(id) {
 function addZone(p) {
   modal(`
     <h2>Add a zone</h2>
-    <p class="sub">One deposit — its own block model, drills, surfaces, property
-       and geophysics. A single deck flies across every zone in the project.</p>
+    <p class="sub">One deposit — its own block model, drills, surfaces and
+       geophysics. The property boundary stays with the project, because tenure
+       is registered against the ground rather than the deposit. A single deck
+       flies across every zone.</p>
     <div class="field"><label for="zn">Zone name</label>
       <input type="text" id="zn" placeholder="North Zone"></div>
     <div class="row-actions" style="margin-top:16px">
@@ -943,21 +1405,38 @@ function addZone(p) {
     const name = $("zn").value.trim();
     if (!name) return toast("A zone needs a name.", true);
     $("zgo").disabled = true;
-    // Order after the last existing zone, and make the slug unique within the
-    // project by suffixing if the base is taken.
-    const { data: existing } = await db.from("zones")
-      .select("slug, ord").eq("project_id", p.id);
-    const taken = new Set((existing || []).map((z) => z.slug));
-    let slug = slugify(name), n = 2;
-    while (taken.has(slug)) slug = `${slugify(name)}-${n++}`;
-    const ord = (existing || []).reduce((m, z) => Math.max(m, z.ord + 1), 0);
-    const { error } = await db.from("zones")
-      .insert({ project_id: p.id, name, slug, ord });
+    const z = await createZone(p, name);
     $("zgo").disabled = false;
-    if (error) return fail("Add zone", error);
+    if (!z) return;
     closeModal();
     route();
   };
+}
+
+/**
+ * Create one zone and return the row.
+ *
+ * Separate from the modal because a drop has to create a zone and then put
+ * files in it, and `putAux` needs the row — the id for the storage path and
+ * the name for what it tells the user. Returns null on failure, having already
+ * said why.
+ */
+async function createZone(p, name) {
+  // Order after the last existing zone, and make the slug unique within the
+  // project by suffixing if the base is taken.
+  const { data: existing } = await db.from("zones")
+    .select("slug, ord").eq("project_id", p.id);
+  const taken = new Set((existing || []).map((z) => z.slug));
+  let slug = slugify(name), n = 2;
+  while (taken.has(slug)) slug = `${slugify(name)}-${n++}`;
+  const ord = (existing || []).reduce((m, z) => Math.max(m, z.ord + 1), 0);
+  // `select().single()` rather than a bare insert: the caller needs the id, and
+  // re-reading by name would pick the wrong row on a project with two zones
+  // called the same thing.
+  const { data, error } = await db.from("zones")
+    .insert({ project_id: p.id, name, slug, ord }).select().single();
+  if (error) { fail("Add zone", error); return null; }
+  return data;
 }
 
 async function newDeck(p, zonesInDeck = []) {
@@ -1019,7 +1498,7 @@ async function renderHolders(project, datasets) {
   if (!panel || !site) return;
   panel.hidden = false;
   $("nbfetch").onclick = () =>
-    fetchNeighbours(project, site, site.zone_id, $("nbjur").value);
+    fetchNeighbours(project, site, $("nbjur").value);
   $("nbfetch").disabled = !site.stats?.bbox;
   if (!Array.isArray(owners) || !owners.length) {
     $("nblist").innerHTML = `<div class="empty sm"><p>No holders read from the
@@ -1226,7 +1705,10 @@ async function saveBrand(project, patch) {
 // British Columbia only, and the console says so rather than offering a button
 // that silently returns nothing elsewhere. Every jurisdiction publishes tenure
 // differently and there is no endpoint to generalise to.
-async function fetchNeighbours(project, site, zoneId, jurisdiction = "bc") {
+// No zone is threaded through here. The boundary belongs to the property, and
+// this only ever edits the boundary dataset that already exists — it never
+// creates one, so there is nothing that would need to be told where to hang.
+async function fetchNeighbours(project, site, jurisdiction = "bc") {
   const box = site?.stats?.bbox;
   if (!box) {
     return fail("Fetch", new Error(
@@ -1284,7 +1766,7 @@ async function fetchNeighbours(project, site, zoneId, jurisdiction = "bc") {
       toast(`The ${jname} register shows no other holders around this property`);
       return;
     }
-    await mergeClaims(project, zoneId, site, cur, extra, body, added);
+    await mergeClaims(project, site, cur, extra, body, added);
     // mergeClaims re-renders the route deliberately: the boundary dataset
     // itself changed, so the zone list and its dataset rows are stale too.
   } catch (e) {
@@ -1300,7 +1782,7 @@ async function signedUrl(path) {
   return data.signedUrl;
 }
 
-async function mergeClaims(project, zoneId, site, cur, extra, body, added) {
+async function mergeClaims(project, site, cur, extra, body, added) {
   const rings = [...(cur.rings || []), ...extra];
   const payload = { ...cur, rings,
     // Provenance travels with the data. Half this file came from the customer

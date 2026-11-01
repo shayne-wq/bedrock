@@ -149,6 +149,71 @@ ok("no holes were silently assumed vertical in this fixture", assumedVertical.le
 const p50 = F.pointAt(t, 50);
 ok("pointAt: halfway is halfway", near(p50[0] - 692500, 25, 0.5), `east ${(p50[0]-692500).toFixed(2)}`);
 
+// ---- drilled holes versus holes drawn on a plan -------------------------
+// Shaped like the client collar export this came from: complete holes and
+// proposed ones in the same file. Counting the proposed ones overstated that
+// programme by 44%, on the one figure a shareholder repeats. The hole names,
+// collars and depths below are invented.
+const mixed = [
+  "hole_id,status,x,y,z,depth,start_date,finish_date",
+  "GC21-01,complete,498100,5521000,1120,300,2021-06-01,2021-06-14",
+  "GC24-01,complete,498169,5521008,1122,500,2024-01-01,2024-06-13",
+  "GC24-03,complete,498168,5521008,1122,500,2024-01-01,2024-06-24",
+  "GC26-P1,proposed,498300,5521200,1130,400,,",
+  "GC26-P2,PROPOSED,498350,5521250,1131,350,,",
+].join("\n");
+const MC = F.readCollars(mixed);
+const drilledOf = (cs) => cs.filter((c) => !c.planned);
+const tdOf = (cs) => drilledOf(cs).reduce((a, c) => a + c.td, 0);
+ok("a proposed hole is not a drilled hole", drilledOf(MC).length === 3,
+   `${drilledOf(MC).length} of ${MC.length}`);
+ok("...and its metres are not drilled metres", tdOf(MC) === 1300, String(tdOf(MC)));
+ok("the status word is read whatever its case", MC.filter((c) => c.planned).length === 2);
+
+// The other direction is the one that loses real metres. A hole can be logged,
+// sampled, awaiting assays or abandoned at 40 m, and every one of those turned
+// a rig — only a word meaning "plan" takes a hole out of the count.
+const states = F.readCollars([
+  "hole_id,status,x,y,z,depth",
+  "A,logged,100,200,10,120",
+  "B,assay pending,100,200,10,130",
+  "C,abandoned,100,200,10,40",
+  "D,complete,100,200,10,200",
+].join("\n"));
+ok("logged, sampled, pending and abandoned holes were all drilled",
+   drilledOf(states).length === 4,
+   states.filter((c) => c.planned).map((c) => c.id).join(",") || "none");
+ok("a file with no status column has every hole drilled",
+   drilledOf(F.readCollars(["hole_id,x,y,z,depth", "A,1,2,3,100"].join("\n"))).length === 1);
+// `type` is the drilling METHOD — DD, RC, auger. It is four characters, which
+// is exactly the length at which `col` starts matching substrings, and reading
+// it as the status would mark every hole in the file planned.
+ok("a `type` column is not read as a status",
+   drilledOf(F.readCollars(["hole_id,type,x,y,z,depth", "A,DD,1,2,3,100"].join("\n"))).length === 1);
+
+// The newest finished collar is the only honest answer to where the rig is.
+const dateIn = (hdr, row) => F.readCollars([hdr, row].join("\n"))[0].on;
+ok("the finish date wins over the start date",
+   MC.find((c) => c.id === "GC24-03").on === "2024-06-24");
+ok("a row with no finish date falls back to its own start date",
+   dateIn("hole_id,x,y,z,depth,start_date,finish_date", "A,1,2,3,100,2026-03-02,") === "2026-03-02");
+ok("a timestamp is read as the date in it",
+   dateIn("hole_id,x,y,z,depth,date", "A,1,2,3,100,2026-03-02 08:15:00") === "2026-03-02");
+ok("a slashed ISO date is read",
+   dateIn("hole_id,x,y,z,depth,date", "A,1,2,3,100,2026/03/02") === "2026-03-02");
+// Day-first and month-first are indistinguishable in the data, and guessing
+// moves a rig by up to eleven months. Unread means the typed position stands.
+ok("a day-first date is refused rather than guessed",
+   dateIn("hole_id,x,y,z,depth,date", "A,1,2,3,100,02/03/2026") === undefined);
+
+// Both ride on the trace, so nothing downstream re-reads the collar file.
+const mt = F.desurvey(MC, new Map(), 5);
+ok("desurvey carries the planned flag onto the trace",
+   mt.traces.filter((t) => t.planned).length === 2);
+ok("...and the finish date", mt.traces.find((t) => t.id === "GC24-03").on === "2024-06-24");
+ok("a planned hole is not reported as assumed-vertical",
+   !mt.assumedVertical.some((id) => /GC26-P/.test(id)), mt.assumedVertical.join(","));
+
 console.log("\n== geochemistry");
 const soil = `SampleID,East,North,Au_ppb,Cu_ppm
 S-001,692500,5525500,12,45

@@ -466,8 +466,12 @@ async function save(project, zone, file, out, onDone) {
   try {
     // Path is <org>/<project>/<zone>/<dataset>/… — the first segment is the
     // tenant boundary every storage policy checks, so org_id stays leading.
+    // A project with no zones writes `_project` in the zone's place: the depth
+    // is what purgeDatasetFiles counts on, and a folder that reads as a literal
+    // beats one that reads as a missing value.
+    const zid = (zone && zone.id) || null;
     const id = crypto.randomUUID();
-    const base = `${project.org_id}/${project.id}/${zone.id}/${id}`;
+    const base = `${project.org_id}/${project.id}/${zid || "_project"}/${id}`;
     const blocksPath = `${base}/blocks.bin`;
 
     // Uploads of a few megabytes are quick, but a storage endpoint that accepts
@@ -489,15 +493,18 @@ async function save(project, zone, file, out, onDone) {
 
     // Replace rather than accumulate: a zone has one block model, and leaving
     // the previous one would leave decks silently reading stale tonnages.
-    const { data: old } = await db.from("datasets")
-      .select("id").eq("zone_id", zone.id).eq("kind", "blocks");
+    const prev = db.from("datasets").select("id, storage_path")
+      .eq("project_id", project.id).eq("kind", "blocks");
+    const { data: old } = await (zid ? prev.eq("zone_id", zid) : prev.is("zone_id", null));
     if (old?.length) {
+      // The new files are already up, so a failed cleanup must not fail the save.
+      await purgeDatasetFiles(old).catch((e) => console.warn("previous files not removed", e));
       await db.from("datasets").delete().in("id", old.map((d) => d.id));
     }
 
     const { error } = await db.from("datasets").insert({
       project_id: project.id,
-      zone_id: zone.id,
+      zone_id: zid,
       kind: "blocks",
       label: file.name,
       storage_path: blocksPath,
@@ -622,7 +629,7 @@ export function uploadAux(project, zone, kind, onDone, presetFile) {
   // opens with one of them already answered.
   const preset = presetFile ? { key: spec.parts[0].key, file: presetFile } : null;
   modal(`
-    <h2>${esc(spec.label)} — ${esc(zone.name)}</h2>
+    <h2>${esc(spec.label)} — ${esc((zone && zone.name) || project.name)}</h2>
     <p class="sub">${esc(spec.blurb)}</p>
     ${spec.parts.map((pt) => `
       <div class="field">
@@ -645,7 +652,7 @@ export function uploadAux(project, zone, kind, onDone, presetFile) {
       <p class="hintline">Required. Shown on screen in every deck and burned into exports.</p>
     </div>
     <div class="row-actions" style="margin-top:16px">
-      <button class="btn primary" id="auxsave">Save to zone</button>
+      <button class="btn primary" id="auxsave">Save</button>
       <button class="btn" id="auxcancel">Cancel</button>
     </div>`);
 
@@ -702,13 +709,45 @@ async function saveAux(project, zone, kind, spec, onDone, dropped) {
   const btn = $("auxsave");
   btn.disabled = true; btn.textContent = "Saving…";
   try {
-    await putAux(project, zone, kind, chosen, synthetic, note);
+    const res = await putAux(project, zone, kind, chosen, synthetic, note);
     closeModal();
     toast(`${spec.label} saved`);
-    onDone?.();
+    onDone?.(res);
   } catch (e) {
-    btn.disabled = false; btn.textContent = "Save to zone";
+    btn.disabled = false; btn.textContent = "Save";
     fail("Save", e);
+  }
+}
+
+/**
+ * Remove every stored file belonging to these dataset rows. Call it BEFORE the
+ * rows are deleted: once a row is gone nothing records where its files were,
+ * and storage refuses deletes made from SQL, so no cascade can reach them.
+ * Without this, "remove dataset" deleted the row and left the customer's
+ * uploaded originals in the bucket indefinitely.
+ *
+ * Each dataset owns its folder (<org>/<project>/[<zone>/]<dataset>/), so the
+ * folder of storage_path is exactly its files. Anything shallower than three
+ * segments is refused rather than listed: that would be a project root.
+ */
+export async function purgeDatasetFiles(rows) {
+  const dirs = new Set();
+  for (const r of rows || []) {
+    const parts = (r.storage_path || "").split("/").filter(Boolean);
+    if (parts.length >= 4) dirs.add(parts.slice(0, -1).join("/"));
+  }
+  for (const dir of dirs) {
+    for (;;) {
+      const { data: objs, error } = await db.storage.from("artifacts").list(dir, { limit: 100 });
+      if (error) throw error;
+      const files = (objs || []).filter((o) => o.id).map((o) => `${dir}/${o.name}`);
+      if (!files.length) break;
+      const { data: gone, error: e2 } = await db.storage.from("artifacts").remove(files);
+      if (e2) throw e2;
+      // A policy refusal comes back as success with nothing removed. Without
+      // this check the loop would relist the same files forever.
+      if (!gone?.length) throw new Error("you do not have permission to delete these files");
+    }
   }
 }
 
@@ -724,8 +763,12 @@ export async function putAux(project, zone, kind, chosen, synthetic, note) {
     // told about — which is the state this replaces. A file we cannot read is
     // refused here, by name, with what to export instead.
     const derived = await parseAux(kind, chosen);
+    // Null zone means the whole project — the property's own tenure and
+    // topography always, and everything else when the project never named a
+    // zone. `_project` keeps the path the same depth as a zone's.
+    const zid = (zone && zone.id) || null;
     const id = crypto.randomUUID();
-    const base = `${project.org_id}/${project.id}/${zone.id}/${id}`;
+    const base = `${project.org_id}/${project.id}/${zid || "_project"}/${id}`;
     const up = async (path, body, type) => {
       const timeout = new Promise((_, rej) =>
         setTimeout(() => rej(new Error("the storage service did not respond within two minutes")), 120000));
@@ -747,9 +790,18 @@ export async function putAux(project, zone, kind, chosen, synthetic, note) {
     }
 
     // One dataset of each kind per zone — replace, do not accumulate.
-    const { data: old } = await db.from("datasets")
-      .select("id").eq("zone_id", zone.id).eq("kind", kind);
-    if (old?.length) await db.from("datasets").delete().in("id", old.map((d) => d.id));
+    // `stats` comes back too, and only because of the drills case: the row is
+    // about to be deleted, and its hole ids are the only record of which holes
+    // existed before this upload. Read it here or lose it.
+    const prev = db.from("datasets").select("id, storage_path, stats")
+      .eq("project_id", project.id).eq("kind", kind);
+    const { data: old } = await (zid ? prev.eq("zone_id", zid) : prev.is("zone_id", null));
+    const prevHoleIds = old?.find((d) => Array.isArray(d.stats?.hole_ids))
+      ?.stats.hole_ids || null;
+    if (old?.length) {
+      await purgeDatasetFiles(old).catch((e) => console.warn("previous files not removed", e));
+      await db.from("datasets").delete().in("id", old.map((d) => d.id));
+    }
 
     // Derived geometry rides alongside the originals, so the viewer never
     // re-parses a customer's CSV and the original stays available for audit.
@@ -761,7 +813,7 @@ export async function putAux(project, zone, kind, chosen, synthetic, note) {
 
     const { error } = await db.from("datasets").insert({
       project_id: project.id,
-      zone_id: zone.id,
+      zone_id: zid,
       kind,
       label: files.length === 1 ? files[0].name : `${files.length} files`,
       storage_path: derivedPath || files[0].path,
@@ -777,6 +829,12 @@ export async function putAux(project, zone, kind, chosen, synthetic, note) {
     if (error) throw error;
     // No closeModal here on purpose: a routed drop never opened one, and
     // putAux must not assume a UI it did not create.
+    //
+    // What IS returned is what the upload learned, so a caller can act on it
+    // without re-reading the row it just wrote. The drilling panel uses it to
+    // fill a progress report from the file; every other caller ignores it.
+    return { kind, zone_id: zid, stats: { files: files.length, ...(derived?.stats || {}) },
+             prev_hole_ids: prevHoleIds };
   }
 }
 
@@ -1111,16 +1169,52 @@ async function parseAux(kind, chosen) {
     const assays = byPart.assays
       ? readAssays(await textOf(byPart.assays), byPart.assays.name) : null;
     const { traces, assumedVertical } = desurvey(collars, surveys, 5);
+
+    // A proposed hole is drawn and never counted. See plannedStatus in
+    // formats.js for why the metres matter: a collar export carrying both
+    // kinds would otherwise report proposed metres as drilled.
+    const drilled = traces.filter((t) => !t.planned);
+    const planned = traces.filter((t) => t.planned);
+    const metresOf = (ts) => Math.round(ts.reduce((a, t) => a + t.td, 0));
+
+    // The newest hole the rig FINISHED, which is the closest honest answer to
+    // where it is standing — it is on the next hole, which by definition has no
+    // finish date yet, and a pad is tens of metres across. Null when no collar
+    // carries a readable date, and null means the programme's typed position is
+    // left exactly as it is rather than moved to whichever row sorted last.
+    const dated = drilled.filter((t) => t.on);
+    const newest = dated.length
+      ? dated.reduce((a, t) => (t.on > a.on ? t : a)) : null;
+
     return {
       payload: {
         format: "orebody-drills/1", traces,
         assays: assays ? [...assays.byHole.entries()].map(([id, iv]) => ({ id, iv })) : [],
       },
       stats: {
-        holes: traces.length,
-        metres: Math.round(traces.reduce((a, t) => a + t.td, 0)),
+        holes: drilled.length,
+        metres: metresOf(drilled),
         intervals: assays ? [...assays.byHole.values()].reduce((a, v) => a + v.length, 0) : 0,
         assumed_vertical: assumedVertical.length,
+        // Named, not silently dropped. A geologist who exports 62 holes and
+        // reads "45" needs the other 17 accounted for in the same breath, or
+        // the count looks like a parse failure.
+        ...(planned.length
+          ? { planned_holes: planned.length, planned_m: metresOf(planned) } : {}),
+        // What the drilling panel fills a progress report from, so nobody
+        // retypes a number that is already in the file. The hole ids let the
+        // NEXT upload tell which holes are new, which is how the rig moves on a
+        // file that carries no dates. Capped: this is jsonb the console loads
+        // on every project page, and a 5,000-hole property does not belong in
+        // it — above the cap the date is the only signal, which is the same
+        // position a first upload is in.
+        ...(drilled.length && drilled.length <= 2000
+          ? { hole_ids: drilled.map((t) => t.id) } : {}),
+        ...(newest ? { latest: {
+          id: newest.id, on: newest.on,
+          easting: newest.collar[0], northing: newest.collar[1],
+          elev_m: newest.collar[2],
+        } } : {}),
       },
       // Said out loud rather than buried: a hole drawn vertical because no
       // survey came with it is a guess, and it is the reader's job to admit it.
@@ -1128,6 +1222,8 @@ async function parseAux(kind, chosen) {
         parsed: "drills", desurvey: "minimum-curvature", step_m: 5,
         grade_column: assays?.gradeColumn || null,
         assumed_vertical: assumedVertical,
+        planned_excluded: planned.length
+          ? planned.map((t) => t.id).slice(0, 60) : undefined,
       },
     };
   }
