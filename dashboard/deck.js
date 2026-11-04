@@ -11,7 +11,7 @@ import {
 } from "./lib/ui.js";
 import { CONFIG } from "./config.js";
 // Shared with the viewer: one definition of what a slide is.
-import { projectCandidates, toChapter, candidateGlyph, defaultOrder } from "./lib/slides.js";
+import { projectCandidates, toChapter, defaultOrder } from "./lib/slides.js";
 
 // The viewer is /pit/. This said "/index.html", which is the marketing site —
 // Vercel's redirect for a share token matches the bare path "/" and nothing
@@ -20,17 +20,24 @@ import { projectCandidates, toChapter, candidateGlyph, defaultOrder } from "./li
 // The standard renderer — see studio.js. Share links and embed snippets must
 // point at the same product the studio previews.
 const VIEWER = "/williams/";
-let deck = null, chapters = [], project = null, links = [];
+let deck = null, chapters = [], project = null, links = [], LEADS = [];
 let zones = [], datasets = [], candidates = [];
 let isClient = false;
+// The deck the data would build if nobody touched it — `{order, dropped, extra}`
+// from defaultOrder(). Read by the panel's copy and by seedSuggested(), so it is
+// module-scoped rather than local to renderDeck.
+//
+// This declaration was collateral damage when the builder came out: it shared a
+// line with the builder's `order` array, and removing that took `suggestion`
+// with it. A module is implicitly strict, so the assignment in renderDeck threw
+// `ReferenceError: suggestion is not defined` instead of quietly creating a
+// global — and the whole deck page failed to render. `node --check` parses an
+// undeclared assignment happily; only running it in a browser found this.
+let suggestion = { order: [], dropped: 0, extra: 0 };
 
-// The layers a chapter can turn on. Kept in one place so the editor and the
-// viewer cannot drift apart on spelling.
-const LAYERS = [
-  ["blocks", "Block model"], ["drills", "Drill holes"], ["surfaces", "Vein surfaces"],
-  ["site", "Site features"], ["highlights", "Intercept callouts"],
-  ["depth", "Depth grid"], ["plan", "Plan grade map"], ["assetOnly", "Asset only"],
-];
+// The list of layers a chapter can switch on used to live here, for the
+// chapter-edit modal this page no longer has. `studio.js` owns that vocabulary
+// now — one copy, in the screen that actually sets it.
 
 export async function renderDeck(id, view) {
   view.innerHTML = skeleton(6);
@@ -94,8 +101,10 @@ export async function renderDeck(id, view) {
               id="statuschip">${esc(deck.status)}</span>
         ${isClient ? "" : `<button class="btn" id="pub">${deck.status === "published" ? "Unpublish" : "Publish"}</button>`}
         <button class="btn" id="preview">Preview</button>
-        <a class="btn primary" href="#/s/${deck.id}"
-           title="Fly the deck and save the shots you land on">Studio</a>
+        <a class="btn" href="#/s/${deck.id}"
+           title="Fly the deck and save the shots you land on">Edit slides</a>
+        <button class="btn primary" id="present"
+                title="Open the deck full screen to present, draw on it and record a walkthrough">Studio</button>
       </div>
     </div></header>
 
@@ -112,33 +121,40 @@ export async function renderDeck(id, view) {
       <div class="stat"><span class="l">Contained</span><b>${fmtOz(blocks.stats.total.oz)}</b></div>
     </div>` : ""}
 
+    <!-- Audience leads the page. This deck exists to be watched, and the one
+         question its owner opens the page with is whether it was — not how many
+         slides it has. It also sits OUTSIDE the isClient guard, unlike the
+         panels below: a client may read the numbers on their own deck. -->
+    <div class="panel">
+      <h2>Audience</h2>
+      <div id="analytics">${skeleton(3)}</div>
+    </div>
+
     ${isClient ? "" : `
     <div class="panel">
-      <div class="row"><h2 class="grow">Build the deck</h2>
-        <span class="hint">${candidates.length} slides available from your data</span></div>
-      <p class="lead" style="margin:0 0 12px">The suggested order is an argument:
-         the ground, what is under it, what was drilled, what it hit, what it
-         adds up to, and how well it is known. Everything else your data
-         supports is in the tray. Nothing is saved until you press Save order.</p>
-      <div class="row-actions" style="margin:0 0 14px">
-        <button class="btn primary" id="suggest">Use the suggested order
-          (${suggestion.order.length} slide${suggestion.order.length === 1 ? "" : "s"})</button>
-        ${suggestion.dropped ? `<span class="hint">${suggestion.dropped} more
-           would have made it too long for one sitting — they are in the tray.</span>` : ""}
-      </div>
-      <div class="builder">
-        <div class="bcol">
-          <h3>More slides <span class="hint" id="poolcount"></span></h3>
-          <div id="pool" class="droplist"></div>
-        </div>
-        <div class="bcol">
-          <h3>Running order <span class="hint" id="ordercount"></span></h3>
-          <div id="order" class="droplist running"></div>
-          <div class="row-actions" style="margin-top:12px">
-            <button class="btn primary" id="saveorder">Save order</button>
-            <button class="btn" id="addch">Add blank chapter</button>
-          </div>
-        </div>
+      <div class="row"><h2 class="grow">Slides</h2>
+        <span class="hint">${chapters.length} in the deck</span></div>
+      <!-- This used to be a two-column builder: a tray of every candidate the
+           data supports, dragged across into a running order. It was the wrong
+           place to judge a slide. A 64x40 card cannot answer "is the subject in
+           frame", and a tray of nineteen unused slides is a chore rather than a
+           choice. Edit slides flies the real deck at full size, which is what
+           that question actually needs — so the deck page seeds and gets out of
+           the way. -->
+      <p class="lead" style="margin:0 0 14px">${chapters.length > 1
+        ? `Open Edit slides to walk the deck, reframe a shot and cut what does
+           not earn its place — it shows the real thing at full size, which is
+           the only way to judge a slide.`
+        : `Your data supports ${suggestion.order.length} slide${
+             suggestion.order.length === 1 ? "" : "s"}, in an order that runs as
+           an argument: the ground, what is under it, what was drilled, what it
+           hit, what it adds up to. Seed them, then open Edit slides to walk the
+           deck and change anything.`}</p>
+      <div class="row-actions">
+        ${suggestion.order.length ? `<button class="btn ${chapters.length > 1 ? "" : "primary"}" id="suggest">${
+          chapters.length > 1 ? "Add any missing suggested slides" : `Use the suggested order (${
+            suggestion.order.length} slide${suggestion.order.length === 1 ? "" : "s"})`}</button>` : ""}
+        <a class="btn ${chapters.length > 1 ? "primary" : ""}" href="#/s/${deck.id}">Edit slides</a>
       </div>
     </div>`}
 
@@ -153,15 +169,53 @@ export async function renderDeck(id, view) {
     </div>
 
     <div class="panel">
-      <h2>Audience</h2>
-      <div id="analytics">${skeleton(3)}</div>
+      <div class="row"><h2 class="grow">Who is asking</h2>
+        ${isClient ? "" : `<button class="btn sm" id="leadcsv">Export CSV</button>`}
+      </div>
+      <label class="check" style="display:flex;gap:9px;align-items:flex-start;margin:6px 0 14px">
+        <input type="checkbox" id="gateon" ${deck.settings?.gate?.on ? "checked" : ""}
+               ${isClient ? "disabled" : ""}>
+        <span>
+          <b style="font-weight:600">Ask for a name and email before the deck opens</b>
+          <span class="hintline" style="display:block;margin-top:3px">
+            A viewer can still decline — every gated deck carries a “continue
+            without” link, and it opens either way. Anyone you have already sent
+            the link to is asked the next time they open it.
+          </span>
+        </span>
+      </label>
+      <div id="leads">${skeleton(2)}</div>
     </div>`;
 
   wire(view);
-  renderChapters();
   renderShares();
   renderEmbedPanel();
   renderAnalytics();
+  renderLeads();
+
+  // The gate is a deck setting, not a column: it travels in the payload the
+  // viewer already fetches, so turning it on reaches every link at once.
+  if ($("gateon")) $("gateon").onchange = async () => {
+    const on = $("gateon").checked;
+    const settings = Object.assign({}, deck.settings || {}, { gate: { on } });
+    // `.select()` is what makes a refusal visible, and this setting is the one
+    // that must never fail quietly. An update the row policy declines comes back
+    // with NO error and no rows — so this said "the deck will ask for a name and
+    // email", left the box ticked, wrote nothing, and the deck went on opening
+    // ungated: the single outcome the toggle exists to prevent, reported as
+    // success. Same trap as the RLS-silent storage delete in ingest.js.
+    const { data, error } = await db.from("decks")
+      .update({ settings }).eq("id", deck.id).select("id, settings");
+    if (error || !data?.length) {
+      $("gateon").checked = !on;
+      return fail("Save setting", error ||
+        new Error("this deck could not be changed — you may not have permission to edit it"));
+    }
+    // Trust what came back rather than what was sent, so the page agrees with
+    // the database about a setting whose whole job is to be believed.
+    deck.settings = data[0].settings || settings;
+    toast(on ? "The deck will ask for a name and email" : "The deck opens without asking");
+  };
 
   // Saved on blur, like the title, rather than per keystroke.
   if ($("dsub")) $("dsub").onblur = async () => {
@@ -174,12 +228,57 @@ export async function renderDeck(id, view) {
     toast("Subtitle saved");
   };
 
+  if ($("leadcsv")) $("leadcsv").onclick = () => {
+    if (!LEADS.length) return toast("There is nobody to export yet");
+    const name = (deck.title || "deck").toLowerCase().replace(/[^\w]+/g, "-").replace(/^-|-$/g, "");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([leadsCsv()], { type: "text/csv;charset=utf-8" }));
+    a.download = `${name}-leads.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(a.href);
+  };
+
   $("preview").onclick = () => {
     const t = links.find((l) => !l.revoked_at);
     // Preview through a real share token when one exists, so what the author
     // checks is exactly what a recipient gets rather than a privileged view.
-    window.open(t ? `${VIEWER}?t=${encodeURIComponent(t.token)}` : `${VIEWER}?deck=${deck.id}`,
+    // shareUrl(), not a hand-built one. The viewer is a static file with no idea
+    // which Supabase project it belongs to, so a link without `api` cannot open
+    // a shared deck at all — it boots and then throws "this build has no API
+    // configured". Preview was building exactly that link, so the button that
+    // exists to show you what a recipient sees showed an error instead.
+    window.open(t ? shareUrl(t.token, false) : `${VIEWER}?deck=${deck.id}`,
                 "_blank", "noopener");
+  };
+
+  // Studio opens the deck in its own window: presenting means recording the
+  // deck, and a deck recorded inside the console records the console — its
+  // toolbar, its filmstrip and the author's own email address in the corner.
+  // Deliberately NOT noopener: same origin, and the presenter's Exit button
+  // closes the window it was opened from, which a severed opener forbids.
+  $("present").onclick = () => {
+    const t = links.find((l) => !l.revoked_at);
+    // Presenting opens the deck the way a recipient does, so it needs a real
+    // token. Without one the slide editor is where a link gets made.
+    if (!t) { location.hash = `#/s/${deck.id}`; return; }
+    const api = encodeURIComponent(CONFIG.url.replace(/\/$/, "") + "/functions/v1");
+    const url = `${VIEWER}?t=${encodeURIComponent(t.token)}&api=${api}&present=1`;
+    // A WINDOW, not a tab, and sized to the video. Studio records 1920x1080; a
+    // window that already is that size gets captured 1:1 instead of scaled up
+    // from whatever shape the tab happened to be. Chrome reads these as the
+    // OUTER box, so the viewer trims its own chrome height once it can measure
+    // it — the number that matters is the viewport, and only it knows that.
+    // Taller than the video on purpose. Studio records the 16:9 STAGE, and the
+    // presenter bar now parks in the letterbox band below it — on screen for
+    // the operator, outside the recorded frame. At 1920 wide the stage is 1080
+    // tall, so 1180 left about 20px of band once browser chrome took its cut:
+    // not enough to hold the bar, and the bar fell back into shot. 1260 leaves
+    // room for it. A screen too small to grant this is handled at the other
+    // end — the viewer measures the band it actually got.
+    const win = window.open(url, "bedrock-studio",
+      "popup=yes,width=1920,height=1260,left=20,top=20," +
+      "menubar=no,toolbar=no,location=no,status=no");
+    if (!win) window.open(url, "_blank");          // popup blocked: a tab still works
   };
 
   if ($("pub")) $("pub").onclick = async () => {
@@ -207,538 +306,65 @@ export async function renderDeck(id, view) {
     title.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); title.blur(); } };
   }
 
-  if ($("addch")) $("addch").onclick = addChapter;
   if ($("newlink")) $("newlink").onclick = newLink;
-
-  // Seed the running order from what the deck already holds, matching saved
-  // chapters back to candidates by title so re-opening the builder shows the
-  // deck as it stands rather than an empty column beside a full pool.
-  // An entry is either a chapter that already exists — carrying whatever the
-  // studio authored into it — or a candidate that does not exist yet. Matching
-  // by TITLE, which is what this did, broke the instant anybody renamed a
-  // slide: the chapter fell out of the running order and the next save deleted
-  // it as though it had been removed.
-  if (!isClient) {
-    seedOrder();
-    paintBuilder();
-    $("saveorder").onclick = (e) => saveOrder(e.currentTarget);
-    $("suggest").onclick = useSuggested;
+  if (!isClient && $("suggest")) {
+    $("suggest").onclick = (e) => seedSuggested(e.currentTarget);
   }
 }
 
-// --------------------------------------------------------------- builder ---
-// TRACKING.md #10. Two columns and HTML5 drag-and-drop: the pool of what the
-// data supports, and the running order. Deliberately not a modal wizard — the
-// point is to see everything available at once and pick, which is the part a
-// blank "Add chapter" button cannot do.
-//
-// The running order is the source of truth for `ord`; the pool hides whatever
-// is already in it, matched on the candidate's stable id so re-opening the
-// page does not offer duplicates of slides already chosen.
-let order = [];      // entries, in presentation order
-let suggestion = { order: [], dropped: 0, extra: 0 };
-
-// Rebuild the running order from what is actually in the database. Called
-// after every write as well as on load: leaving the pre-save entries in place
-// would keep the newly inserted ones marked as not-yet-existing, and pressing
-// Save order a second time would insert them all again.
-function seedOrder() {
-  order = chapters.map((c) => ({
-    key: "ch:" + c.id, chapterId: c.id, row: c,
-    cand: c.source ? candidates.find((x) => x.id === c.source) || null : null,
-  }));
-}
-
-// What an entry displays as, whichever of the two it is.
-const face = (o) => o.row || o.cand || {};
-
-function cardHtml(o, inOrder) {
-  const c = face(o);
-  // "Authored" is worth surfacing: it is the difference between a slide that
-  // still is whatever the generator proposed and one somebody flew to and set,
-  // and removing the second kind costs work the first does not.
-  const authored = o.row && o.row.camera && Object.keys(o.row.camera).length &&
-                   o.cand && JSON.stringify(o.row.camera) !== JSON.stringify(o.cand.camera);
-  const tid = thumbKey(c), shot = thumbCacheGet(tid);
-  return `<div class="scard" draggable="true" data-cid="${esc(o.key)}">
-    <span class="sglyph${shot ? " has" : ""}" data-thumb="${tid}"
-          ${shot ? `style="background-image:url(${shot})"` : ""}>
-      ${candidateGlyph(c)}</span>
-    <div class="grow">
-      <b>${esc(c.title || "Untitled")}${authored ? ` <i class="tagline">set</i>` : ""}</b>
-      <span class="ssec">${esc(c.section || "")}</span>
-      <span class="sbody">${esc(c.body || "")}</span>
-    </div>
-    <button class="btn sm ${inOrder ? "danger" : ""}" data-toggle="${esc(o.key)}"
-      title="${inOrder ? "Remove from the deck" : "Add to the deck"}">${inOrder ? "Remove" : "Add"}</button>
-  </div>`;
-}
-
-// Candidates not already represented in the running order, as entries.
-function poolEntries() {
-  const used = new Set(order.map((o) => o.cand?.id).filter(Boolean));
-  return candidates.filter((c) => !used.has(c.id))
-    .map((c) => ({ key: "cd:" + c.id, chapterId: null, row: null, cand: c }));
-}
-
-/* ---- slide thumbnails ----------------------------------------------------
-   A real frame of each slide rather than a drawing of what is switched on.
-   Choosing between nineteen candidates is a question about the SHOT — is the
-   subject in frame, is it too far out, is the overlay doing anything — and a
-   schematic of "this one has geochemistry" cannot answer it.
-
-   Rendered by one hidden viewer working a queue, so the pass never competes
-   with the preview the author is looking at, and one slide is in flight at a
-   time: several cameras and several layer sets fighting over one scene produce
-   nothing useful.
-
-   Cached per browser under a key made from the camera and the layers, so a
-   slide is shot once and re-shot the moment its framing changes. Not stored on
-   the deck: this is a convenience for whoever is building it, not a record of
-   anything, and a stale one costs a re-render rather than a wrong number. */
-const THUMBS = new Map();          // key -> dataURL, this page load
-let thumbFrame = null, thumbReady = false, thumbQueue = [], thumbBusy = false;
-
-const thumbKey = (c) => {
-  const src = JSON.stringify([c.camera || {}, c.layers || {}]);
-  let h = 0;
-  for (let i = 0; i < src.length; i++) { h = ((h << 5) - h + src.charCodeAt(i)) | 0; }
-  return "t" + (h >>> 0).toString(36);
-};
-
-function thumbCacheGet(k) {
-  if (THUMBS.has(k)) return THUMBS.get(k);
-  try {
-    const v = sessionStorage.getItem("bedrock.thumb." + k);
-    if (v) { THUMBS.set(k, v); return v; }
-  } catch { /* private window, or storage off: the cache is optional */ }
-  return null;
-}
-function thumbCacheSet(k, url) {
-  THUMBS.set(k, url);
-  // Quota is small and a thumbnail is worth less than whatever else is in
-  // there, so a full store is not an error — it just means no cache.
-  try { sessionStorage.setItem("bedrock.thumb." + k, url); } catch { /* full */ }
-}
-
-function startThumbs() {
-  const t = links.find((l) => !l.revoked_at);
-  if (!t || thumbFrame) return;
-  const api = encodeURIComponent(CONFIG.url.replace(/\/$/, "") + "/functions/v1");
-  thumbFrame = document.createElement("iframe");
-  // Off-screen rather than display:none — a hidden iframe gets no WebGL
-  // context in some browsers, and a viewer with no context renders nothing to
-  // capture. It still has to be a real, laid-out box.
-  thumbFrame.setAttribute("aria-hidden", "true");
-  thumbFrame.tabIndex = -1;
-  thumbFrame.style.cssText =
-    "position:fixed;left:-9999px;top:0;width:640px;height:360px;border:0;opacity:0;pointer-events:none";
-  thumbFrame.src = `${VIEWER}?t=${encodeURIComponent(t.token)}&api=${api}&author=1&frame=landscape`;
-  document.body.appendChild(thumbFrame);
-
-  addEventListener("message", (e) => {
-    const d = e.data;
-    if (!d || d.source !== "bedrock-viewer") return;
-    if (e.source !== thumbFrame.contentWindow) return;     // the studio has its own
-    if (d.type === "hello") {
-      thumbFrame.contentWindow.postMessage(
-        { source: "bedrock-console", type: "hello" }, location.origin);
-    } else if (d.type === "ready") {
-      thumbReady = true; pumpThumbs();
-    } else if (d.type === "thumb") {
-      if (d.url) {
-        thumbCacheSet(d.id, d.url);
-        // Paint straight into the card rather than re-rendering the builder:
-        // a full repaint mid-queue would throw away a drag in progress.
-        document.querySelectorAll(`[data-thumb="${d.id}"]`).forEach((el) => {
-          el.style.backgroundImage = `url(${d.url})`;
-          el.classList.add("has");
-        });
-      }
-      // Only the job actually in flight releases the queue. A late answer from
-      // one already abandoned is used if it is good, but it does not advance
-      // anything a second time.
-      if (thumbInFlight === d.id) { thumbInFlight = null; thumbBusy = false; pumpThumbs(); }
-    }
-  });
-}
-
-let thumbInFlight = null;
-function pumpThumbs() {
-  if (!thumbReady || thumbBusy) return;
-  const job = thumbQueue.shift();
-  if (!job) return;
-  if (thumbCacheGet(job.id)) { pumpThumbs(); return; }
-  thumbBusy = true;
-  thumbInFlight = job.id;
-  thumbFrame.contentWindow.postMessage(
-    { source: "bedrock-console", type: "thumb", id: job.id,
-      camera: job.camera, layers: job.layers }, location.origin);
-  /* A viewer that never answers must not stall the queue — but the watchdog has
-     to know WHICH job it is giving up on. Firing blind, it released a slide that
-     was still rendering, started the next one on top of it, and left two
-     cameras fighting over one scene: answers came back out of order and the
-     queue reported itself finished twice. A slow first frame is normal, so the
-     wait is generous; only a genuinely dead job is abandoned. */
-  const mine = job.id;
-  setTimeout(() => {
-    if (thumbBusy && thumbInFlight === mine) {
-      thumbInFlight = null; thumbBusy = false; pumpThumbs();
-    }
-  }, 45000);
-}
-
-function queueThumbs(entries) {
-  for (const o of entries) {
-    const c = face(o), id = thumbKey(c);
-    if (thumbCacheGet(id) || thumbQueue.some((j) => j.id === id)) continue;
-    thumbQueue.push({ id, camera: c.camera || {}, layers: c.layers || {} });
-  }
-  startThumbs();
-  pumpThumbs();
-}
-
-function paintBuilder() {
-  const pool = poolEntries();
-  $("pool").innerHTML = pool.length
-    ? pool.map((o) => cardHtml(o, false)).join("")
-    : `<div class="empty sm"><p>Every available slide is in the deck.</p></div>`;
-  $("order").innerHTML = order.length
-    ? order.map((o) => cardHtml(o, true)).join("")
-    : `<div class="empty sm"><p>Nothing in the running order yet.</p></div>`;
-  $("poolcount").textContent = `${pool.length}`;
-  $("ordercount").textContent = `${order.length}`;
-  const s = $("suggest");
-  if (s) s.disabled = !suggestion.order.length;
-  wireDrag();
-  // The running order first: those are the slides somebody has already chosen,
-  // and they are the ones being judged.
-  queueThumbs(order.concat(pool));
-}
-
-// Fill the running order with the suggested deck. Additive: anything already
-// in the order stays where it is, so pressing this on a deck someone has
-// worked on tops it up rather than throwing their work away.
-function useSuggested() {
-  const have = new Set(order.map((o) => o.cand?.id).filter(Boolean));
-  const add = suggestion.order.filter((c) => !have.has(c.id))
-    .map((c) => ({ key: "cd:" + c.id, chapterId: null, row: null, cand: c }));
-  if (!add.length) { toast("The suggested slides are already in the deck"); return; }
-  // Insert each where the suggestion puts it relative to what is already here,
-  // rather than appending a block to the end.
-  const rank = new Map(suggestion.order.map((c, i) => [c.id, i]));
-  order = [...order, ...add].sort((a, b) => {
-    const A = rank.has(a.cand?.id) ? rank.get(a.cand.id) : Infinity;
-    const B = rank.has(b.cand?.id) ? rank.get(b.cand.id) : Infinity;
-    return A - B;
-  });
-  paintBuilder();
-  toast(`Added ${add.length} slide${add.length === 1 ? "" : "s"} — press Save order to keep them`);
-}
-
-function wireDrag() {
-  let dragId = null;
-  const entry = (key) => order.find((o) => o.key === key) ||
-                         poolEntries().find((o) => o.key === key);
-  document.querySelectorAll(".scard").forEach((el) => {
-    el.ondragstart = (e) => {
-      dragId = el.dataset.cid;
-      e.dataTransfer.effectAllowed = "move";
-      // Firefox refuses to start a drag without payload.
-      e.dataTransfer.setData("text/plain", dragId);
-      el.classList.add("dragging");
-    };
-    el.ondragend = () => { dragId = null; el.classList.remove("dragging"); };
-  });
-  document.querySelectorAll(".droplist").forEach((list) => {
-    list.ondragover = (e) => {
-      e.preventDefault();
-      list.classList.add("over");
-      // Insert relative to whichever card the pointer is over, so dropping is
-      // positional rather than always appending.
-      const after = [...list.querySelectorAll(".scard:not(.dragging)")]
-        .find((el) => e.clientY < el.getBoundingClientRect().top + el.offsetHeight / 2);
-      list.dataset.beforeId = after ? after.dataset.cid : "";
-    };
-    list.ondragleave = () => list.classList.remove("over");
-    list.ondrop = (e) => {
-      e.preventDefault(); list.classList.remove("over");
-      const id = dragId || e.dataTransfer.getData("text/plain");
-      if (!id) return;
-      const o = entry(id);
-      if (!o) return;
-      order = order.filter((x) => x.key !== id);
-      if (list.id === "order") {
-        const before = list.dataset.beforeId;
-        const at = before ? order.findIndex((x) => x.key === before) : -1;
-        if (at >= 0) order.splice(at, 0, o); else order.push(o);
-      }
-      paintBuilder();
-    };
-  });
-  document.querySelectorAll("[data-toggle]").forEach((b) => {
-    b.onclick = () => {
-      const id = b.dataset.toggle;
-      if (order.some((x) => x.key === id)) order = order.filter((x) => x.key !== id);
-      else { const o = poolEntries().find((x) => x.key === id); if (o) order.push(o); }
-      paintBuilder();
-    };
-  });
-}
-
-async function saveOrder(btn) {
-  btn.disabled = true; btn.textContent = "Saving…";
-  try {
-    // Reconcile. This used to delete every chapter and re-insert from the
-    // candidate template, which was defensible when a chapter was nothing but
-    // a copy of its candidate — and became data loss the moment the studio
-    // existed. A camera someone flew to, a title they rewrote, the body they
-    // corrected: all of it lived only in the chapter row, and Save order threw
-    // it away and put the generator's defaults back.
-    const keep = new Set(order.filter((o) => o.chapterId).map((o) => o.chapterId));
-    const gone = chapters.filter((c) => !keep.has(c.id)).map((c) => c.id);
-
-    // Deletes first, so their ords are free before anything moves into them.
-    if (gone.length) {
-      const { error } = await db.from("chapters").delete().in("id", gone);
-      if (error) throw error;
-    }
-
-    // Kept chapters, renumbered in ONE upsert. `unique (deck_id, ord)` is
-    // deferrable initially deferred, so a single statement can shuffle them
-    // past each other; renumbering one row at a time would collide the moment
-    // a slide moved earlier in the deck.
-    const moves = [];
-    order.forEach((o, i) => {
-      if (!o.chapterId) return;
-      if (o.row.ord !== i) moves.push({ ...o.row, ord: i });
-    });
-    if (moves.length) {
-      const { error } = await db.from("chapters").upsert(moves);
-      if (error) throw error;
-    }
-
-    const fresh = [];
-    order.forEach((o, i) => {
-      if (o.chapterId) return;
-      fresh.push({ deck_id: deck.id, ...toChapter(o.cand, i) });
-    });
-    if (fresh.length) {
-      const { error } = await db.from("chapters").insert(fresh);
-      if (error) throw error;
-    }
-
-    await reloadChapters();
-    toast(`Saved ${order.length} chapter${order.length === 1 ? "" : "s"}` +
-          (gone.length ? ` · ${gone.length} removed` : ""));
-  } catch (e) { fail("Save order", e); }
-  btn.disabled = false; btn.textContent = "Save order";
-}
-
-// -------------------------------------------------------------- chapters ---
-function renderChapters() {
-  // The builder replaced the flat chapter list, so #chlist is gone on this
-  // page. Without this guard the null deref threw partway through render and
-  // took every later line with it — including the builder's own wiring — and
-  // route()'s catch turned a broken page into a toast nobody reads.
-  if (!$("chlist")) return;
-  const el = $("chlist");
-  if (!chapters.length) {
-    el.innerHTML = `<div class="empty"><h3>No chapters</h3>
-      <p>A chapter is one camera position and one set of layers. Together they
-         are the walkthrough.</p></div>`;
+/* Seed the deck with the slides the data supports, then hand over to Edit
+ * slides.
+ *
+ * INSERT ONLY — never delete, never renumber. The builder this replaces had a
+ * reconcile that could remove chapters, and an earlier version of it deleted
+ * every chapter and re-inserted from the candidate template: a camera someone
+ * had flown to, a title they rewrote, the body they corrected, all of it lived
+ * in the chapter row and all of it was thrown away. Seeding has no business
+ * touching a slide anybody has already worked on.
+ *
+ * Already-present candidates are skipped on `source`, which is the candidate id
+ * `toChapter` writes into the row. Matching on TITLE — which the old builder
+ * did — broke the moment somebody renamed a slide. */
+async function seedSuggested(btn) {
+  const have = new Set(chapters.map((c) => c.source).filter(Boolean));
+  const add = suggestion.order.filter((c) => !have.has(c.id));
+  if (!add.length) {
+    toast("Every suggested slide is already in the deck");
+    location.hash = `#/s/${deck.id}`;
     return;
   }
-  el.innerHTML = `<div class="tablewrap"><table>
-    <thead><tr><th class="n">#</th><th>Section</th><th>Title</th>
-      <th class="n">Dwell</th><th>Layers</th><th></th></tr></thead>
-    <tbody>${chapters.map((c, i) => `<tr>
-      <td class="n mono">${i + 1}</td>
-      <td>${esc(c.section || "—")}</td>
-      <td><b>${esc(c.title || "Untitled")}</b></td>
-      <td class="n mono">${Math.round((c.dwell_ms || 0) / 1000)}s</td>
-      <td>${Object.entries(c.layers || {}).filter(([, v]) => v)
-            .map(([k]) => `<span class="chip">${esc(k)}</span>`).join(" ") || "—"}</td>
-      <td class="n"><div class="row-actions" style="justify-content:flex-end">
-        <button class="btn sm" data-up="${c.id}" ${i === 0 ? "disabled" : ""}>↑</button>
-        <button class="btn sm" data-down="${c.id}" ${i === chapters.length - 1 ? "disabled" : ""}>↓</button>
-        <button class="btn sm" data-edit="${c.id}">Edit</button>
-        <button class="btn sm danger" data-rm="${c.id}">Delete</button>
-      </div></td>
-    </tr>`).join("")}</tbody></table></div>`;
-
-  el.querySelectorAll("[data-up]").forEach((b) =>
-    b.onclick = () => move(b.dataset.up, -1));
-  el.querySelectorAll("[data-down]").forEach((b) =>
-    b.onclick = () => move(b.dataset.down, 1));
-  el.querySelectorAll("[data-edit]").forEach((b) =>
-    b.onclick = () => editChapter(chapters.find((c) => c.id === b.dataset.edit)));
-  el.querySelectorAll("[data-rm]").forEach((b) =>
-    b.onclick = async () => {
-      if (!confirm("Delete this chapter?")) return;
-      const { error } = await db.from("chapters").delete().eq("id", b.dataset.rm);
-      if (error) return fail("Delete", error);
-      chapters = chapters.filter((c) => c.id !== b.dataset.rm);
-      await renumber();
-      renderChapters();
-      toast("Chapter deleted");
-    });
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = "Adding…";
+  try {
+    // Appended after what is already there, so seeding a deck somebody has
+    // started adds to it rather than reordering their work.
+    const rows = add.map((c, i) => ({ deck_id: deck.id, ...toChapter(c, chapters.length + i) }));
+    const { error } = await db.from("chapters").insert(rows);
+    if (error) throw error;
+    toast(`Added ${add.length} slide${add.length === 1 ? "" : "s"} — open each one to set its shot`);
+    location.hash = `#/s/${deck.id}`;
+  } catch (e) {
+    btn.disabled = false; btn.textContent = label;
+    fail("Add slides", e);
+  }
 }
 
-/** Reordering swaps two `ord` values. The unique constraint on (deck_id, ord)
- *  is DEFERRABLE precisely so both sides of a swap can be written before it is
- *  checked — without that, every reorder would need a temporary hole. */
-async function move(id, dir) {
-  const i = chapters.findIndex((c) => c.id === id);
-  const j = i + dir;
-  if (i < 0 || j < 0 || j >= chapters.length) return;
-  const a = chapters[i], b = chapters[j];
-  [chapters[i], chapters[j]] = [b, a];
-  const { error } = await db.from("chapters").upsert([
-    { id: a.id, deck_id: deck.id, ord: j },
-    { id: b.id, deck_id: deck.id, ord: i },
-  ]);
-  if (error) { await reloadChapters(); return fail("Reorder", error); }
-  a.ord = j; b.ord = i;
-  renderChapters();
-}
-
-async function renumber() {
-  const rows = chapters.map((c, i) => ({ id: c.id, deck_id: deck.id, ord: i }));
-  if (!rows.length) return;
-  const { error } = await db.from("chapters").upsert(rows);
-  if (error) fail("Renumber", error);
-  else chapters.forEach((c, i) => { c.ord = i; });
-}
-
-async function reloadChapters() {
-  const { data } = await db.from("chapters").select("*").eq("deck_id", deck.id).order("ord");
-  chapters = data || [];
-  seedOrder();
-  renderChapters();
-  paintBuilder();
-}
-
-async function addChapter() {
-  const ord = chapters.length;
-  const { data, error } = await db.from("chapters").insert({
-    deck_id: deck.id, ord, kind: "scene",
-    section: chapters[ord - 1]?.section || "Overview",
-    title: "New chapter", body: "",
-    camera: chapters[ord - 1]?.camera || {},
-    layers: chapters[ord - 1]?.layers || { blocks: true },
-  }).select("*").single();
-  if (error) return fail("Add chapter", error);
-  chapters.push(data);
-  renderChapters();
-  editChapter(data);
-}
-
-function editChapter(c) {
-  if (!c) return;
-  const cam = c.camera || {};
-  modal(`
-    <h2>Chapter ${c.ord + 1}</h2>
-    <p class="sub">What the camera looks at, and what is switched on when it
-       gets there.</p>
-
-    <div class="grid two">
-      <div class="field"><label for="csec">Section</label>
-        <input type="text" id="csec" value="${esc(c.section || "")}"
-               placeholder="The deposit"></div>
-      <div class="field"><label for="cdwell">Dwell on autoplay (seconds)</label>
-        <input type="number" id="cdwell" min="1" max="120"
-               value="${Math.round((c.dwell_ms || 9000) / 1000)}"></div>
-    </div>
-    <div class="field"><label for="ctitle">Title</label>
-      <input type="text" id="ctitle" value="${esc(c.title || "")}"></div>
-    <div class="field"><label for="cbody">Narration</label>
-      <textarea id="cbody" rows="3"
-        placeholder="Read aloud when narration is on, and shown as the caption.">${esc(c.body || "")}</textarea></div>
-
-    <h2 style="margin-top:18px">Layers</h2>
-    <div class="grid two">${LAYERS.map(([k, label]) => `
-      <div class="checkline">
-        <input type="checkbox" id="ly_${k}" ${c.layers?.[k] ? "checked" : ""}>
-        <label for="ly_${k}" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;font-family:var(--sans);color:var(--ink-2)">${label}</label>
-      </div>`).join("")}</div>
-
-    <h2 style="margin-top:18px">Camera</h2>
-    ${cam.mode === "free" ? `
-      <p class="hintline">This slide uses an <b>absolute</b> camera — a fixed
-         position rather than an angle on the deposit. Those are set in the
-         <a href="#/s/${deck.id}">studio</a>, by flying there. Editing it here
-         would mean typing a latitude.</p>
-      <div class="grid three">
-        <div class="stat"><span class="l">Position</span>
-          <b class="mono">${esc(String(cam.lat))}, ${esc(String(cam.lon))}</b></div>
-        <div class="stat"><span class="l">Height</span><b>${esc(String(cam.height))} m</b></div>
-        <div class="stat"><span class="l">Look</span>
-          <b>${esc(String(cam.heading))}° / ${esc(String(cam.pitch))}°</b></div>
-      </div>` : `
-      <p class="hintline">Heading, pitch and range — an angle on the deposit
-         centre, which is the shape the viewer replays. Rather than typing them,
-         fly to the shot in the <a href="#/s/${deck.id}">studio</a> and press
-         <b>Set view</b>.</p>
-      <div class="grid three">
-        <div class="field"><label for="chd">Heading (°)</label>
-          <input type="number" id="chd" step="any" value="${cam.h ?? 30}"></div>
-        <div class="field"><label for="cpt">Pitch (°)</label>
-          <input type="number" id="cpt" step="any" value="${cam.p ?? -26}"></div>
-        <div class="field"><label for="crg">Range (m)</label>
-          <input type="number" id="crg" step="any" value="${cam.r ?? 3000}"></div>
-      </div>
-      <div class="field"><label for="cpaste">Paste a captured camera</label>
-        <input type="text" id="cpaste" placeholder='{"h":38,"p":-24,"r":1900}'></div>`}
-
-    <div class="row-actions" style="margin-top:18px">
-      <button class="btn primary" id="csave">Save chapter</button>
-      <button class="btn" id="ccancel">Cancel</button>
-    </div>`);
-
-  $("ccancel").onclick = closeModal;
-  if ($("cpaste")) $("cpaste").oninput = () => {
-    try {
-      const v = JSON.parse($("cpaste").value);
-      for (const [k, id] of [["h", "chd"], ["p", "cpt"], ["r", "crg"]]) {
-        if (v[k] !== undefined) $(id).value = v[k];
-      }
-      toast("Camera pasted");
-    } catch { /* still typing */ }
-  };
-  $("csave").onclick = async () => {
-    const layers = {};
-    for (const [k] of LAYERS) if ($(`ly_${k}`).checked) layers[k] = true;
-    const numOrNull = (id) => {
-      const v = $(id).value.trim();
-      return v === "" ? undefined : Number(v);
-    };
-    // A free camera has no editable fields here, so keep the one that is
-    // stored rather than replacing it with an empty object. Opening a slide's
-    // settings to change its dwell must not silently throw away its camera.
-    let camera = c.camera || {};
-    if (camera.mode !== "free") {
-      camera = {};
-      for (const [k, id] of [["h", "chd"], ["p", "cpt"], ["r", "crg"]]) {
-        const v = numOrNull(id);
-        if (v !== undefined && Number.isFinite(v)) camera[k] = v;
-      }
-    }
-    const patch = {
-      section: $("csec").value.trim() || null,
-      title: $("ctitle").value.trim() || null,
-      body: $("cbody").value.trim() || null,
-      dwell_ms: Math.min(120, Math.max(1, Number($("cdwell").value) || 9)) * 1000,
-      layers, camera,
-    };
-    const { error } = await db.from("chapters").update(patch).eq("id", c.id);
-    if (error) return fail("Save chapter", error);
-    Object.assign(c, patch);
-    closeModal();
-    renderChapters();
-    toast("Chapter saved");
-  };
-}
+/* The two-column builder and the flat chapter list that preceded it are both
+ * gone (2026-09-17).
+ *
+ * The builder asked you to judge a slide from a 64x40 card in a tray of
+ * nineteen, most of which were never going to be used. Edit slides flies the
+ * real deck at full size, which is the only way that question can honestly be
+ * answered — so the deck page now seeds and links, and everything that served
+ * the tray went with it: the candidate pool, drag-and-drop, the running-order
+ * reconcile, the hidden-viewer thumbnail engine and its cache, and the
+ * click-to-preview modal built the same day.
+ *
+ * The chapters cluster below it (renderChapters/move/renumber/addChapter/
+ * editChapter) had been unreachable for longer: it painted into #chlist, which
+ * the builder had already removed from this page. It guarded with an early
+ * return, so it failed silently rather than loudly, which is why it survived.
+ */
 
 // ---------------------------------------------------------------- sharing --
 function shareUrl(token, embed) {
@@ -1085,6 +711,52 @@ function fillBuckets(rows, key, bucket, count) {
   return out;
 }
 
+/* Everyone who filled in a gated deck's form. Read straight from the table —
+   RLS already limits it to this org, so there is no rollup to maintain and no
+   second definition of who counts. */
+async function renderLeads() {
+  const el = $("leads");
+  if (!el) return;
+  const { data, error } = await db.from("deck_leads")
+    .select("name, email, company, referrer_host, created_at")
+    .eq("deck_id", deck.id)
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error) { el.innerHTML = `<p class="hintline">Could not read the list.</p>`; return; }
+  LEADS = data || [];
+  if (!LEADS.length) {
+    el.innerHTML = `<div class="empty"><h3>Nobody has signed in yet</h3>
+      <p>${deck.settings?.gate?.on
+        ? `The deck is asking. Names appear here as people open it.`
+        : `Turn the switch above on and the deck will ask for a name and an
+           email before it opens. Nobody is asked until you do.`}</p></div>`;
+    return;
+  }
+  const when = (t) => new Date(t).toLocaleDateString([], { month: "short", day: "numeric" });
+  el.innerHTML = `<div class="tablewrap"><table>
+    <thead><tr><th>Name</th><th>Email</th><th>Company</th><th>Came from</th><th>When</th></tr></thead>
+    <tbody>${LEADS.map((l) => `<tr>
+      <td>${esc(l.name)}</td>
+      <td><a href="mailto:${esc(l.email)}">${esc(l.email)}</a></td>
+      <td>${esc(l.company || "—")}</td>
+      <td>${esc(l.referrer_host || "—")}</td>
+      <td class="mono">${when(l.created_at)}</td></tr>`).join("")}</tbody></table></div>
+    <p class="hintline" style="margin-top:10px">${LEADS.length} ${LEADS.length === 1 ? "person" : "people"} ·
+      kept for 24 months, then deleted · they were told this goes to you.</p>`;
+}
+
+/* CSV, not XLSX: it opens in every CRM and every spreadsheet, and a lead list
+   is a column of addresses rather than a formatted report. Quotes doubled and
+   every field quoted, so a company name with a comma in it cannot shift the
+   columns. */
+function leadsCsv() {
+  const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const head = ["Name", "Email", "Company", "Came from", "When"];
+  const rows = LEADS.map((l) => [l.name, l.email, l.company || "", l.referrer_host || "",
+                                 new Date(l.created_at).toISOString()]);
+  return [head, ...rows].map((r) => r.map(cell).join(",")).join("\r\n");
+}
+
 async function renderAnalytics() {
   const el = $("analytics");
   const R = RANGES[range];
@@ -1179,8 +851,9 @@ async function renderAnalytics() {
     </div>` : ""}
 
     <p class="hintline" style="margin-top:16px">No IP addresses, cookies or
-      cross-site identifiers are collected — a country is derived at the edge and
-      the address discarded. These are engagement figures for your own use, not
+      cross-site identifiers are collected, browsers that send Do Not Track or
+      Global Privacy Control are not counted, and sessions are deleted after 13
+      months. These are engagement figures for your own use, not
       audited numbers: anyone holding a share link could inflate them.</p>`;
   wireRange();
 }

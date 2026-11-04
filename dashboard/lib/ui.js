@@ -27,7 +27,23 @@ export const db = CONFIGURED && createClient
 
 /** Mutable app state. An object rather than exported `let`s so consumers always
  *  read the current value instead of a stale copy of the binding. */
-export const state = { session: null, orgs: [] };
+// `orgId` is which organisation the console is currently showing. It used to be
+// implicit — every screen read orgs[0] — and since orgs are ordered by name that
+// silently meant the alphabetically first company. Three orgs in, that put "Elk
+// Gold Mining Corp." over a list of everyone's projects, and pointed People,
+// invitations and New project at the wrong company.
+// `recovery` latches when GoTrue reports PASSWORD_RECOVERY. A reset link signs
+// you in, so without the latch the console would see a valid session and render
+// Projects — the set-password screen would flash past and the reset would
+// silently never happen.
+// `authError` carries a failure that happened at the identity provider, not
+// here — declining Google's consent screen sends the browser back with an
+// error in the URL fragment and no session. Without somewhere to put it the
+// console just renders the sign-in form again and the person is left staring
+// at the screen they thought they had just left.
+export const state = {
+  session: null, orgs: [], orgId: null, recovery: false, authError: null,
+};
 
 export const $ = (id) => document.getElementById(id);
 

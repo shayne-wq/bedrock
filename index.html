@@ -6,14 +6,20 @@
 <title>Bedrock — Subsurface Visualization Suite</title>
 <meta name="description" content="Bedrock turns asset estimates, project economics and development milestones into interactive 3D visuals investors can explore — every figure traced back to the model it came from.">
 <meta property="og:title" content="Bedrock — Subsurface Visualization Suite">
-<meta property="og:description" content="Your asset, decision-ready. Interactive 3D built from the block model, not redrawn for effect.">
+<meta property="og:description" content="Put Investors on your Ground. Your drilling, geophysics and claims on real terrain — every figure traced back to the data it came from.">
 <meta property="og:type" content="website">
-<meta property="og:image" content="img/hero.jpg">
+<meta property="og:url" content="https://getbedrock.ca/">
+<!-- Absolute: link unfurlers do not resolve a relative og:image. Omega Pacific's
+     Williams deck, which is public on this page already. Never a demo dataset. -->
+<meta property="og:image" content="https://getbedrock.ca/img/og-williams.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Omega Pacific's Williams property in the Toodoggone district of British Columbia, with the neighbouring claim holders named on their own ground.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://getbedrock.ca/img/og-williams.jpg">
 <meta name="theme-color" content="#ffffff">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 90'><rect width='120' height='90' fill='%23191a15'/><rect x='0' y='6' width='96' height='16' rx='2' fill='%2333b6d8'/><rect x='0' y='28' width='120' height='16' rx='2' fill='%23edf0e4'/><rect x='16' y='50' width='88' height='16' rx='2' fill='%237d8172'/><rect x='0' y='72' width='104' height='16' rx='2' fill='%23edf0e4'/></svg>">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&family=Archivo+Black&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site-fonts.css">
 <style>
 /* The design's own tokens, carried over unchanged. */
 :root {
@@ -762,20 +768,20 @@ if (navigator.serviceWorker) {
     <!-- The still hero, for when scripts do not run. When WebGL merely
          fails the script builds the same image instead: as markup it costs
          every visitor a fetch for a picture display:none then hides. -->
-    <noscript><img class="sh-fallback" src="img/hero.jpg" alt="A mineral property in three dimensions on real terrain, with the surrounding claim holders named on their own ground." width="1600" height="900"></noscript>
+    <noscript><img class="sh-fallback" src="img/hero-williams.jpg" alt="A mineral property in three dimensions on real terrain, with the surrounding claim holders named on their own ground." width="1600" height="900"></noscript>
 
     <div class="sh-titleblock sh-fade on">
       <h1 class="sh-title">
         <svg class="sh-mark" viewBox="0 0 120 90" aria-hidden="true"><rect x="0" y="0" width="96" height="18" rx="2" fill="#00728f"/><rect x="0" y="24" width="120" height="18" rx="2" fill="#16181a"/><rect x="16" y="48" width="88" height="18" rx="2" fill="#9a9d95"/><rect x="0" y="72" width="104" height="18" rx="2" fill="#16181a"/></svg>
         <span>Bedrock</span>
       </h1>
-      <p class="sh-tagline">Your asset, decision-ready.</p>
+      <p class="sh-tagline">Put Investors on your Ground.</p>
       <div class="row">
         <button type="button" class="btn btn-primary" data-demo-open>BOOK A DEMO</button>
         <!-- A live deck, not a video. The claim on this page is that the
              thing is interactive, and the cheapest way to prove it is to
              let them open one. -->
-        <a class="btn btn-ghost" href="/williams/?embed&amp;autoplay=0">SEE A SAMPLE PROJECT</a>
+        <a class="btn btn-ghost" href="/williams/?embed&amp;autoplay=0&amp;t=MnAJ8COR1mBFRt6Bgxm9xgpRMnw4l3rp&amp;api=https%3A%2F%2Fczuaqwtngduvlisxonkh.supabase.co%2Ffunctions%2Fv1">SEE A SAMPLE PROJECT</a>
       </div>
     </div>
 
@@ -945,6 +951,74 @@ if (navigator.serviceWorker) {
     </div>
   </section>
 
+  <!-- Authoring. Every other figure on this page is the deck as a READER meets
+       it; this is the only one that shows the tool, because the objection it
+       answers is "who builds this, and how long does it take". Two clips: the
+       shot being set against the words that go with it, then the same slide
+       framed again for a phone. Both are screen recordings of the real console
+       on the real Williams deck — nothing staged. -->
+  <section class="split is-video-lead" id="authoring">
+    <div class="split-grid">
+      <div class="split-copy">
+        <span class="kicker">AUTHORING</span>
+        <h2 class="split-title">Set the shot. Write the words. Move on.</h2>
+        <p class="note">Fly the deck to the view you want and save it to the slide. The
+          caption, the figures beneath it and the camera are one screen, so the words and
+          the thing they describe are never edited apart.</p>
+        <ul class="specs">
+          <li><span>The view you are looking at</span><b>SET VIEW</b></li>
+          <li><span>Caption and figures, beside the shot</span><b>ONE SCREEN</b></li>
+          <li><span>Every slide, its own framing</span><b>16:9 + 9:16</b></li>
+        </ul>
+      </div>
+      <figure class="split-figure is-video">
+        <div class="fig-media">
+          <video id="set-the-shot" poster="video/set-the-shot.jpg" width="1280" height="720"
+                 autoplay muted loop playsinline preload="none"
+                 aria-label="The slide editor on the Williams deck. The GIC and T-Bill slide is open: its title, caption and three figure rows sit below the live 3D view, and Set view saves the camera the deck is currently showing.">
+            <source src="video/set-the-shot.webm" type="video/webm">
+            <source src="video/set-the-shot.mp4" type="video/mp4">
+            <img src="video/set-the-shot.jpg" alt="A slide being edited: the 3D view above, its title, caption and figures below." width="1280" height="720">
+          </video>
+        </div>
+        <figcaption class="fig-tag">FIG. 03 — SETTING A SLIDE</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- The phone framing gets its own block rather than a bullet in the one
+       above, because it is the objection nobody raises until the deck is
+       already open on a phone in a taxi: a shot composed for 16:9 arrives
+       cropped. The clip is the answer — the same slide, framed twice. -->
+  <section class="split is-film" id="mobile-framing">
+    <div class="split-grid">
+      <figure class="split-figure is-video">
+        <div class="fig-media">
+          <video id="mobile-framing-film" poster="video/mobile-framing.jpg" width="1280" height="720"
+                 autoplay muted loop playsinline preload="none"
+                 aria-label="The same Williams slide switched from desktop 16:9 to mobile 9:16. A portrait frame appears with its own camera, is moved to suit the taller shape, and is saved separately from the desktop view.">
+            <source src="video/mobile-framing.webm" type="video/webm">
+            <source src="video/mobile-framing.mp4" type="video/mp4">
+            <img src="video/mobile-framing.jpg" alt="The same slide previewed in a portrait phone frame with its own saved camera." width="1280" height="720">
+          </video>
+        </div>
+        <figcaption class="fig-tag">FIG. 04 — THE SAME SLIDE, FRAMED FOR A PHONE</figcaption>
+      </figure>
+      <div class="split-copy">
+        <span class="kicker">ON A PHONE</span>
+        <h2 class="split-title">A shot framed for a screen it will not be read on</h2>
+        <p class="note">Half the people you send a deck to open it on a phone. A view composed
+          for 16:9 arrives there cropped to the middle. Give the slide a second framing and
+          it keeps its subject — same slide, same words, its own camera.</p>
+        <ul class="specs">
+          <li><span>Desktop and phone cameras</span><b>SAVED APART</b></li>
+          <li><span>Slides without their own portrait shot</span><b>USE THE DESKTOP ONE</b></li>
+          <li><span>What the recipient installs</span><b>NOTHING</b></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
   <!-- The one section on this page that is about the deck being OPENED rather
        than about what is in it, so it is the one that shows a device. The slab
        lifts to face the reader as it is scrolled into place: a screen being
@@ -967,7 +1041,7 @@ if (navigator.serviceWorker) {
                     hole counts and metres, and the chapter rail down the left.">
         </div>
       </div>
-      <figcaption class="fig-tag device-tag">FIG. 03 — THE DECK AS IT ARRIVES</figcaption>
+      <figcaption class="fig-tag device-tag">FIG. 05 — THE DECK AS IT ARRIVES</figcaption>
     </figure>
 
     <ul class="specs slab-specs">
@@ -991,11 +1065,11 @@ if (navigator.serviceWorker) {
            chrome already occupies every corner, so an overlaid chip lands
            on its title or on its controls. -->
       <p class="showcase-head">
-        <span class="fig-tag">FIG. 04 — WILLIAMS, LIVE</span>
+        <span class="fig-tag">FIG. 06 — WILLIAMS, LIVE</span>
         <!-- The full deck, not the embed build: this link says full screen, and
      ?embed strips the rail and the chrome the full experience has. Matches
      where the widget's own Launch button now goes. -->
-        <a class="showcase-open" href="/williams/?cover=0" target="_blank" rel="noopener">OPEN FULL SCREEN &#8599;</a>
+        <a class="showcase-open" href="/williams/?cover=0&amp;t=MnAJ8COR1mBFRt6Bgxm9xgpRMnw4l3rp&amp;api=https%3A%2F%2Fczuaqwtngduvlisxonkh.supabase.co%2Ffunctions%2Fv1" target="_blank" rel="noopener">OPEN FULL SCREEN &#8599;</a>
       </p>
     </div>
   </div>
@@ -1010,8 +1084,12 @@ if (navigator.serviceWorker) {
        with the deck's own page, so a returning visitor pays little of it.
        loading="lazy" keeps all of it off anyone who never scrolls this far,
        which is why the rest of the page still reads at 2.4MB. -->
+  <!-- The studio version: the console's Williams deck, hydrated through a share
+       link of its own ("getbedrock.ca marketing site") so this page's traffic
+       is separable from the client's review link in the deck's analytics, and
+       revocable without touching theirs. Edits made in the studio show here. -->
   <figure class="showcase-figure">
-    <iframe class="deck-frame" src="/williams/?embed&amp;autoplay=0" title="Omega Pacific&#39;s Williams project — a live Bedrock deck" loading="lazy" allow="fullscreen"></iframe>
+    <iframe class="deck-frame" src="/williams/?embed&amp;autoplay=0&amp;t=MnAJ8COR1mBFRt6Bgxm9xgpRMnw4l3rp&amp;api=https%3A%2F%2Fczuaqwtngduvlisxonkh.supabase.co%2Ffunctions%2Fv1" title="Omega Pacific&#39;s Williams project — a live Bedrock deck" loading="lazy" allow="fullscreen"></iframe>
   </figure>
   <div class="wrap">
     <!-- Two projects appear on this page and only one of them is real work,
@@ -1145,7 +1223,9 @@ if (navigator.serviceWorker) {
         <a href="#product">PRODUCT</a>
         <a href="#how-it-works">HOW IT WORKS</a>
         <a href="#company">COMPANY</a>
+        <a href="/sell-sheet/">OVERVIEW</a>
         <a href="/faq/">FAQ</a>
+        <a href="/privacy/">PRIVACY</a>
       </div>
     </div>
     <!-- Pexels asks for attribution rather than requiring it. Every other image
@@ -1283,7 +1363,7 @@ if (new URLSearchParams(location.search).has('gl')) {
 if (!renderer) {
   const img = document.createElement('img');
   img.className = 'sh-fallback';
-  img.src = 'img/hero.jpg';
+  img.src = 'img/hero-williams.jpg';
   img.alt = 'A mineral property in three dimensions on real terrain, with the surrounding claim holders named on their own ground.';
   stage.appendChild(img);
   title.classList.add('on');
@@ -1871,9 +1951,12 @@ if (renderer) {
 // reduced motion, the clip holds on its poster frame and grows a play control,
 // which is the same information at their own pace rather than none.
 (function () {
-  var vids = ['fly-to-hole', 'mine-plan-film']
-    .map(function (id) { return document.getElementById(id); })
-    .filter(Boolean);
+  // Selected by what they are, not by a list of ids. This WAS a list of ids,
+  // and when the authoring clips were added nobody extended it — so the two
+  // figures that show the tool honoured neither reduced motion nor
+  // on-screen-only playback, quietly, for as long as they had been on the page.
+  // A query cannot fall out of date the next time a figure is added.
+  var vids = [].slice.call(document.querySelectorAll('.fig-media video'));
   if (!vids.length) return;
   var q = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
   function apply() {

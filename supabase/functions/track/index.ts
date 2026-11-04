@@ -50,6 +50,14 @@ Deno.serve(async (req) => {
   if (pre) return pre;
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
+  // A browser that asks not to be tracked is not: Global Privacy Control, or
+  // the older Do Not Track. The viewer already stays silent in that case; this
+  // holds for any client that sends the header anyway. Answered as a success so
+  // nothing retries, and nothing is written — no session, no events.
+  if (req.headers.get("sec-gpc") === "1" || req.headers.get("dnt") === "1") {
+    return json({ ok: true, dropped: true });
+  }
+
   const b = await body(req);
   if (!b?.t) return json({ error: "missing token" }, 400);
 
@@ -123,7 +131,10 @@ Deno.serve(async (req) => {
         ? null : clampInt(e.chapter_ord, 0, 10000),
       dwell_ms: e.dwell_ms === null || e.dwell_ms === undefined
         ? null : clampInt(e.dwell_ms, 0, MAX_SESSION_MS),
-      meta: typeof e.meta === "object" && e.meta !== null ? e.meta : {},
+      // Never taken from the request. The viewer sends none, and an anonymous
+      // endpoint that stores whatever JSON it is handed is how an analytics
+      // table ends up holding data the privacy policy says is not collected.
+      meta: {},
     }));
   if (rows.length) await db.from("view_events").insert(rows);
 

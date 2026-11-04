@@ -48,20 +48,30 @@ const sid = (zoneId, key) => `${zoneId || "z"}:${key}`;
  * @param {Array}  datasets  every dataset row for the project
  * @param {object} project   { name, commodity, location }
  */
-export function zoneCandidates(zone, datasets, project) {
+export function zoneCandidates(zone, datasets, project, opts = {}) {
   const K = kindsOf(datasets, zone.id);
   const blocks = statsOf(datasets, zone.id, "blocks");
   const out = [];
   const push = (key, c) => out.push({ ...c, id: sid(zone.id, key), zone_id: zone.id });
 
+  // Tenure hangs off the PROPERTY, not off a zone, so whether the claim layer
+  // can be drawn is a question about the project and never about this zone. A
+  // zone's own kinds stopped containing "site" the day the property moved up a
+  // level, which would have quietly turned the boundary off on every slide
+  // below that asks for it.
+  const siteAnywhere = (datasets || []).some((d) => d.kind === "site");
+
   // ---- always, provided the zone has anything at all ---------------------
   if (!K.size) return out;
 
-  push("overview", {
+  // The project-as-zone skips its own overview: `open:property` is already that
+  // slide, with the same title, and two of them back to back is how a generated
+  // deck starts looking generated.
+  if (!opts.skipOverview) push("overview", {
       spine: 10,
     section: zone.name, title: zone.name,
     body: `${project?.location || "The property"} — the ground this zone sits on.`,
-    camera: { h: 24, p: -28, r: 4200 }, layers: { ground: 1.0, site: K.has("site") },
+    camera: { h: 24, p: -28, r: 4200 }, layers: { ground: 1.0, site: siteAnywhere },
     needs: [],
   });
 
@@ -91,7 +101,7 @@ export function zoneCandidates(zone, datasets, project) {
         section: zone.name, title: prod.label || prod.key.toUpperCase(),
         body: prod.note || `${prod.label || prod.key} draped over the property.`,
         camera: { h: 0, p: -78, r: 3400 },
-        layers: { ground: 1.0, geo: prod.key, site: K.has("site"), blocks: false },
+        layers: { ground: 1.0, geo: prod.key, site: siteAnywhere, blocks: false },
         needs: ["geophysics"],
       });
     });
@@ -111,7 +121,7 @@ export function zoneCandidates(zone, datasets, project) {
           `a soil survey is lognormal and a linear ramp hides everything but the peak.`
         : "Surface sampling across the target area.",
       camera: { h: 0, p: -72, r: 3200 },
-      layers: { ground: 1.0, geochem: true, site: K.has("site"), blocks: false },
+      layers: { ground: 1.0, geochem: true, site: siteAnywhere, blocks: false },
       needs: ["geochem"],
     });
   }
@@ -327,9 +337,17 @@ export function projectCandidates(project, zones, datasets) {
   // overview from a slightly different altitude.
   // Only when there is no tenure file, in which case the opening trio has no
   // district slide and this is the widest view the deck can offer.
-  const anyData = (zones || []).some((z) => kindsOf(datasets, z.id).size);
+  // The whole project, standing in as a zone. Tenure and topography always hang
+  // here, and a project that never named a zone hangs everything here — so this
+  // is what generates the claim-block slide, and on an unzoned property it
+  // generates the entire deck.
+  const projectZone = { id: null, name: project?.name || "The property" };
+  const projectKinds = kindsOf(datasets, null);
+
+  const anyData = projectKinds.size ||
+    (zones || []).some((z) => kindsOf(datasets, z.id).size);
   const hasSite = (datasets || []).some((d) => d.kind === "site");
-  if (!hasSite && anyData && zones.length > 1) {
+  if (!hasSite && anyData && (zones || []).length > 1) {
     out.push({
       id: "project:property", zone_id: null, spine: 0,
       section: "The property", title: project?.name || "The property",
@@ -356,6 +374,9 @@ export function projectCandidates(project, zones, datasets) {
     });
   }
 
+  if (projectKinds.size) {
+    out.push(...zoneCandidates(projectZone, datasets, project, { skipOverview: true }));
+  }
   (zones || []).forEach((z) => out.push(...zoneCandidates(z, datasets, project)));
   return out;
 }

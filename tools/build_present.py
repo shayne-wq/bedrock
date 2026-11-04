@@ -1403,6 +1403,58 @@ HTML = r"""<!DOCTYPE html>
   #hgbody .hgcap{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#8C948C;
                  letter-spacing:.08em;margin-top:6px}
 
+  /* Drilling progress. Same column and the same glass as the ledger, because
+     it is the same kind of object: a panel about the drilling that hides the
+     rail while it is open. The two never coexist — opening one closes the
+     other — so they can share the position outright. */
+  #rig{position:fixed;left:34px;top:104px;z-index:10;width:328px;max-height:72vh;
+        display:flex;flex-direction:column;border-radius:6px;
+        background:rgba(9,12,13,.93);border:1px solid rgba(255,255,255,.12);
+        backdrop-filter:blur(8px);overflow:hidden}
+  #rig[hidden]{display:none}
+  body.rigon #rail{display:none}
+  #rigpick{display:flex;gap:6px;flex-wrap:wrap;padding:10px 12px 0}
+  #rigpick button{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.08em;
+        text-transform:uppercase;padding:5px 9px;border-radius:4px;cursor:pointer;
+        color:#C6CAC5;background:transparent;border:1px solid rgba(255,255,255,.16)}
+  #rigpick button.on{color:#07090A;background:var(--brand);border-color:var(--brand)}
+  #rigbody{padding:12px;overflow-y:auto;overscroll-behavior:contain}
+  .pgname{font-size:14.5px;line-height:1.3;color:#EDEEEC;font-weight:600}
+  .pgsub{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.12em;
+         text-transform:uppercase;color:#8C948C;margin-top:3px}
+  .pgsub b{color:var(--brand-hi);font-weight:600}
+  /* The metre count is the headline of this panel, so it is set like one and
+     in the figure face the rest of the deck uses for numbers. */
+  .pgmet{display:flex;align-items:baseline;gap:7px;margin:14px 0 0}
+  .pgmet .v{font-family:'JetBrains Mono',monospace;font-size:27px;line-height:1;
+            color:#EDEEEC;letter-spacing:-.01em}
+  .pgmet .of{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#8C948C}
+  .pgbar{height:5px;margin-top:10px;border-radius:3px;overflow:hidden;
+         background:rgba(255,255,255,.10)}
+  .pgbar i{display:block;height:100%;background:var(--brand);
+           animation:pgfill .9s cubic-bezier(.16,1,.3,1)}
+  @keyframes pgfill{ from{width:0} }
+  @media (prefers-reduced-motion:reduce){ .pgbar i{animation:none} }
+  .pgfig{display:grid;grid-template-columns:1fr 1fr;gap:1px;margin-top:14px;
+         background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden}
+  .pgfig div{background:rgba(9,12,13,.92);padding:8px 10px}
+  .pgfig .k{display:block;font-family:'JetBrains Mono',monospace;font-size:9px;
+            letter-spacing:.12em;text-transform:uppercase;color:#8C948C}
+  .pgfig .v{display:block;font-family:'JetBrains Mono',monospace;font-size:12.5px;
+            color:#EDEEEC;margin-top:3px}
+  .pghd{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.14em;
+        text-transform:uppercase;color:var(--brand);margin:18px 0 8px}
+  .pgu{padding:9px 0;border-top:1px solid rgba(255,255,255,.07)}
+  .pgu:first-of-type{border-top:0}
+  .pgu .d{display:flex;gap:8px;align-items:baseline}
+  .pgu .d time{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#C6CAC5}
+  .pgu .d .dl{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--brand-hi)}
+  .pgu p{margin:5px 0 0;font-size:12.5px;line-height:1.55;color:#C6CAC5}
+  .pgu .by{display:block;margin-top:4px;font-family:'JetBrains Mono',monospace;
+           font-size:9.5px;letter-spacing:.06em;color:#6F756F}
+  #rignote{padding:9px 12px;font-size:10.5px;line-height:1.5;color:#8C948C;
+            border-top:1px solid rgba(255,255,255,.08)}
+
   /* Only ever visible when boot failed, so it can afford to be ugly and
      complete rather than pretty and partial. */
   #bootstack{position:fixed;left:0;right:0;bottom:0;max-height:46vh;overflow:auto;z-index:99;
@@ -1586,9 +1638,12 @@ HTML = r"""<!DOCTYPE html>
     #ramp{width:84px;height:7px}
 
     /* Panels written against a desktop gutter. A phone has no gutter. */
-    #ledger,#holegraph{left:8px;right:8px;width:auto}
+    #ledger,#holegraph,#rig{left:8px;right:8px;width:auto}
     #ledger{top:auto;bottom:calc(66px + env(safe-area-inset-bottom));max-height:36vh}
     #holegraph{bottom:calc(66px + env(safe-area-inset-bottom))}
+    /* A sheet from the bottom, like the ledger: the top of a phone screen is
+       where the caption and the chapter title already are. */
+    #rig{top:auto;bottom:calc(66px + env(safe-area-inset-bottom));max-height:62vh}
     #compass,#scalebar{display:none}
     /* The brand block is a fixed top-left title. On a phone it lands on the
        caption's own eyebrow and title, and the deck already says its name in
@@ -1713,6 +1768,10 @@ HTML = r"""<!DOCTYPE html>
   <button id="drawbtn" class="btn sm" title="Annotate (D)">Draw</button>
   <button id="areabtn" class="btn sm" title="Outline an area on the ground (G)">Areas</button>
   <button id="ledgbtn" class="btn sm" title="Drill hole ledger (H)">Holes</button>
+  <!-- Rendered only when the deck actually carries a programme. A control that
+       is present and dead implies the deck is drilling and has not said so. -->
+  <button id="drillbtn" class="btn sm" hidden
+          title="Drilling progress &mdash; metres to date against the programme (M)">Drilling</button>
   <button id="cobtn" class="btn sm" title="Intercept callout cards (I)">Calls</button>
   <button id="blackbtn" class="btn sm" title="Drop the imagery to black (B)">Black</button>
   <button id="propbtn" class="btn sm" title="Property-wide grade columns (O)">Property</button>
@@ -2025,6 +2084,20 @@ HTML = r"""<!DOCTYPE html>
   <div id="hgbody"></div>
 </div>
 
+<!-- Drilling progress. The only part of a deck that is still happening: the
+     metres turned so far against the metres committed to, and what the issuer
+     has said about them. Rendered from drill_programs / drill_updates, which
+     the deck function hands over already filtered to published reports. -->
+<div id="rig" hidden>
+  <div class="lhead">
+    <span id="rigt">Drilling</span>
+    <button class="btn sm" id="rigx">Close</button>
+  </div>
+  <div id="rigpick"></div>
+  <div id="rigbody"></div>
+  <div id="rignote"></div>
+</div>
+
 <div id="synwarn">Synthetic drill data — fabricated, not real results</div>
 
 <svg id="compass" viewBox="0 0 100 100"><g id="cneedle">
@@ -2141,7 +2214,7 @@ let N=__N__,
       ZTOP=__ZTOP__, ZBOT=__ZBOT__;
 let CHAPTERS=__CHAPTERS__, RUNS=__RUNS__, BUCKETS=__BUCKETS__, VEINS=__VEINS__,
       LADDER=__LADDER__, CLASS_LABELS=__CLASS_LABELS__, CLASS_CONFIRMED=__CLASS_CONFIRMED__,
-      PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, REAL_CLAIMS=__REAL_CLAIMS__, CLAIMS_ATTRIB=__CLAIMS_ATTRIB__, CLAIMS_SYNTHETIC=__CLAIMS_SYNTHETIC__, CLAIMS_SUBJECT=__CLAIMS_SUBJECT__, HOLDER_LOGOS=__HOLDER_LOGOS__, HOLDER_META=__HOLDER_META__, BRAND=__BRAND__, GEOPHYS=__GEOPHYS__, GEOPHYS_SYNTHETIC=__GEOPHYS_SYNTHETIC__, STATIONS=__STATIONS__, DEPOSITS=__DEPOSITS__, PITCUT=__PITCUT__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, PIT_DEM=__PIT_DEM__, PIT_DEPOSIT=__PIT_DEPOSIT__, CAM_FIXED=__CAM_FIXED__, CAM_KEYS=__CAM_KEYS__, G_PER_OZ=31.10348;
+      PROV=__PROV__, THUMBS=__THUMBS__, BY_CB=__BY_CB__, HOLES=__HOLES__, HIGHLIGHTS=__HIGHLIGHTS__, SITE=__SITE__, SITE_SYNTHETIC=__SITE_SYNTHETIC__, REAL_CLAIMS=__REAL_CLAIMS__, CLAIMS_ATTRIB=__CLAIMS_ATTRIB__, CLAIMS_SYNTHETIC=__CLAIMS_SYNTHETIC__, CLAIMS_SUBJECT=__CLAIMS_SUBJECT__, HOLDER_LOGOS=__HOLDER_LOGOS__, HOLDER_META=__HOLDER_META__, BRAND=__BRAND__, GEOPHYS=__GEOPHYS__, GEOPHYS_SYNTHETIC=__GEOPHYS_SYNTHETIC__, STATIONS=__STATIONS__, DEPOSITS=__DEPOSITS__, PITCUT=__PITCUT__, VGROUP=__VGROUP__, VGROUP_NAMES=__VGROUP_NAMES__, DRILL_SYNTHETIC=__DRILL_SYNTHETIC__, PIT_DEM=__PIT_DEM__, PIT_DEPOSIT=__PIT_DEPOSIT__, CAM_FIXED=__CAM_FIXED__, CAM_KEYS=__CAM_KEYS__, PROGRAMS=__PROGRAMS__, G_PER_OZ=31.10348;
   // The issuer's accent, and a lighter partner for anything that has to read
   // against the model. CSS gets the same pair as custom properties; these two
   // exist because a canvas fillStyle and a Cesium material cannot take var().
@@ -2336,7 +2409,10 @@ mqPortrait.addEventListener('change',syncFrame);
 // visits together.
 const API=(QS.get('api')||window.BEDROCK_API||'').replace(/\/$/,'');
 const TOKEN=QS.get('t')||'';
-const TRACKING=Boolean(API&&TOKEN)&&!AUTHOR;
+// A browser that has asked not to be tracked — Global Privacy Control, or the
+// older Do Not Track — sends nothing at all. /track refuses the headers too.
+const OPTED_OUT=navigator.globalPrivacyControl===true||navigator.doNotTrack==='1'||window.doNotTrack==='1';
+const TRACKING=Boolean(API&&TOKEN)&&!AUTHOR&&!OPTED_OUT;
 const TRK={s:null,watch:0,seen:new Set(),done:false,q:[],since:0,chapAt:0,chap:null};
 try{ TRK.s=sessionStorage.getItem('bedrock.s.'+TOKEN)||null; }catch(e){}
 
@@ -2827,10 +2903,70 @@ async function hydrate(token){
   const zones=(payload.zones&&payload.zones.length)?payload.zones:
     [{id:null,name:(payload.project||{}).name||'Deposit',slug:'zone',ord:0}];
   const assetsOf=zid=>(payload.assets||[]).filter(a=>(a.zone_id||null)===(zid||null));
+  // Property-wide datasets — the claim boundary and the supplied topography —
+  // hang off the PROJECT rather than a zone, because tenure is registered
+  // against the property and one survey covers whatever deposits sit inside it.
+  // A strict match hands a multi-zone deck that zone's assets and none of its
+  // property's, so the claim block and the customer's own ground would vanish
+  // from exactly the decks that have more than one zone. Side artifacts take
+  // the union. The deposit switcher below keeps the strict match on purpose: a
+  // project-level block model must not turn up as every zone's model.
+  const sideAssetsOf=zid=>(payload.assets||[]).filter(
+    a=>(a.zone_id||null)===(zid||null)||(a.zone_id||null)===null);
   // Captured here, where `payload` is in scope. loadSideArtifacts() is handed an
   // asset list and nothing else — reading `payload` inside it threw a
   // ReferenceError that killed the boot of EVERY deck carrying drill data.
   PAYLOAD_INCLUSION=(payload.deck&&payload.deck.inclusion)||{};
+
+  // ---- scene furniture that belongs to the DECK, not to a model ----------
+  // Both of these are a handful of author-entered points rather than a file
+  // anyone exports, and neither depends on there being a block model. They are
+  // set here, before the branch, for a reason that was a live bug: TARGETS was
+  // assigned only in the modelled branch below, so an exploration deck — a
+  // company with no resource, which is most of them — silently lost every
+  // named target it had authored. Programmes would have inherited exactly that
+  // bug, and they matter most on precisely those decks: a company with no
+  // resource yet is the company that is drilling.
+  TARGETS=(((payload.deck||{}).settings||{}).targets||[])
+    .filter(t=>t&&t.name&&Number.isFinite(+t.e)&&Number.isFinite(+t.n))
+    .map(t=>({name:String(t.name),e:+t.e,n:+t.n,kind:t.kind||'target',dz:+t.dz||0}));
+
+  // Drilling programmes. Validated on the way in rather than trusted: a
+  // position is either a pair of finite numbers or absent, and a programme
+  // with a half-readable one must show no marker rather than a rig at easting
+  // NaN, which Cesium turns into a crash several frames later with nothing in
+  // the message that names the deck it came from.
+  const zoneName=id=>{const z=(payload.zones||[]).find(x=>x.id===id); return z?z.name:null;};
+  PROGRAMS=(payload.programs||[])
+    .filter(g=>g&&g.name)
+    .map(g=>{
+      // `Number(null)` is 0, and 0 is finite — so a programme with no
+      // coordinates read as a programme placed at easting 0, northing 0, and
+      // the deck drew a rig off the coast of Africa. Absence is checked for
+      // before the number is parsed, never by parsing it.
+      const has=v=>v!==null&&v!==undefined&&v!=='';
+      const e=has(g.easting)?Number(g.easting):NaN;
+      const n=has(g.northing)?Number(g.northing):NaN;
+      const placed=Number.isFinite(e)&&Number.isFinite(n);
+      return {
+        id:g.id, name:String(g.name),
+        status:String(g.status||'active'),
+        zone_name:g.zone_id?zoneName(g.zone_id):null,
+        target_m:Number.isFinite(+g.target_m)?+g.target_m:null,
+        holes_planned:Number.isFinite(+g.holes_planned)?+g.holes_planned:null,
+        started_on:g.started_on||null, expected_end:g.expected_end||null,
+        easting:placed?e:null, northing:placed?n:null,
+        operator:g.operator?String(g.operator):null,
+        note:g.note?String(g.note):null,
+        // Newest first, and only reports the deck function published. Sorted
+        // here rather than relied on: the delta each row shows is computed
+        // against the next one down, so the order IS the arithmetic.
+        updates:(Array.isArray(g.updates)?g.updates:[])
+          .filter(u=>u&&u.as_of)
+          .sort((a,b)=>String(b.as_of).localeCompare(String(a.as_of))),
+      };
+    });
+
   const modelled=zones
     .map(z=>({zone:z, blocks:assetsOf(z.id).find(a=>a.kind==='blocks'&&a.url)}))
     .filter(x=>x.blocks);
@@ -2921,7 +3057,7 @@ async function hydrate(token){
     // the failure the comment two hundred lines down calls the worst bug
     // this viewer could have.
     DEPOSITS=[]; PITCUT=null; PIT_DEM=null; PIT_DEPOSIT=null;
-    await loadSideArtifacts(assetsOf(zones[0] && zones[0].id));
+    await loadSideArtifacts(sideAssetsOf(zones[0] && zones[0].id));
 
     const chs0=(payload.chapters||[]).map(mapChapter);
     CHAPTERS=chs0.length?chs0:[{h:30,p:-28,r:Math.max(2500,Math.max(EX,EY)*1.6),
@@ -3058,7 +3194,7 @@ async function hydrate(token){
   HOLES=[]; HIGHLIGHTS=[]; SITE={areas:[],roads:[],labels:[],claims:[]};
   SITE_SYNTHETIC=false; REAL_CLAIMS=[]; CLAIMS_ATTRIB=''; CLAIMS_SYNTHETIC=false;
   GEOPHYS={}; GEOPHYS_SYNTHETIC=false; THUMBS=[]; STATIONS=[];
-  await loadSideArtifacts(assetsOf(modelled[0].zone.id));
+  await loadSideArtifacts(sideAssetsOf(modelled[0].zone.id));
 
   // Every modelled zone becomes a deposit. The first is already loaded, so it
   // is marked baked and reads from the live snapshot; the rest are fetched on
@@ -3072,11 +3208,8 @@ async function hydrate(token){
     bin:m.blocks.url, buckets:m.blocks.buckets_url, stats:m.blocks.stats||{},
   }));
 
-  // Targets ride on the deck's settings rather than a dataset: they are a
-  // handful of named points an author types, not a file anyone exports.
-  TARGETS=(((payload.deck||{}).settings||{}).targets||[])
-    .filter(t=>t&&t.name&&Number.isFinite(+t.e)&&Number.isFinite(+t.n))
-    .map(t=>({name:String(t.name),e:+t.e,n:+t.n,kind:t.kind||'target',dz:+t.dz||0}));
+  // Targets and programmes are set before the branch, above — they are deck
+  // furniture and neither needs a model.
 
   const chs=(payload.chapters||[]).map(mapChapter);
   CHAPTERS=chs.length?chs:defaultChapters((payload.deck||{}).title);
@@ -4184,6 +4317,52 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     tb.appendChild(trf); tt.appendChild(tb); totals.appendChild(tt);
     wrap.appendChild(totals);
 
+    // Drilling under way, as a table. This edition exists for the reader with
+    // no GPU, a screen reader or a printer, and the progress figures are the
+    // part of the deck most likely to be the reason they opened it — a panel
+    // that only exists inside a WebGL canvas would hide today's metre count
+    // from exactly the reader who cannot get at it any other way.
+    if(PROGRAMS.length){
+      const sec=document.createElement('section');
+      sec.innerHTML='<h2>Drilling in progress</h2>';
+      const dt=document.createElement('table');
+      dt.innerHTML='<caption>Issuer-reported progress. Not assay results, and '+
+        'not a mineral resource statement.</caption>'+
+        '<thead><tr><th scope="col">Programme</th><th scope="col">Status</th>'+
+        '<th scope="col">Metres</th><th scope="col">Planned</th>'+
+        '<th scope="col">As of</th></tr></thead>';
+      const db=document.createElement('tbody');
+      PROGRAMS.forEach(g=>{
+        const m=progMetres(g), t=progNum(g.target_m), u=progReport(g);
+        const tr=document.createElement('tr');
+        [g.name, PROG_STATUS[g.status]||g.status,
+         m===null?'—':Math.round(m).toLocaleString()+' m',
+         t?Math.round(t).toLocaleString()+' m':'—',
+         u?progDate(u.as_of):'—']
+          .forEach((v,i2)=>{ const c=document.createElement(i2?'td':'th');
+            if(!i2) c.scope='row'; c.textContent=v; tr.appendChild(c); });
+        db.appendChild(tr);
+      });
+      dt.appendChild(db); sec.appendChild(dt);
+      // Every published report, in full. The table says how far; this says
+      // what happened, which is the half a shareholder actually reads.
+      PROGRAMS.forEach(g=>{
+        (g.updates||[]).forEach(u=>{
+          if(!u.body) return;
+          const p=document.createElement('p');
+          const b=document.createElement('b');
+          b.textContent=g.name+' · '+progDate(u.as_of)+
+            (progNum(u.metres_total)===null?''
+              :' · '+Math.round(progNum(u.metres_total)).toLocaleString()+' m');
+          p.appendChild(b);
+          p.appendChild(document.createTextNode(' — '+u.body+
+            (u.author?' ('+u.author+')':'')));
+          sec.appendChild(p);
+        });
+      });
+      wrap.appendChild(sec);
+    }
+
     CHAPTERS.forEach((c,i)=>{
       const sec=document.createElement('section');
       const t2=document.createElement('h2');
@@ -4343,6 +4522,27 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       L.push('  none has been established.');
       L.push('  Datasets present: '+((PROV.datasets||[]).join(', ')||'none'));
     }
+    // Drilling under way. It belongs in the audit trail more than most things
+    // here, because it is the one set of figures in the deck that nobody has
+    // checked: a block model was built by a consultant and an assay came from
+    // a lab, while this is a number the issuer typed this morning. Saying who
+    // reported it, and as of when, is the difference between a progress
+    // readout and an unsourced claim.
+    if(PROGRAMS.length){
+      L.push('');
+      L.push('DRILLING IN PROGRESS');
+      PROGRAMS.forEach(g=>{
+        const m=progMetres(g), t=progNum(g.target_m), u=progReport(g);
+        L.push('  '+g.name+'  — '+(PROG_STATUS[g.status]||g.status));
+        L.push('    '+(m===null?'no metres reported yet'
+                               :progM(m)+(t?' of '+progM(t)+' planned':' to date'))+
+               (u?';  as of '+progDate(u.as_of):''));
+        if(progNum(g.easting)===null)
+          L.push('    No collar coordinates were entered, so no rig is drawn on the ground.');
+      });
+      L.push('    Issuer-reported progress, published by the company itself.');
+      L.push('    Not assay results, and not a mineral resource statement.');
+    }
     L.push('');
     L.push('CAVEATS');
     // Only when there are classes to caveat. On an exploration deck this read
@@ -4413,6 +4613,11 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     const picked=scene.pick(win);
     if(picked && picked.id && picked.id.__hole){
       return {kind:'hole', hole:picked.id.__hole, seg:picked.id.__seg};
+    }
+    // The rig, the pad, the beacon and either label are all one object as far
+    // as a reader is concerned, so every entity the programme draws carries it.
+    if(picked && picked.id && picked.id.__program){
+      return {kind:'program', program:picked.id.__program};
     }
     const pos=scene.pickPosition(win);
     if(!Cesium.defined(pos)) return null;
@@ -4489,6 +4694,13 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     // Already inside that hole, the click falls through to the inspector so an
     // individual assay interval can still be interrogated.
     if(hit && hit.kind==='hole' && hit.hole!==ledgerHole){ focusHole(hit.hole); return; }
+    // Tapping the rig is how this feature is meant to be used: it flies in and
+    // opens what the issuer has reported. Clicking it again, already there,
+    // does nothing rather than re-flying a camera that has not moved.
+    if(hit && hit.kind==='program'){
+      if(!(progPanel && PROGRAMS[progSel]===hit.program)) focusProgram(hit.program);
+      return;
+    }
     showPick(hit);
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
   // Double-click closes the polygon, the way every map tool does it.
@@ -6365,6 +6577,19 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     layer('depth grid',()=>showDepth(depthOn));
     layer('site features',()=>showSite(siteOn));
     layer('named targets',()=>showTargets(targetsOn&&!assetOnly));
+    // A programme is only ever drawn if the deck was handed one. The control
+    // appears on the same condition — a deck with no drilling under way must
+    // not carry a button implying there is.
+    $('drillbtn').hidden=!PROGRAMS.length;
+    if(progPanel&&!PROGRAMS.length) setProg(false);
+    layer('drilling programmes',()=>{
+      // Async: the rig stands on sampled terrain. Not awaited — the rest of
+      // the frame applies now — but the markers are shown again when the build
+      // resolves, which is what buildPrograms() ends with.
+      if(progOn&&!assetOnly) buildPrograms().catch(e=>
+        console.warn('Bedrock: the drilling programme could not be placed',e));
+      showPrograms(progOn&&!assetOnly);
+    });
     layer('geochemistry',()=>showGeochem(gcOn&&!assetOnly));
     layer('vein surfaces',()=>showSurfaces(surfOn));
     layer('supplied topography',()=>showTopo(topoOn&&!assetOnly));
@@ -7356,6 +7581,418 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     ledgerPaint(); };
   viewer.camera.changed.addEventListener(ledgerQueue);
   viewer.camera.moveEnd.addEventListener(ledgerQueue);
+
+  // ---- drilling programmes ------------------------------------------------
+  //
+  // Every other layer in this deck describes rock that has already been
+  // measured. A drilling programme is the one thing in a mining presentation
+  // that is still happening, and it is what a shareholder opens the deck to
+  // find out: is the rig turning, and how far through is it. Without this the
+  // deck is accurate on the day it is published and stale a week later, while
+  // the number everyone wants sits in a news release the deck knows nothing
+  // about.
+  //
+  // THE MARKER HAS TWO SCALES, and that is the honest way to draw it rather
+  // than a convenience. A diamond drill mast is about twelve metres tall:
+  // drawn at true scale it is invisible from the 2 km the deck opens at, and
+  // drawn at 300 m so it can be seen it is a lie about a structure. So there
+  // are two: beyond ~600 m a thin beacon and a label, which is plainly a map
+  // pin; inside it, a twelve-metre mast on a pad, at the scale it really is.
+  // Clicking either flies in to the rig and opens the report.
+  //
+  // NO POSITION, NO PIN. A programme whose collar coordinates were never
+  // entered still appears in the panel — the metres are the point — but
+  // nothing is drawn on the ground for it. Dropping the rig at the centre of
+  // the property to have something to show would be a fabricated location in a
+  // deck whose whole argument is that its locations are real.
+  // A DIAMOND DRILL, not a derrick. The first version of this was a
+  // four-legged pyramid, which is an oil rig, and to the only audience that
+  // matters that is the difference between a drawing made by somebody who has
+  // been to site and one made by somebody who has not.
+  //
+  // What a BC or Yukon exploration drill actually is, from the photographs:
+  // the drill lives inside a modular shelter about the size of a shipping
+  // container; a single slim lattice mast leans out of the front of it at
+  // roughly 65 degrees; rods are racked on the deck beside it; and the whole
+  // thing stands on a LEVEL timber deck cribbed into a hillside that is not
+  // level — which is why the posts below are measured against the real ground
+  // under each corner rather than drawn at a fixed height.
+  const PROG_BEACON=300;        // m — the far-field pin, a map symbol
+  const PROG_MAST=12;           // m — the mast, extended, at true scale
+  const PROG_MAST_DEG=65;       // ° from horizontal, leaning off the front
+  const PROG_DECK=[6.5,5.5];    // m — half a 13 x 11 m timber deck
+  const PROG_SHACK=[8,4.4,3];   // m — the shelter the drill sits in
+  // ONE crossover, not two windows. Set independently they overlapped between
+  // 620 m and 2.8 km, and the deck drew the pin and the rig together — the same
+  // programme labelled twice, 300 m apart, which reads as two programmes.
+  const PROG_NEAR=1100;         // m — inside this, the rig at true scale
+  const PROG_FAR=PROG_NEAR;     // m — beyond it, the map pin
+  const PROG_STATUS={planned:'Planned',active:'Drilling',paused:'Paused',
+                     complete:'Complete'};
+  let progEnts=null, progBuilding=false, progOn=PROGRAMS.length>0,
+      progPanel=false, progSel=0;
+
+  const progNum=v=>(v===null||v===undefined||v==='')?null:
+    (isFinite(+v)?+v:null);
+  const progInt=v=>{const n=progNum(v); return n===null?null:Math.round(n);};
+  // The newest published report that actually carries a metre count. A report
+  // can legitimately be words only — "rig mobilised, first hole collared" —
+  // and reading the metres off whatever happens to be newest would show a
+  // blank where yesterday's total belongs.
+  const progReport=g=>(g.updates||[]).find(u=>progNum(u.metres_total)!==null)||null;
+  const progMetres=g=>{const u=progReport(g); return u?progNum(u.metres_total):null;};
+  function progPct(g){
+    const m=progMetres(g), t=progNum(g.target_m);
+    if(m===null||!t) return null;
+    return Math.max(0,Math.min(1,m/t));
+  }
+  const progM=m=>Math.round(m).toLocaleString()+' m';
+  // A date arrives as 'YYYY-MM-DD'. Parsed without a zone, engines disagree
+  // about whether that is local or UTC midnight, which moves a report a day
+  // either side of the date the issuer typed. Pinned to UTC at both ends.
+  function progDate(s){
+    if(!s) return '—';
+    const d=new Date(String(s).slice(0,10)+'T00:00:00Z');
+    if(isNaN(+d)) return String(s);
+    return d.toLocaleDateString(undefined,
+      {day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
+  }
+  // What the marker says at a glance: the programme, and the metres against
+  // the commitment. Deliberately the same sentence the panel opens with.
+  function progLine(g){
+    const m=progMetres(g), t=progNum(g.target_m);
+    if(m===null) return PROG_STATUS[g.status]||'Drilling';
+    return progM(m)+(t?' / '+progM(t):' to date');
+  }
+
+  async function buildPrograms(){
+    if(progEnts||progBuilding||!PROGRAMS.length) return progEnts;
+    progBuilding=true;
+    const out=[];
+    const push=(g,ent)=>{ ent.__program=g; out.push(viewer.entities.add(ent)); };
+    try{
+      for(const g of PROGRAMS){
+        const e=progNum(g.easting), n=progNum(g.northing);
+        if(e===null||n===null) continue;
+        const ll=proj4(PROJ,'WGS84',[e,n]);
+        // Terrain, not the top of the block model. The ridge climbs ~180 m
+        // across a property, so a ZTOP-derived elevation buries the rig in the
+        // hill at one end and floats it over the valley at the other.
+        //
+        // Kept on the programme, because the CAMERA needs the same number.
+        // Sampling it twice is not only a 2-4 second dead click — measured, in
+        // a software renderer — it is two answers to "how high is the ground
+        // here", and the rig standing at one while the camera aims at the other
+        // is a rig that drifts out of frame for no visible reason.
+        const gh=await stGround(ll[0],ll[1]);
+        g.__gh=gh;
+        const P=(de,dn,dz)=>Cesium.Cartesian3.fromDegrees(
+          ...proj4(PROJ,'WGS84',[e+de,n+dn]), gh+dz);
+        const col=Cesium.Color.fromCssColorString(AC);
+        const far=new Cesium.DistanceDisplayCondition(PROG_FAR,90000);
+        const near=new Cesium.DistanceDisplayCondition(0,PROG_NEAR);
+
+        // Far field: a pin.
+        push(g,{polyline:{positions:[P(0,0,4),P(0,0,PROG_BEACON)],width:1.4,
+          material:col.withAlpha(0.5), arcType:Cesium.ArcType.NONE,
+          distanceDisplayCondition:far}});
+        // The condition goes on the GRAPHICS, not on the entity. Cesium has no
+        // `Entity.distanceDisplayCondition` and ignores one silently, which is
+        // how the pin and the rig came to be drawn at the same time — the same
+        // programme labelled twice, 300 m apart.
+        push(g,{position:P(0,0,PROG_BEACON),
+          label:{distanceDisplayCondition:far,
+            text:g.name+'\n'+progLine(g),
+            font:'600 13px Archivo, system-ui, sans-serif',
+            fillColor:Cesium.Color.fromCssColorString(ACH),
+            showBackground:true,
+            backgroundColor:new Cesium.Color(0.03,0.04,0.05,0.86),
+            backgroundPadding:new Cesium.Cartesian2(10,7),
+            verticalOrigin:Cesium.VerticalOrigin.BOTTOM,
+            scaleByDistance:new Cesium.NearFarScalar(1200,1.0,20000,0.55),
+            disableDepthTestDistance:Number.POSITIVE_INFINITY}});
+
+        // ---- near field: the pad, the shelter and the mast --------------
+        //
+        // WHICH WAY IT FACES. Nothing in the data says, and a field asking an
+        // issuer for the azimuth of a drill pad is a field nobody fills in. So
+        // the mast leans toward the middle of what the deck is about, which is
+        // where the hole is pointed anyway. Degenerate when the rig IS the
+        // centre, which is the one case where any answer is as good as another.
+        const dE=CE-e, dN=CN-n;
+        const brg=(Math.abs(dE)<1&&Math.abs(dN)<1)?0:Math.atan2(dE,dN);
+        const cb=Math.cos(brg), sb=Math.sin(brg);
+        // Local metres: +y is the way the mast leans, +x is its right. The
+        // same convention Cesium's own HeadingPitchRoll uses, so the shelter
+        // below can be a box with a heading rather than twelve polylines.
+        const Q=(x,y,z)=>P(x*cb+y*sb, -x*sb+y*cb, z);
+        // Ground under an arbitrary point of the pad, relative to the centre.
+        // getHeight() reads the terrain tile already in memory — these are
+        // seven metres from a point that has just been sampled properly, and a
+        // second round of sampleTerrainMostDetailed costs seconds apiece.
+        const gAt=(x,y)=>{
+          const l2=proj4(PROJ,'WGS84',[e+(x*cb+y*sb), n+(-x*sb+y*cb)]);
+          const h=viewer.scene.globe.getHeight(
+            Cesium.Cartographic.fromDegrees(l2[0],l2[1]));
+          return (h===undefined||h===null||!isFinite(h))?0:h-gh;
+        };
+        const DX=PROG_DECK[0], DY=PROG_DECK[1];
+        const corner=[[DX,DY],[DX,-DY],[-DX,-DY],[-DX,DY]];
+        // CLAMPED, and the clamp is the honest part. getHeight() answers from
+        // whichever terrain tile happens to be resident, and a coarse one is
+        // flat where the ground is not: measured here, a corner seven metres
+        // from the centre came back twenty-five metres below it, and the pad
+        // grew stilts into the hillside. How high the crib really is was never
+        // data we hold — it is a drawing detail — so it is bounded to what a
+        // crib plausibly is and no further.
+        const CRIB=3.5;
+        const cz=corner.map(c=>Math.max(-CRIB,Math.min(CRIB,gAt(c[0],c[1]))));
+        // The deck is LEVEL and the hillside is not. That is the whole reason
+        // a drill pad is cribbed, and drawing the deck at a fixed height above
+        // a sloping ground is the detail whose absence makes a rendering look
+        // like a diagram.
+        const DZ=Math.max(0,...cz)+0.5;
+        const line=(pts,w,a)=>push(g,{polyline:{positions:pts,width:w,
+          material:col.withAlpha(a), arcType:Cesium.ArcType.NONE,
+          distanceDisplayCondition:near}});
+
+        // Deck, and its planking.
+        const deck=corner.map(c=>Q(c[0],c[1],DZ)); deck.push(deck[0]);
+        line(deck,2,0.9);
+        for(let y=-DY+1.6;y<DY-0.3;y+=1.6)
+          line([Q(-DX,y,DZ),Q(DX,y,DZ)],1,0.26);
+
+        // Cribbing. A post to the real ground under each corner, and an X
+        // across any face standing high enough to need one.
+        corner.forEach((c,i)=>line([Q(c[0],c[1],DZ),Q(c[0],c[1],cz[i])],2,0.7));
+        for(let i=0;i<4;i++){
+          const j=(i+1)%4;
+          if(DZ-cz[i]<1.2||DZ-cz[j]<1.2) continue;
+          line([Q(corner[i][0],corner[i][1],cz[i]),Q(corner[j][0],corner[j][1],DZ)],1,0.45);
+          line([Q(corner[j][0],corner[j][1],cz[j]),Q(corner[i][0],corner[i][1],DZ)],1,0.45);
+        }
+
+        // The shelter the drill sits in: a box, because that is what it is.
+        const shack=Q(0,-1.3,DZ+PROG_SHACK[2]/2);
+        push(g,{position:shack,
+          orientation:Cesium.Transforms.headingPitchRollQuaternion(
+            shack,new Cesium.HeadingPitchRoll(brg,0,0)),
+          box:{distanceDisplayCondition:near,
+            dimensions:new Cesium.Cartesian3(...PROG_SHACK),
+            material:col.withAlpha(0.12),
+            outline:true,outlineColor:col.withAlpha(0.85)}});
+
+        // The mast: two rails and their ties, leaning off the front of the
+        // shelter. Rungs rather than a solid line because a mast is a lattice,
+        // and at 40 m that is the difference between a drill and a flagpole.
+        const th=rad(PROG_MAST_DEG);
+        const my0=0.9, mz0=DZ+1.2;
+        const my1=my0+PROG_MAST*Math.cos(th), mz1=mz0+PROG_MAST*Math.sin(th);
+        [-0.28,0.28].forEach(x=>line([Q(x,my0,mz0),Q(x,my1,mz1)],2.2,0.95));
+        for(let k=1;k<=7;k++){
+          const f=k/8, y=my0+(my1-my0)*f, z=mz0+(mz1-mz0)*f;
+          line([Q(-0.28,y,z),Q(0.28,y,z)],1.2,0.8);
+        }
+        line([Q(-0.7,my1,mz1),Q(0.7,my1,mz1)],2,0.95);   // crown
+
+        // Rods racked on the deck. Four lines, and the thing that makes the
+        // pad read as a working one rather than an empty platform.
+        for(let k=0;k<4;k++)
+          line([Q(-3.2,3.1+k*0.3,DZ+0.15),Q(3.2,3.1+k*0.3,DZ+0.15)],1.4,0.55);
+
+        push(g,{position:Q(0,my1,mz1+3),
+          label:{distanceDisplayCondition:near,
+            text:g.name+'\n'+progLine(g),
+            font:'600 12px Archivo, system-ui, sans-serif',
+            fillColor:Cesium.Color.fromCssColorString(ACH),
+            showBackground:true,
+            backgroundColor:new Cesium.Color(0.03,0.04,0.05,0.86),
+            backgroundPadding:new Cesium.Cartesian2(9,6),
+            verticalOrigin:Cesium.VerticalOrigin.BOTTOM,
+            disableDepthTestDistance:Number.POSITIVE_INFINITY}});
+      }
+    } finally { progBuilding=false; }
+    progEnts=out;
+    showPrograms(progOn&&!assetOnly);
+    return progEnts;
+  }
+  function showPrograms(on){
+    if(progEnts) progEnts.forEach(e=>e.show=on);
+  }
+
+  // Fly in and open the report. Same contract as focusHole: whatever reference
+  // frame the last chapter flight left locked to the deposit centre is dropped
+  // first, or the flight below is computed in that frame and every orbit
+  // afterwards spins about the orebody rather than the rig in front of you.
+  // How high the ground is under a rig, in the cheapest order that is still
+  // correct: the height the marker was built at, then the loaded terrain tile,
+  // then a full most-detailed sample. The last one is a round trip that took
+  // between two and four seconds in testing — long enough that a click on the
+  // rig looked like a click that did nothing — so it is the fallback and never
+  // the path.
+  function progGround(g){
+    if(typeof g.__gh==='number') return Promise.resolve(g.__gh);
+    const ll=proj4(PROJ,'WGS84',[g.easting,g.northing]);
+    const h=viewer.scene.globe.getHeight(Cesium.Cartographic.fromDegrees(ll[0],ll[1]));
+    if(h!==undefined&&h!==null&&isFinite(h)) return Promise.resolve(h);
+    return stGround(ll[0],ll[1]);
+  }
+
+  function focusProgram(g){
+    const i=PROGRAMS.indexOf(g);
+    if(i>=0) progSel=i;
+    setProg(true);
+    const e=progNum(g.easting), n=progNum(g.northing);
+    if(e===null||n===null) return;
+    const ll=proj4(PROJ,'WGS84',[e,n]);
+    progGround(g).then(gh=>{
+      const target=Cesium.Cartesian3.fromDegrees(ll[0],ll[1],gh+7);
+      // Keep the heading the camera already has. The rig is symmetrical, so
+      // there is no broadside to find and any turn would be a spin for its own
+      // sake — what the move has to read as is going IN.
+      const hpr=new Cesium.HeadingPitchRange(rad(DEG(viewer.camera.heading)),
+        rad(-12),95);
+      viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+      const land=()=>viewer.camera.lookAt(target,hpr);
+      if(REDUCED) land();
+      else viewer.camera.flyToBoundingSphere(
+        new Cesium.BoundingSphere(target,34),
+        {duration:1.8, offset:hpr, complete:land});
+    }).catch(e=>{
+      // Swallowed silently, this is a click that does nothing and no way to
+      // find out why. The panel is already open by here, so the report is
+      // readable either way — only the flight was lost.
+      console.warn('Bedrock: could not fly to the rig',e);
+      toast('Could not move to the rig',4000);
+    });
+  }
+
+  function progPaint(){
+    if(!progPanel) return;
+    const g=PROGRAMS[progSel]||PROGRAMS[0];
+    if(!g) return;
+    $('rigt').textContent=PROGRAMS.length>1
+      ? 'Drilling · '+PROGRAMS.length+' programmes' : 'Drilling';
+
+    // The picker only exists when there is something to pick between.
+    const pick=$('rigpick');
+    pick.innerHTML='';
+    pick.hidden=PROGRAMS.length<2;
+    if(PROGRAMS.length>1) PROGRAMS.forEach((x,i)=>{
+      const b=document.createElement('button');
+      b.textContent=x.name;                       // tenant string: never markup
+      if(i===progSel) b.className='on';
+      b.onclick=()=>{ progSel=i; progPaint();
+        if(progNum(x.easting)!==null) focusProgram(x); };
+      pick.appendChild(b);
+    });
+
+    const body=$('rigbody');
+    body.innerHTML='';
+    const el=(tag,cls,txt)=>{ const d=document.createElement(tag);
+      if(cls) d.className=cls; if(txt!==undefined) d.textContent=txt; return d; };
+
+    body.appendChild(el('div','pgname',g.name));
+    const sub=[PROG_STATUS[g.status]||g.status];
+    if(g.operator) sub.push(g.operator);
+    if(g.zone_name) sub.push(g.zone_name);
+    body.appendChild(el('div','pgsub',sub.join(' · ')));
+
+    const m=progMetres(g), t=progNum(g.target_m), pct=progPct(g);
+    const met=el('div','pgmet');
+    met.appendChild(el('span','v',m===null?'—':Math.round(m).toLocaleString()));
+    // The PLAN survives having nothing reported against it. Said the other way
+    // round — which is how this was first written — a programme announced but
+    // not yet started showed a dash and no sign of the ten thousand metres it
+    // had committed to, which is the one number it had.
+    met.appendChild(el('span','of',
+      t ? 'of '+Math.round(t).toLocaleString()+' m planned'
+        : (m===null?'no metres reported yet':'metres to date')));
+    body.appendChild(met);
+
+    // A bar with no denominator is a bar that means nothing, so it is only
+    // drawn when a target exists to measure against.
+    //
+    // The width is set once, finished, and the fill is ANIMATED from zero by a
+    // keyframe rather than transitioned between two inline values across a
+    // requestAnimationFrame. The two-state version is correct only if that
+    // frame arrives, and under a heavy terrain load it does not: the bar was
+    // measured still reading 0% a second and a half after the panel opened.
+    // State that has to be right cannot depend on an animation frame.
+    if(pct!==null){
+      const bar=el('div','pgbar'); const fill=el('i');
+      fill.style.width=(pct*100).toFixed(1)+'%';
+      bar.appendChild(fill); body.appendChild(bar);
+    }
+
+    const rep=progReport(g);
+    const fig=el('div','pgfig');
+    const cell=(k,v)=>{ const d=el('div');
+      d.appendChild(el('span','k',k)); d.appendChild(el('span','v',v));
+      fig.appendChild(d); };
+    cell('Complete',pct===null?'—':(pct*100).toFixed(0)+'%');
+    cell('Holes',(()=>{
+      const done=progInt(rep&&rep.holes_done), plan=progInt(g.holes_planned);
+      if(done===null&&plan===null) return '—';
+      return (done===null?'—':done)+(plan!==null?' of '+plan:'');
+    })());
+    cell('Started',progDate(g.started_on));
+    cell('Expected',progDate(g.expected_end));
+    body.appendChild(fig);
+
+    // What the programme is testing, in the issuer's own words.
+    if(g.note){ const nd=el('div','pgu'); nd.appendChild(el('p',null,g.note));
+                body.appendChild(nd); }
+
+    const ups=(g.updates||[]);
+    body.appendChild(el('div','pghd',ups.length?'Reports':'No reports yet'));
+    ups.forEach((u,i)=>{
+      const row=el('div','pgu');
+      const d=el('div','d');
+      const tm=document.createElement('time');
+      tm.dateTime=String(u.as_of||'').slice(0,10);
+      tm.textContent=progDate(u.as_of);
+      d.appendChild(tm);
+      // The delta against the previous report, computed rather than typed. It
+      // is what "we drilled 412 m this week" means, and deriving it from two
+      // cumulative totals is the one way it cannot disagree with them.
+      const cur=progNum(u.metres_total);
+      const prev=(()=>{ for(let j=i+1;j<ups.length;j++){
+        const p=progNum(ups[j].metres_total); if(p!==null) return p; } return null; })();
+      if(cur!==null&&prev!==null&&cur-prev>0)
+        d.appendChild(el('span','dl','+'+Math.round(cur-prev).toLocaleString()+' m'));
+      else if(cur!==null)
+        d.appendChild(el('span','dl',Math.round(cur).toLocaleString()+' m'));
+      row.appendChild(d);
+      if(u.body) row.appendChild(el('p',null,u.body));
+      if(u.author) row.appendChild(el('span','by',u.author));
+      body.appendChild(row);
+    });
+
+    // What the reader is looking at, and what it is not. These are metres an
+    // operator reported, not an assay and not a resource — the deck says so
+    // here and again in the audit trail.
+    $('rignote').textContent = ups.length
+      ? 'Reported by the issuer, last updated '+progDate(ups[0].as_of)+
+        '. Progress figures are operator-reported and are not assay results '+
+        'or a mineral resource statement.'
+      : 'No progress has been reported against this programme yet. The plan '+
+        'above is what the issuer has committed to.';
+  }
+
+  function setProg(on){
+    progPanel=on;
+    $('rig').hidden=!on;
+    document.body.classList.toggle('rigon',on);
+    $('drillbtn').classList.toggle('on',on);
+    // One panel in that column at a time. The ledger hides the chapter rail
+    // while it is open and so does this; both at once leaves the presenter
+    // with no way back to the deck.
+    if(on&&ledgerOn) setLedger(false);
+    if(on){ buildPrograms().catch(()=>{}); progPaint(); }
+  }
+  $('drillbtn').onclick=()=>setProg(!progPanel);
+  $('rigx').onclick=()=>setProg(false);
 
   // ---- areas: presenter-drawn polygons on the ground ---------------------
   // "Point at the thing you are talking about" is most of what a presenter
@@ -8557,6 +9194,11 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     $('sectseg').querySelectorAll('button').forEach(x=>
       x.classList.toggle('on',(x.dataset.x||null)===(sectAxis||null)));
     planOn=assetOnly?false:!!c.plan;
+    // Drilling under way is a fact about the property, not slide dressing, so
+    // it is on by default on every chapter the way the north arrow is — and a
+    // slide whose subject is somewhere else can still switch it off with
+    // `layers.drilling: false`.
+    progOn=PROGRAMS.length>0 && c.drilling!==false;
     // Property columns, blackout and callouts are chapter state like anything
     // else — a chapter that does not ask for them turns them off, so none of
     // the three leaks forward into a slide whose copy never mentions it.
@@ -8778,6 +9420,7 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     else if(e.key==='d'||e.key==='D') setInking(!inking);
     else if(e.key==='g'||e.key==='G') setAreaMode(!areaMode);
     else if(e.key==='h'||e.key==='H'){ if(HOLES.length) setLedger(!ledgerOn); }
+    else if(e.key==='m'||e.key==='M'){ if(PROGRAMS.length) setProg(!progPanel); }
     // I, B, O — NOT C or P. C returns early above (copy camera for the deck
     // editor) and P is autoplay, so binding either here produced a shortcut
     // that silently never fired.
@@ -9349,7 +9992,32 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       tRectDeg:(function(r){ return r?Math.round(Cesium.Math.toDegrees(
         r.east-r.west)*1000)/1000:360; })(viewer.scene.globe.translucency.rectangle),
       sun:!!(viewer.scene.sun&&viewer.scene.sun.show),
-      ledgt:$('ledgt').textContent, cam:camProbe()}),
+      ledgt:$('ledgt').textContent, cam:camProbe(),
+      // Drilling. `progEnts` is what is actually in the scene, so a check can
+      // tell "the deck has a programme" from "the rig got drawn".
+      progOn:progOn, progPanel:progPanel, progEnts:progEnts?progEnts.length:0,
+      progShown:progEnts?progEnts.filter(e=>e.show).length:0,
+      capBar:$('prog')?$('prog').style.width:null,
+      // Every graphic a programme draws must carry its own near/far window.
+      // On the ENTITY the property is silently ignored, so the shape of the
+      // object is the only thing that can be asserted about it.
+      progDDC:progEnts?progEnts.map(e=>{
+        const gr=e.label||e.box||e.cylinder||e.polyline;
+        const d=gr&&gr.distanceDisplayCondition&&gr.distanceDisplayCondition.getValue
+          ?gr.distanceDisplayCondition.getValue(viewer.clock.currentTime):null;
+        return d?[Math.round(d.near),Math.round(d.far)]:null;}):[],
+      progSel:progSel, progPick:$('rigpick').children.length,
+      progt:$('rigt').textContent, prognote:$('rignote').textContent,
+      progMet:$('rigbody').querySelector('.pgmet .v')
+        ?$('rigbody').querySelector('.pgmet .v').textContent:null,
+      progBar:$('rigbody').querySelector('.pgbar i')
+        ?$('rigbody').querySelector('.pgbar i').style.width:null,
+      progReports:$('rigbody').querySelectorAll('.pgu .d').length,
+      progDeltas:[...$('rigbody').querySelectorAll('.pgu .d .dl')].map(x=>x.textContent)}),
+    programs:()=>PROGRAMS.map(g=>({name:g.name, status:g.status,
+      metres:progMetres(g), target:g.target_m, placed:progNum(g.easting)!==null,
+      updates:(g.updates||[]).length})),
+    focusProgram:(i)=>focusProgram(PROGRAMS[i]),
     titles:()=>CHAPTERS.map(c=>c.title),
     chapter:(n)=>CHAPTERS[n],
     capture:()=>({camera:captureCamera(), layers:captureLayers()}),
@@ -9473,6 +10141,12 @@ for k, v in {
     "__PIT_DEPOSIT__": js(PIT_DEPOSIT),
     "__CAM_FIXED__": js(CAM_FIXED),
     "__CAM_KEYS__": js(CAM_KEYS),
+    # No drilling programme on the baked demo, and deliberately not one.
+    # Everything else fabricated in this export is labelled as fabricated in
+    # five places; an invented metre count reported as progress by a named
+    # issuer is a different kind of claim, and there is no banner that makes it
+    # safe. A programme arrives from the console or not at all.
+    "__PROGRAMS__": js([]),
     "__SITE_SYNTHETIC__": "true" if SITE_SYNTHETIC else "false",
     "__REAL_CLAIMS__": js(REAL_CLAIMS),
     "__CLAIMS_SYNTHETIC__": js(CLAIMS_SYNTHETIC),

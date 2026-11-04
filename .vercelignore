@@ -9,5 +9,33 @@ node_modules
 .env
 .env.*
 *_BM_*.csv
-Siwash_North_BM_Nov_2021.csv
 .fixtures/
+
+# Internal-only, and until 2026-09-17 all three were served publicly at 200.
+# Nothing the site renders fetches from any of them — every reference is a code
+# comment naming a generator ("Source of truth is tools/webgl_guard.js") or
+# provenance, never a runtime URL. Checked before excluding.
+#
+#   docs/      — TRACKING.md was 186 KB of internal tracker on the open web:
+#                client names, decisions, and repeated mentions of the project
+#                that must not appear publicly at all — the very thing that rule
+#                exists to prevent. (This file is not deployed, but the REPO is
+#                public, so naming that project here defeated the point too.)
+#   tools/     — seed_demo_deck.mjs carries a hard-coded demo share token that
+#                TRACKING.md itself called "one guess away". Revoked 2026-09-15.
+#   supabase/  — schema, RLS policies and edge-function source.
+#
+# A static host serves whatever it is given, so "unreferenced" is not "private":
+# a guessed URL still returns the file.
+docs/
+tools/
+supabase/
+
+# Not public yet (2026-09-18). The nav and footer links were removed too, but
+# removing links is not hiding: this host serves whatever it is given, so the
+# page has to leave the DEPLOYMENT or /studio/ still answers 200 to anyone who
+# guesses it. Preview it locally instead:
+#   python3 -m http.server 8899   ->   http://localhost:8899/studio/
+# To publish: delete this line, restore the STUDIO nav/footer links on
+# index.html, faq/ and privacy/, and redeploy.
+studio/

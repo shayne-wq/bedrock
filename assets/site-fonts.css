@@ -1,0 +1,22 @@
+/* Bedrock site type, self-hosted.
+   These were a <link> to Google Fonts, which meant every visit to the marketing
+   page, the FAQ or the console handed the visitor's IP address to Google before
+   a word rendered. Served from our own origin, the privacy policy can name one
+   fewer recipient. Latin subset; Space Grotesk, Inter and JetBrains Mono are
+   variable files, so one file covers every weight the site uses. */
+@font-face {
+  font-family: 'Space Grotesk'; font-style: normal; font-weight: 300 700; font-display: swap;
+  src: url(/assets/fonts/space-grotesk.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Inter'; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url(/assets/fonts/inter.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono'; font-style: normal; font-weight: 100 800; font-display: swap;
+  src: url(/assets/fonts/jetbrains-mono.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Archivo Black'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url(/assets/fonts/archivo-black.woff2) format('woff2');
+}

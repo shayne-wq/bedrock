@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy policy — Bedrock</title>
+<meta name="description" content="What Bedrock collects when you use the console or view a deck, who processes it, where it is stored, how long it is kept, and how to have it deleted.">
+<link rel="canonical" href="https://getbedrock.ca/privacy/">
+<meta property="og:title" content="Privacy policy — Bedrock">
+<meta property="og:image" content="https://getbedrock.ca/img/og-williams.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="/assets/site-fonts.css">
+<style>
+/* Same tokens and chrome as /faq/, so the policy reads as part of the site. */
+:root {
+  --bg: #ffffff; --bg-2: #f5f5f7; --border: #e3e4e7;
+  --ink: #16181a; --ink-dim: #55585d; --ink-mute: #6f7278;
+  --accent: #33b6d8; --accent-ink: #06232a; --accent-deep: #00728f;
+  --heading: 'Space Grotesk', system-ui, sans-serif; --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --body: 'Inter', system-ui, sans-serif;
+  --leading: 28px; --edge: clamp(20px, 5vw, 72px); --nav-h: 81px;
+}
+* { box-sizing: border-box; }
+html, body { overflow-x: clip; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); text-wrap: pretty; }
+a { color: var(--accent-deep); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+a:hover { color: color-mix(in srgb, var(--accent-deep) 80%, black); }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 0 var(--edge); }
+::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+:focus-visible { outline: 2px solid var(--accent-deep); outline-offset: 2px; }
+
+.nav { position: absolute; top: 0; left: 0; right: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: center; padding: 22px max(var(--edge), calc((100% - 1240px) / 2 + var(--edge)));
+  border-bottom: 1px solid var(--border); }
+.nav-links { display: flex; gap: 8px; align-items: center; }
+.nav-links a { font-family: var(--mono); font-size: 12px; letter-spacing: 0.03em; color: var(--ink-dim); border: 1px solid var(--border);
+  border-radius: 4px; padding: 9px 14px; white-space: nowrap; text-decoration: none; }
+.nav-links a:hover { color: var(--ink); border-color: var(--ink-mute); }
+@media (max-width: 760px) { .nav-links { gap: 5px; } .nav-links a { font-size: 11px; padding: 8px 10px; letter-spacing: 0.02em; } }
+
+.mast { padding: calc(var(--nav-h) + 54px) 0 34px; border-bottom: 1px solid var(--border); }
+.kicker { display: flex; align-items: center; gap: 9px; font-family: var(--mono); font-size: 12.5px; font-weight: 500; letter-spacing: 0.06em; margin: 0 0 18px; }
+.kicker::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-deep); }
+h1 { font-family: var(--heading); font-weight: 600; font-size: clamp(30px, 5vw, 46px); line-height: 1.1; letter-spacing: -0.03em; margin: 0 0 14px; text-wrap: balance; }
+.stand { font-size: 16.5px; line-height: var(--leading); color: var(--ink-dim); margin: 0; max-width: 64ch; }
+.dates { margin: 16px 0 0; font-family: var(--mono); font-size: 12px; color: var(--ink-mute); }
+
+.shell { display: grid; gap: 40px; padding: 40px 0 72px; }
+.shell > *, .doc, .doc section, .body { min-width: 0; }
+@media (min-width: 960px) {
+  .shell { grid-template-columns: 210px minmax(0, 1fr); gap: 64px; align-items: start; }
+  .index { position: sticky; top: 22px; max-height: calc(100vh - 44px); overflow: auto; }
+}
+.index h2 { font-family: var(--mono); font-size: 10.5px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-mute); margin: 0 0 12px; }
+.index ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
+.index a { display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 7px 8px; margin-left: -8px; border-radius: 4px;
+  color: var(--ink-dim); font-size: 13.5px; line-height: 1.35; text-decoration: none; }
+.index a:hover { background: var(--bg-2); color: var(--ink); }
+.index .n { font-family: var(--mono); font-size: 11px; color: var(--ink-mute); }
+@media (max-width: 959px) { .index ol { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); } }
+
+.doc { display: grid; gap: 52px; }
+.doc section { scroll-margin-top: 24px; }
+h2.q { font-family: var(--heading); font-weight: 600; font-size: clamp(21px, 2.7vw, 26px); line-height: 1.2; letter-spacing: -0.02em;
+  margin: 0 0 15px; text-wrap: balance; display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: baseline; }
+h2.q .n { font-family: var(--mono); font-size: 13px; font-weight: 400; color: var(--accent-deep); }
+h3 { font-family: var(--heading); font-weight: 600; font-size: 15.5px; letter-spacing: -0.01em; margin: 26px 0 0; color: var(--ink); }
+.body { max-width: 70ch; }
+.body > * + * { margin-top: 13px; }
+.body p { margin: 0; font-size: 15.5px; line-height: var(--leading); color: var(--ink-dim); }
+.body strong { color: var(--ink); font-weight: 600; }
+code { font-family: var(--mono); font-size: 0.84em; background: var(--bg-2); border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px; color: var(--ink-dim); }
+
+ul.plain { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+ul.plain li { position: relative; padding-left: 22px; font-size: 15px; line-height: 26px; color: var(--ink-dim); }
+ul.plain li::before { content: ""; position: absolute; left: 0; top: 10px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent-deep); opacity: .75; }
+
+.tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 13.5px; line-height: 1.5; }
+th, td { text-align: left; padding: 11px 14px; vertical-align: top; border-bottom: 1px solid var(--border); color: var(--ink-dim); }
+thead th { font-family: var(--mono); font-size: 10.5px; font-weight: 500; letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-mute); background: var(--bg-2); white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+td:first-child { color: var(--ink); font-weight: 600; }
+td.mono { font-family: var(--mono); font-size: 12px; font-weight: 400; }
+
+/* The at-a-glance box: the promises a reader actually wants, stated flatly. */
+.glance { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.glance > .hd { padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--bg-2);
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-mute); }
+.glance ul { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: 1fr; }
+@media (min-width: 640px) { .glance ul { grid-template-columns: 1fr 1fr; } .glance li:nth-child(odd) { border-right: 1px solid var(--border); } }
+.glance li { padding: 13px 16px; border-bottom: 1px solid var(--border); font-size: 14px; line-height: 1.55; color: var(--ink-dim); }
+.glance li b { display: block; color: var(--ink); font-family: var(--heading); font-weight: 600; font-size: 14.5px; margin-bottom: 2px; }
+
+.note { border: 1px solid var(--border); background: var(--bg-2); border-radius: 6px; padding: 15px 17px; font-size: 14px; line-height: 1.6; color: var(--ink-dim); }
+.note .t { font-family: var(--heading); font-weight: 600; font-size: 13.5px; color: var(--ink); display: block; margin-bottom: 5px; }
+
+.contact { display: grid; gap: 0; border: 1px solid var(--border); border-radius: 6px; }
+.contact div { display: grid; grid-template-columns: 1fr; gap: 2px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.contact div:last-child { border-bottom: 0; }
+@media (min-width: 560px) { .contact div { grid-template-columns: 170px 1fr; gap: 16px; } }
+.contact dt { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-mute); padding-top: 3px; }
+.contact dd { margin: 0; font-size: 15px; color: var(--ink); }
+
+footer.site { padding: 40px 0 30px; border-top: 1px solid var(--border); font-family: var(--mono); font-size: 12px; color: var(--ink-mute); }
+.foot-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
+.foot-links { display: flex; gap: 24px; flex-wrap: wrap; }
+.foot-links a { color: var(--ink); text-decoration: none; }
+.foot-links a:hover { color: var(--accent-deep); }
+@media print { .nav, .index, footer.site { display: none; } .shell { display: block; } .mast { padding-top: 0; } }
+</style>
+</head>
+<body>
+
+<nav class="nav" aria-label="Site">
+  <div class="nav-links">
+    <a href="/#product">PRODUCT</a>
+    <a href="/#how-it-works">ASSET</a>
+    <a href="/#company">COMPANY</a>
+    <a href="/faq/">FAQ</a>
+    <a href="/dashboard/" style="border:none">LOG IN</a>
+  </div>
+</nav>
+
+<div class="wrap">
+  <header class="mast">
+    <span class="kicker">LEGAL</span>
+    <h1>Privacy policy</h1>
+    <p class="stand">What Bedrock collects when you use the console or view a deck, who
+      handles it, where it is stored, how long it is kept, and how to have it deleted.</p>
+    <p class="dates">Effective 15 September 2026 · Last updated 29 September 2026</p>
+  </header>
+
+  <div class="shell">
+    <nav class="index" aria-label="Sections">
+      <h2>Sections</h2>
+      <ol>
+        <li><a href="#glance"><span class="n">1</span><span>At a glance</span></a></li>
+        <li><a href="#who"><span class="n">2</span><span>Who we are</span></a></li>
+        <li><a href="#collect"><span class="n">3</span><span>What we collect</span></a></li>
+        <li><a href="#viewers"><span class="n">4</span><span>People viewing a deck</span></a></li>
+        <li><a href="#use"><span class="n">5</span><span>How we use it</span></a></li>
+        <li><a href="#storage"><span class="n">6</span><span>Cookies and browser storage</span></a></li>
+        <li><a href="#share"><span class="n">7</span><span>Who processes it</span></a></li>
+        <li><a href="#where"><span class="n">8</span><span>Where it is stored</span></a></li>
+        <li><a href="#retention"><span class="n">9</span><span>How long we keep it</span></a></li>
+        <li><a href="#security"><span class="n">10</span><span>Security</span></a></li>
+        <li><a href="#rights"><span class="n">11</span><span>Your rights</span></a></li>
+        <li><a href="#contact"><span class="n">12</span><span>Changes and contact</span></a></li>
+      </ol>
+    </nav>
+
+    <main class="doc">
+
+      <section id="glance">
+        <h2 class="q"><span class="n">1</span><span>At a glance</span></h2>
+        <div class="body">
+          <div class="glance">
+            <div class="hd">The short version</div>
+            <ul>
+              <li><b>No advertising, no selling</b>We do not sell personal information, share it for advertising, or use your content to train AI models.</li>
+              <li><b>No tracking cookies</b>Bedrock sets no cookies. Deck analytics use a random ID that lasts one browser tab.</li>
+              <li><b>No IP addresses in our database</b>Viewer analytics never store an IP address or a full browser identifier.</li>
+              <li><b>Do Not Track is respected</b>A browser sending Global Privacy Control or Do Not Track is not counted at all.</li>
+              <li><b>Stored in Canada</b>Our database and file storage are in Supabase's Canada (Central) region.</li>
+              <li><b>Your block model stays with you</b>It is read in your browser. Only the derived display files are uploaded.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="who">
+        <h2 class="q"><span class="n">2</span><span>Who we are</span></h2>
+        <div class="body">
+          <p>
+            Bedrock is operated by <strong>1238723 B.C. Ltd.</strong> ("Bedrock", "we", "us"), a
+            company based in British Columbia, Canada. This policy covers getbedrock.ca, the
+            Bedrock console, the Bedrock deck viewer, and decks embedded on other websites.
+          </p>
+          <p>We play two different roles, and which one applies changes who you should talk to:</p>
+          <ul class="plain">
+            <li><strong>We are responsible</strong> (a "controller" under the GDPR) for account
+              information, demo requests, correspondence and error reports.</li>
+            <li><strong>We act on a customer's behalf</strong> (a "processor" or "service
+              provider") for the content a customer uploads and for the engagement analytics
+              collected when people view that customer's decks. The customer, usually a mining
+              company, decides what is published and to whom, and is responsible for that
+              information. We use it only to provide Bedrock to them.</li>
+          </ul>
+          <p>
+            We have designated a Privacy Officer who is accountable for our compliance with this
+            policy and with applicable privacy law. Contact details are in
+            <a href="#contact">section 12</a>.
+          </p>
+        </div>
+      </section>
+
+      <section id="collect">
+        <h2 class="q"><span class="n">3</span><span>What we collect</span></h2>
+        <div class="body">
+          <h3>If you have a Bedrock account</h3>
+          <ul class="plain">
+            <li><strong>Your email address.</strong> We sign you in by emailing a one-time link.
+              There are no passwords.</li>
+            <li><strong>Your organization and role</strong> (owner, admin, member or client), and
+              when you joined.</li>
+            <li><strong>Invitations:</strong> the invitee's email address, the role offered, who
+              sent it, and when it expires or was accepted.</li>
+            <li><strong>Sign-in records</strong> kept by our authentication provider: when you
+              signed in and the session tokens that keep you signed in.</li>
+            <li><strong>Authorship:</strong> which account created a project, dataset, deck or
+              share link.</li>
+          </ul>
+
+          <h3>Content customers upload</h3>
+          <p>
+            Project details (name, commodity, location, stage), logos, slide text, camera
+            positions and map annotations, and geological data files: drill collars, surveys and
+            assays, geochemistry, geophysics grids, topography, surfaces and claim boundaries. We
+            store the original files you upload so they can be audited, along with the display
+            files derived from them.
+          </p>
+          <p>
+            <strong>Block models are the exception.</strong> The console reads a block model
+            inside your browser and uploads only the derived display files. The source file never
+            reaches us.
+          </p>
+          <p>
+            This content is mostly technical rather than personal. It can include personal
+            information, such as a geologist's name in a data file, and we protect it the same way
+            either way.
+          </p>
+
+          <h3>Error reports</h3>
+          <p>
+            If a deck fails to load, the viewer sends a short report so we can fix it: the error
+            message and where it happened, your browser's user-agent string, screen size and pixel
+            density, whether 3D graphics are available, whether you were online, approximate device
+            memory, the page address without its query string, and the viewer build. No IP address
+            or identifier is stored with it, and it is sent only when something breaks.
+          </p>
+
+          <h3>Demo requests and correspondence</h3>
+          <p>
+            The demo form on our home page composes an email in your own mail program. Nothing is
+            sent to us unless you send that email. If you do, we receive what you wrote (typically
+            your name, email, company and project description) and keep it in our email inbox.
+          </p>
+
+          <h3>Collected by our hosting providers</h3>
+          <p>
+            Like any website, the servers that deliver Bedrock see your IP address, browser
+            user-agent, the address requested and the time. Our hosting and database providers
+            process this in their own logs for security and to keep the service running, for a
+            limited period set by them. We do not combine these logs with deck analytics or use
+            them to identify viewers.
+          </p>
+        </div>
+      </section>
+
+      <section id="viewers">
+        <h2 class="q"><span class="n">4</span><span>People viewing a deck</span></h2>
+        <div class="body">
+          <p>
+            When you open a deck through a share link or on a company's website, the viewer
+            reports how the deck was used to the company that published it. It is built to
+            describe the <em>visit</em>, not the <em>person</em>.
+          </p>
+          <p>
+            Where we issue a share link to one organisation &mdash; for example a link sent with an
+            introduction &mdash; visits through that link are attributed to that organisation, so the
+            sender can see whether the deck was opened and how much of it was read. What is recorded
+            is still only what the table below lists: no name, no email, no IP address.
+          </p>
+          <p>
+            <strong>Email we send.</strong> A message we send you carries a small image hosted on our
+            servers. When your mail program displays it we learn that the message was displayed, when,
+            and which mail client or proxy fetched it. We do not learn your IP address or your
+            location. Many mail systems fetch that image automatically &mdash; on delivery, or for
+            every message regardless of whether it is read &mdash; so we treat the signal as weak and
+            it is not used to make any decision about you. Turning off remote images in your mail
+            program, or sending Global Privacy Control or Do Not Track, means nothing is recorded.
+          </p>
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th scope="col">We record</th><th scope="col">We do not record</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td style="font-weight:400">
+                    A random session ID that lasts one browser tab<br>
+                    When the visit started and was last active<br>
+                    Time the deck was visible on screen<br>
+                    Which slides you saw, and time on each<br>
+                    Whether you finished, and which controls you used<br>
+                    Whether the deck was embedded in another site<br>
+                    The referring website and page, without its query string<br>
+                    Device type (desktop, tablet, mobile) and browser family<br>
+                    At most, your country
+                  </td>
+                  <td style="font-weight:400">
+                    Your IP address<br>
+                    Your full user-agent string<br>
+                    Cookies or cross-site identifiers<br>
+                    Your name or email, unless the deck asks for them (below)<br>
+                    Anything linking two visits together, beyond the share link each was opened with<br>
+                    Anything you do after closing the deck<br>
+                    Query strings, where tracking parameters live
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <h3>When a deck asks who you are</h3>
+          <p>
+            A company can choose to put a short form in front of its deck. When it
+            does, you are asked for <strong>your name and email address</strong>, and
+            the deck says so before you open it. You can decline: every gated deck
+            carries a <strong>continue without</strong> link, and the deck opens
+            either way.
+          </p>
+          <p>
+            What you enter goes to the company that published the deck, not to us —
+            we hold it on their behalf so they can see who asked to look and follow
+            up. They can export it and delete it. We keep it for
+            <strong>24 months</strong>, and we do not use it for our own marketing or
+            pass it to anyone else. If you want your details removed, ask the company
+            that sent you the deck, or email us and we will pass it on.
+          </p>
+          <p>
+            <strong>Opting out.</strong> If your browser sends
+            <a href="https://globalprivacycontrol.org/" rel="noopener">Global Privacy Control</a>
+            or Do Not Track, the viewer sends no analytics, and our servers discard any that
+            arrive. The deck works exactly the same.
+          </p>
+          <p>
+            <strong>Map services.</strong> To draw terrain and imagery, and to load the software
+            that renders it, your browser requests files directly from Esri, OpenStreetMap and the
+            jsDelivr content network. As with any web request, they receive your IP address. We
+            send them no information about you or the deck.
+          </p>
+          <div class="note">
+            <span class="t">If you publish decks on your own website</span>
+            Your site's visitors are viewing a service you chose to embed. We recommend your own
+            privacy notice mention Bedrock deck analytics and link to this section.
+          </div>
+        </div>
+      </section>
+
+      <section id="use">
+        <h2 class="q"><span class="n">5</span><span>How we use it</span></h2>
+        <div class="body">
+          <p>Where the GDPR or UK GDPR applies, the legal basis for each use is shown.</p>
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th scope="col">Purpose</th><th scope="col">Information</th><th scope="col">Legal basis</th></tr></thead>
+              <tbody>
+                <tr><td>Signing you in and running your workspace</td><td>Account, organization, invitations</td><td>Performing our contract with you or your organization</td></tr>
+                <tr><td>Storing, rendering and sharing decks</td><td>Customer content, share links</td><td>Performing our contract with the customer</td></tr>
+                <tr><td>Engagement reporting for the deck's publisher</td><td>Viewer analytics (section 4)</td><td>The publisher's legitimate interest in knowing how its deck is used, limited to non-identifying data</td></tr>
+                <tr><td>Fixing failures and keeping Bedrock secure</td><td>Error reports, provider logs</td><td>Our legitimate interest in a working, secure service</td></tr>
+                <tr><td>Answering demo requests and messages</td><td>What you send us</td><td>Steps you asked for before a contract; our legitimate interest in replying</td></tr>
+                <tr><td>Service and security notices</td><td>Email address</td><td>Performing our contract</td></tr>
+                <tr><td>Meeting legal obligations</td><td>Any of the above, only as required</td><td>Legal obligation</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            We use personal information only for these purposes, or for a purpose you consent to.
+            We send business-to-business email to people whose work address is published for that
+            purpose, and we stop on request &mdash; tell us and you will not hear from us again. We do
+            not make automated decisions that have legal or similarly significant effects on anyone,
+            and we do not build profiles of individual viewers. Engagement with a deck is
+            attributed to the organisation a share link was issued to. Email we send carries a
+            small image that tells us the message was displayed; because that message was
+            addressed to one person, that single signal is attributable to them. We record the
+            time and the mail client or proxy that fetched it &mdash; never your IP address, your
+            location, or anything you do afterwards.
+          </p>
+        </div>
+      </section>
+
+      <section id="storage">
+        <h2 class="q"><span class="n">6</span><span>Cookies and browser storage</span></h2>
+        <div class="body">
+          <p>
+            <strong>Bedrock sets no cookies</strong>, and uses no advertising or third-party
+            analytics scripts. We use your browser's own storage only for things the service needs
+            to work:
+          </p>
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th scope="col">What</th><th scope="col">Where</th><th scope="col">Lasts</th></tr></thead>
+              <tbody>
+                <tr><td>Console sign-in session</td><td>Local storage, console only</td><td>Until you sign out</td></tr>
+                <tr><td>Console layout preferences</td><td>Local storage</td><td>Until cleared</td></tr>
+                <tr><td>Slide thumbnails</td><td>Session storage, console</td><td>Until the tab closes</td></tr>
+                <tr><td>Deck analytics session ID</td><td>Session storage, viewer</td><td>Until the tab closes</td></tr>
+                <tr><td>Graphics recovery counter</td><td>Session storage, viewer</td><td>Until the tab closes</td></tr>
+                <tr><td>Map shapes and camera positions saved while presenting or editing</td><td>Local storage, viewer</td><td>Until cleared; never sent to us</td></tr>
+                <tr><td>Offline copy of the viewer's own files</td><td>Service worker cache</td><td>Until replaced or cleared; excludes your data and account</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Clearing your browser's site data removes all of it.</p>
+        </div>
+      </section>
+
+      <section id="share">
+        <h2 class="q"><span class="n">7</span><span>Who processes it</span></h2>
+        <div class="body">
+          <p>
+            We use these service providers. Each receives only what its job needs and is bound by
+            contract to protect it and use it only on our instructions.
+          </p>
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th scope="col">Provider</th><th scope="col">What it does</th><th scope="col">Data it handles</th><th scope="col">Location</th></tr></thead>
+              <tbody>
+                <tr><td>Supabase, Inc.</td><td>Database, sign-in, file storage, server functions</td><td>All account, content, analytics and error data</td><td>Canada (Central) region</td></tr>
+                <tr><td>Vercel, Inc.</td><td>Hosts and delivers the website, console and viewer</td><td>Request logs (IP address, browser, page)</td><td>Global network; USA</td></tr>
+                <tr><td>Postmark (ActiveCampaign, LLC)</td><td>Sends sign-in links and invitations</td><td>Recipient email, message content</td><td>USA</td></tr>
+                <tr><td>Our email provider</td><td>Receives demo requests and correspondence</td><td>What you send us</td><td>USA</td></tr>
+                <tr><td>Esri; OpenStreetMap Foundation; jsDelivr</td><td>Map imagery, terrain and rendering software, loaded by your browser</td><td>IP address and the request (section 4)</td><td>USA; UK; global network</td></tr>
+                <tr><td>Government mineral-title registers (BC, Saskatchewan, Yukon)</td><td>Neighbouring claim boundaries, looked up by our server</td><td>Map coordinates only; no personal information</td><td>Canada</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>We may also disclose information:</p>
+          <ul class="plain">
+            <li><strong>Within your organization.</strong> Members see the organization's content;
+              owners and admins also see members' and invitees' email addresses.</li>
+            <li><strong>To anyone holding a share link.</strong> A deck opened through a live link
+              shows what its publisher chose to include.</li>
+            <li><strong>When the law requires it</strong>, such as a valid court order, or to
+              protect the rights, property or safety of people or of Bedrock.</li>
+            <li><strong>In a business transfer</strong>, such as a merger or sale, to a successor
+              bound by this policy. We will tell account holders before their information falls
+              under a different policy.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="where">
+        <h2 class="q"><span class="n">8</span><span>Where it is stored</span></h2>
+        <div class="body">
+          <p>
+            Our database and file storage are in <strong>Canada</strong> (Supabase, Canada Central
+            region). Some providers in section 7 process information in the United States and
+            elsewhere, where it may be accessible to courts and authorities under local law.
+          </p>
+          <p>
+            Where information about people in the European Economic Area, the United Kingdom or
+            Switzerland is transferred to a country without an adequacy decision, we rely on the
+            European Commission's Standard Contractual Clauses (and the UK Addendum) in our
+            providers' data processing terms. Canada has an adequacy decision from the European
+            Commission. For Quebec residents, we assess whether information transferred outside
+            Quebec receives adequate protection before transferring it.
+          </p>
+        </div>
+      </section>
+
+      <section id="retention">
+        <h2 class="q"><span class="n">9</span><span>How long we keep it</span></h2>
+        <div class="body">
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th scope="col">Information</th><th scope="col">Kept for</th></tr></thead>
+              <tbody>
+                <tr><td>Account and membership</td><td>While the account is active; deleted within 30 days of a verified deletion request</td></tr>
+                <tr><td>Customer content</td><td>Until the customer deletes it or closes its organization. Removing a dataset deletes its files immediately.</td></tr>
+                <tr><td>Deck viewer analytics</td><td>13 months, then deleted automatically; sooner if the deck is deleted</td></tr>
+                <tr><td>Name and email given to a gated deck</td><td>24 months, then deleted automatically; or when the company deletes it</td></tr>
+                <tr><td>Error reports</td><td>90 days, then deleted automatically</td></tr>
+                <tr><td>Invitations never accepted</td><td>Deleted automatically 30 days after they expire (they expire after 30 days)</td></tr>
+                <tr><td>Demo requests and correspondence</td><td>Up to 24 months after our last exchange, unless you become a customer</td></tr>
+                <tr><td>Sign-in and invitation emails</td><td>Kept by Postmark for up to 45 days</td></tr>
+                <tr><td>Database backups</td><td>Up to 7 days, so deleted data leaves backups within a week</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>We may keep information longer only where the law requires it, or while needed to
+            resolve a dispute, and only for that purpose.</p>
+        </div>
+      </section>
+
+      <section id="security">
+        <h2 class="q"><span class="n">10</span><span>Security</span></h2>
+        <div class="body">
+          <ul class="plain">
+            <li><strong>Organizations are walled off in the database</strong> with row-level
+              security, not only in the app. Tests check that one organization cannot read
+              another's data.</li>
+            <li><strong>Files are private.</strong> A deck receives signed links that expire within
+              an hour, issued only after its share link is checked.</li>
+            <li><strong>Share links</strong> carry 192 bits of randomness, and can have a passcode
+              and an expiry date. Revoking a link takes effect immediately.</li>
+            <li><strong>No passwords</strong> to steal or reuse: sign-in is by one-time email link.</li>
+            <li><strong>Encrypted</strong> in transit (HTTPS) and at rest by our providers.</li>
+            <li><strong>Least privilege.</strong> The client role can edit slides but cannot delete
+              data or files. Full database access is limited to a few server functions and our operators.</li>
+          </ul>
+          <p>
+            No system is perfectly secure. If a breach of security safeguards creates a real risk
+            of significant harm, we will notify affected people and the relevant regulators, such as
+            the Office of the Privacy Commissioner of Canada and, where the GDPR applies, the
+            supervisory authority within 72 hours, as the law requires. We keep a record of every
+            such breach.
+          </p>
+        </div>
+      </section>
+
+      <section id="rights">
+        <h2 class="q"><span class="n">11</span><span>Your rights</span></h2>
+        <div class="body">
+          <p>Depending on where you live, you have the right to:</p>
+          <ul class="plain">
+            <li><strong>Access</strong> the personal information we hold about you, and learn how it is used and who it has been disclosed to</li>
+            <li><strong>Correct</strong> it if it is inaccurate or incomplete</li>
+            <li><strong>Delete</strong> it, or have it de-indexed</li>
+            <li><strong>Receive a copy</strong> in a portable, structured format</li>
+            <li><strong>Object to</strong> or <strong>restrict</strong> how we use it</li>
+            <li><strong>Withdraw consent</strong> where we rely on it, without affecting past use</li>
+            <li><strong>Complain</strong> to a privacy regulator</li>
+          </ul>
+          <p>
+            To use any of these rights, email <a href="mailto:hello@getbedrock.ca?subject=Privacy%20request">hello@getbedrock.ca</a>.
+            We will confirm the request comes from the right person, usually by replying to the
+            email address on the account, and respond within 30 days. It is free.
+          </p>
+          <ul class="plain">
+            <li><strong>Deleting an account</strong> removes your sign-in and memberships. If you
+              are the only owner of an organization that has other members, we will ask you to hand
+              over ownership or close the organization first.</li>
+            <li><strong>Deck viewers:</strong> we cannot tell who you are, so we usually cannot find
+              your records. Turning on Global Privacy Control stops collection.</li>
+            <li><strong>Information in a customer's deck:</strong> the company that published it
+              decides about it. Contact them; we will help them respond.</li>
+          </ul>
+
+          <h3>United States residents</h3>
+          <p>
+            We do not sell personal information, "share" it for cross-context behavioural
+            advertising, or process sensitive personal information. We treat Global Privacy
+            Control as a valid opt-out. We will not discriminate against you for using your rights,
+            and you may use an authorized agent to make a request.
+          </p>
+
+          <h3>Regulators</h3>
+          <p>
+            You can complain to the
+            <a href="https://www.priv.gc.ca/" rel="noopener">Office of the Privacy Commissioner of Canada</a>,
+            the <a href="https://www.oipc.bc.ca/" rel="noopener">Information and Privacy Commissioner for British Columbia</a>,
+            the <a href="https://www.cai.gouv.qc.ca/" rel="noopener">Commission d'accès à l'information du Québec</a>,
+            the UK <a href="https://ico.org.uk/" rel="noopener">Information Commissioner's Office</a>,
+            or your local data protection authority. We would appreciate the chance to fix it first.
+          </p>
+
+          <h3>Children</h3>
+          <p>
+            Bedrock is a business tool, not directed at anyone under 16, and we do not knowingly
+            collect children's information. If you believe we have, contact us and we will delete it.
+          </p>
+        </div>
+      </section>
+
+      <section id="contact">
+        <h2 class="q"><span class="n">12</span><span>Changes and contact</span></h2>
+        <div class="body">
+          <p>
+            When we change this policy, we update the date at the top. We keep past versions.
+            For a material change, such as a new use of personal information or a new kind of
+            provider, we will email account holders before it takes effect.
+          </p>
+          <dl class="contact">
+            <div><dt>Company</dt><dd>1238723 B.C. Ltd., operating as Bedrock</dd></div>
+            <div><dt>Responsible</dt><dd>Privacy Officer</dd></div>
+            <div><dt>Email</dt><dd><a href="mailto:hello@getbedrock.ca?subject=Privacy">hello@getbedrock.ca</a></dd></div>
+            <div><dt>Location</dt><dd>British Columbia, Canada</dd></div>
+          </dl>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<footer class="site">
+  <div class="wrap">
+    <div class="foot-row">
+      <span>&copy; 2026 BEDROCK</span>
+      <div class="foot-links">
+        <a href="/#product">PRODUCT</a>
+        <a href="/#how-it-works">HOW IT WORKS</a>
+        <a href="/#company">COMPANY</a>
+        <a href="/sell-sheet/">OVERVIEW</a>
+        <a href="/faq/">FAQ</a>
+        <a href="/privacy/" aria-current="page">PRIVACY</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

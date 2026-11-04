@@ -60,6 +60,8 @@ let live   = { wide: null, tall: null };
 let active = "wide";                     // which frame Set view writes to
 let undo = null;                         // { ord, which, before } — one step, which is the one that matters
 let sel = 0;                             // slide the inspector is editing
+let capK = 1;                            // caption text size, deck-wide
+let capTap = null;                       // the delegated caption-size listener
 let shownFor = null;                     // chapter id the inspector was built for
 let textTimer = null, textDirty = false;
 // The filmstrip is a navigator, not the work. On a 1100px laptop it costs a
@@ -119,21 +121,14 @@ function toolbarHtml() {
       </div>
 
       <div class="stgrp" role="group" aria-label="Ground">
-        <span class="stgl">Terrain</span>
+        <span class="stgl nm">Terrain</span>
         <input type="range" id="tb_ground" min="0" max="100" step="1" value="100"
                aria-label="Terrain opacity" title="See through the ground">
         <output id="tb_ground_o">100%</output>
-        <span class="stgl" id="tb_ov_l" hidden>Overlay</span>
+        <span class="stgl nm" id="tb_ov_l" hidden>Overlay</span>
         <input type="range" id="tb_geo" min="0" max="100" step="1" value="72" hidden
                aria-label="Survey overlay opacity" title="Geophysics overlay">
         <output id="tb_geo_o" hidden>72%</output>
-      </div>
-
-      <div class="stgrp" role="group" aria-label="Caption">
-        <span class="stgl">Caption</span>
-        <button class="tbtn" data-cap="-0.1" title="Smaller caption">\u2212</button>
-        <output id="tb_cap">100%</output>
-        <button class="tbtn" data-cap="0.1" title="Larger caption">+</button>
       </div>
 
       <div class="stgrp" role="group" aria-label="Annotate">
@@ -153,11 +148,11 @@ function toolbarHtml() {
         <button class="tbtn" id="tb_big" title="Larger">+</button>
         <button class="tbtn" id="tb_undo" title="Remove the last mark">Undo</button>
         <button class="btn sm" id="tb_save" title="Publish these marks and placements to the slide" disabled>
-          Save marks</button>
+          Save</button>
       </div>
 
-      <span class="stnote" id="tb_note" role="status"></span>
-    </div>`;
+    </div>
+    <p class="stnote" id="tb_note" role="status"></p>`;
 }
 
 function frameHtml(w, token) {
@@ -209,7 +204,7 @@ export async function renderStudio(id, view) {
         <span class="eyebrow"><a href="#/">Projects</a> /
           <a href="#/p/${project.id}">${esc(project.name)}</a> /
           <a href="#/d/${deck.id}">${esc(deck.title)}</a></span>
-        <h1>Studio</h1>
+        <h1>Edit slides</h1>
       </div>
       <div class="row-actions">
         <span id="stsave" class="stsave"></span>
@@ -223,7 +218,8 @@ export async function renderStudio(id, view) {
          you author is what they get. That needs a live share link, and one is
          not created for you — a token is a thing that can be forwarded.</p>
       <button class="btn primary" id="stmklink">Create one now</button></div>`
-    : `<div class="studio">
+    : `${toolbarHtml()}
+      <div class="studio">
         <aside class="stchaps">
           <div class="stchaps-hd">
             <span>Slides</span>
@@ -242,7 +238,6 @@ export async function renderStudio(id, view) {
                       aria-selected="${w === "wide"}">${LABEL[w]}</button>`).join("")}
             <span class="swlive" id="swlive"></span>
           </div>
-          ${toolbarHtml()}
           ${frameHtml("wide", token)}
           ${frameHtml("tall", token)}
           <aside class="stinspect" id="stinspect"></aside>
@@ -344,10 +339,11 @@ export function teardownStudio() {
 
 function makeLink(deckId) {
   modal(`<h2>Create a share link</h2>
-    <p class="sub">The studio needs one, and so does anybody you send the deck
-       to. It can be revoked at any time from the deck page.</p>
+    <p class="sub">Editing slides and presenting both need one, and so does
+       anybody you send the deck to. It can be revoked at any time from the
+       deck page.</p>
     <div class="field"><label for="lklabel">Label</label>
-      <input type="text" id="lklabel" value="Studio" placeholder="Studio"></div>
+      <input type="text" id="lklabel" value="Console" placeholder="Console"></div>
     <div class="row-actions" style="margin-top:16px">
       <button class="btn primary" id="lkgo">Create</button>
       <button class="btn" id="lkno">Cancel</button>
@@ -356,7 +352,7 @@ function makeLink(deckId) {
   $("lkgo").onclick = async () => {
     const token = crypto.randomUUID().replace(/-/g, "");
     const { error } = await db.from("share_links").insert({
-      deck_id: deckId, token, label: $("lklabel").value.trim() || "Studio",
+      deck_id: deckId, token, label: $("lklabel").value.trim() || "Console",
       allow_embed: false,
     });
     if (error) return fail("Create link", error);
@@ -501,22 +497,31 @@ function wireTools() {
   /* Caption size is the deck's, not a frame's, so it goes to BOTH previews and
      is saved once. Sent live for the look of it and written after a pause, so
      holding the button does not post a row per click. */
-  let capK = ((deck && deck.theme && deck.theme.captionScale) || 1), capT;
-  for (const b2 of document.querySelectorAll("[data-cap]")) {
-    b2.onclick = () => {
-      capK = Math.max(0.8, Math.min(1.4, +(capK + +b2.dataset.cap).toFixed(2)));
-      tell({ type: "caption", v: capK });
-      const o = $("tb_cap"); if (o) o.textContent = Math.round(capK * 100) + "%";
-      clearTimeout(capT);
-      capT = setTimeout(async () => {
-        const theme = Object.assign({}, deck.theme || {}, { captionScale: capK });
-        const { error } = await db.from("decks").update({ theme }).eq("id", deck.id);
-        if (error) return fail("Caption size", error);
-        deck.theme = theme;
-        note("Caption size saved");
-      }, 700);
-    };
-  }
+  capK = (deck && deck.theme && deck.theme.captionScale) || 1;
+  let capT;
+  /* Delegated, because these two buttons live in the inspector — which is torn
+     down and rebuilt every time you select another slide. A handler bound to
+     the element would survive exactly one slide change. Swapped rather than
+     added, because `wireTools` runs again every time the studio is re-entered:
+     a second listener would apply every click twice, and the older one would
+     still be writing to the deck you left. */
+  if (capTap) document.removeEventListener("click", capTap);
+  capTap = (e) => {
+    const b2 = e.target.closest && e.target.closest("[data-cap]");
+    if (!b2) return;
+    capK = Math.max(0.8, Math.min(1.4, +(capK + +b2.dataset.cap).toFixed(2)));
+    tell({ type: "caption", v: capK });
+    const o = $("tb_cap"); if (o) o.textContent = Math.round(capK * 100) + "%";
+    clearTimeout(capT);
+    capT = setTimeout(async () => {
+      const theme = Object.assign({}, deck.theme || {}, { captionScale: capK });
+      const { error } = await db.from("decks").update({ theme }).eq("id", deck.id);
+      if (error) return fail("Caption size", error);
+      deck.theme = theme;
+      note("Caption size saved");
+    }, 700);
+  };
+  document.addEventListener("click", capTap);
 
   // Size acts on whatever Move last selected, so the two read as one gesture:
   // pick the thing up, then say how big it should be.
@@ -559,6 +564,7 @@ function paintTools(st) {
     note2.textContent = "Selected: " + name + " — colour and size act on it";
   }
   if (typeof ui.caption === "number") {
+    capK = ui.caption;
     const o = $("tb_cap");
     if (o) o.textContent = Math.round(ui.caption * 100) + "%";
   }
@@ -1097,7 +1103,15 @@ function paintInspector() {
     </div>
 
     <div class="field">
-      <label for="insp_body">Caption</label>
+      <label for="insp_body">Caption
+        <span class="capsz">
+          <button type="button" class="tbtn" data-cap="-0.1" title="Smaller caption text"
+                  aria-label="Smaller caption text">\u2212</button>
+          <output id="tb_cap">${Math.round(capK * 100)}%</output>
+          <button type="button" class="tbtn" data-cap="0.1" title="Larger caption text"
+                  aria-label="Larger caption text">+</button>
+        </span>
+      </label>
       <textarea id="insp_body" rows="5"
         placeholder="Shown beside the scene, and read aloud when narration is on."
         >${esc(c.body || "")}</textarea>

@@ -1,0 +1,883 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Studio — Bedrock</title>
+<meta name="description" content="Studio opens your deck in its own window to present it: narrate on camera, draw on the ground, measure across it, and export the walkthrough as an MP4 you keep.">
+<link rel="canonical" href="https://getbedrock.ca/studio/">
+<meta property="og:title" content="Studio — Bedrock">
+<meta property="og:image" content="https://getbedrock.ca/img/og-williams.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="/assets/site-fonts.css">
+<style>
+/* The site's own tokens and chrome, lifted verbatim from the home page so this
+   reads as the same site rather than as a document that happens to live on it.
+   The Studio design was drawn against a warmer ramp and a single accent; the
+   layout, copy and figures below are that design, re-tokenised onto the palette
+   the other four pages already use. */
+:root {
+  --bg: #ffffff; --bg-2: #f5f5f7; --border: #e3e4e7;
+  --ink: #16181a; --ink-dim: #55585d; --ink-mute: #6f7278;
+  /* Two accents, because one cannot do both jobs on white. The brand cyan
+     is 2.2:1 here — fine as a button fill under --accent-ink, and fine as
+     a link on the dark footer, but it cannot carry text on the page. Any
+     accent that has to be read as ink uses the deep teal instead. */
+  --accent: #33b6d8; --accent-ink: #06232a; --accent-deep: #00728f;
+  --heading: 'Space Grotesk', sans-serif; --mono: 'JetBrains Mono', monospace; --body: 'Inter', sans-serif; --wordmark: 'Archivo Black', sans-serif;
+  --leading: 28px; --half: 14px; --edge: clamp(20px, 5vw, 72px); --nav-h: 81px;
+}
+
+* { box-sizing: border-box; }
+html, body { overflow-x: clip; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); text-wrap: pretty; }
+a { color: var(--accent-deep); text-decoration: none; }
+a:hover { color: color-mix(in srgb, var(--accent-deep) 80%, black); }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 0 var(--edge); }
+::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+:focus-visible { outline: 2px solid var(--accent-deep); outline-offset: 2px; }
+.nav { position: absolute; top: 0; left: 0; right: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: center; padding: 22px max(var(--edge), calc((100% - 1240px) / 2 + var(--edge)));
+  border-bottom: 1px solid var(--border); }
+.nav-links { display: flex; gap: 8px; align-items: center; }
+.nav-links a { font-family: var(--mono); font-size: 12px; letter-spacing: 0.03em; color: var(--ink-dim); border: 1px solid var(--border); border-radius: 4px; padding: 9px 14px; white-space: nowrap; }
+.nav-links a:hover { color: var(--ink); border-color: var(--ink-mute); }
+.kicker { display: flex; align-items: center; gap: 9px; font-family: var(--mono); font-size: 12.5px; font-weight: 500; letter-spacing: 0.06em;
+  color: var(--ink); margin: 0 0 18px; }
+.kicker::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-deep); }
+.btn { font-family: var(--mono); font-size: 13px; letter-spacing: 0.03em; border-radius: 4px; padding: 12px 20px; cursor: pointer; white-space: nowrap; border: 1px solid transparent; display: inline-block; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
+.btn-primary:hover { background: color-mix(in srgb, var(--accent) 85%, white); color: var(--accent-ink); }
+.btn-ghost { background: transparent; color: var(--ink); border-color: var(--border); }
+.btn-ghost:hover { border-color: var(--ink-mute); color: var(--ink); }
+@media (max-width: 760px) {
+  .nav-links { gap: 5px; }
+  .nav-links a { font-size: 11px; padding: 8px 10px; letter-spacing: 0.02em; }
+}
+footer { position: relative; z-index: 1; background: #fff;
+  padding: calc(3.34vw + 26px) 0 30px;
+  font-family: var(--mono); font-size: 12px; color: var(--ink-mute); }
+.foot-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
+.foot-links { display: flex; gap: 24px; }
+.foot-links a { color: var(--ink); }
+.foot-links a:hover { color: var(--accent-deep); }
+
+/* ---- the Studio page ---------------------------------------------------- */
+.hero { padding: calc(var(--nav-h) + 40px) 0 76px; }
+.display { font-family: var(--heading); font-weight: 600; font-size: clamp(38px, 4.6vw, 60px); line-height: 1.06; letter-spacing: -0.02em; margin: 0; max-width: 18ch; text-wrap: balance; }
+.hero .sub { font-size: 17px; line-height: var(--leading); color: var(--ink-dim); max-width: 62ch; margin: 22px 0 0; }
+.hero .row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 30px; }
+.hero-figure { position: relative; margin: 44px 0 0; aspect-ratio: 21/10; border: 1px solid var(--border); background: var(--bg-2); }
+.coord { position: absolute; font-family: var(--mono); font-size: 11px; color: rgba(232,236,230,.62); letter-spacing: 0.02em; z-index: 2; pointer-events: none; }
+.coord.n { top: 12px; left: 14px; } .coord.s { bottom: 12px; right: 14px; }
+
+/* ---- the hero demonstration ----------------------------------------------
+   The page's whole claim is that a mark is written to the ground rather than
+   to the screen. A still cannot show that and a loop only half-shows it, so
+   here you do it yourself: drag, and the mark stays where you put it.
+   A heightfield rather than a flat plane, because draping over relief is the
+   part that makes the point. No library — it is a projection and two loops. */
+.hero-figure { background: #10140f; cursor: grab; touch-action: none; }
+.hero-figure.drawing { cursor: crosshair; }
+.hero-figure.dragging { cursor: grabbing; }
+#terrain { display: block; width: 100%; height: 100%; }
+/* The dock, mirroring the real presenter bar: one row, grouped, sitting on the
+   picture. It scrolls inside itself on a narrow window rather than widening the
+   figure, which is what the real one does too. */
+.dock { position: absolute; left: 0; right: 0; bottom: 10px; z-index: 3;
+  display: flex; flex-direction: column; align-items: center; gap: 7px; }
+.dock .row { display: flex; align-items: center; gap: 0;
+  background: rgba(10,13,10,.82); border: 1px solid rgba(232,236,230,.16);
+  border-radius: 7px; padding: 5px; max-width: calc(100% - 24px);
+  overflow-x: auto; scrollbar-width: none; }
+.dock .row::-webkit-scrollbar { display: none; }
+.dock .grp { display: flex; align-items: center; gap: 4px; padding: 0 7px; }
+.dock .grp + .grp { border-left: 1px solid rgba(232,236,230,.14); }
+.dock button { font-family: var(--mono); font-size: 10.5px; letter-spacing: .05em;
+  text-transform: uppercase; color: rgba(232,236,230,.76); background: none;
+  border: 1px solid transparent; border-radius: 4px; padding: 6px 9px;
+  cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.dock button:hover { color: #fff; background: rgba(232,236,230,.10); }
+.dock button[aria-pressed="true"] { background: #F2C14E; color: #241b04; }
+.dock .md { padding: 6px 8px; }
+.dock .ic { font-size: 13px; padding: 5px 9px; letter-spacing: 0; }
+.dock .rec i { width: 8px; height: 8px; border-radius: 50%; background: #e2483a; display: block; }
+.dock .time { font-family: var(--mono); font-size: 11px; color: rgba(232,236,230,.72);
+  min-width: 38px; font-variant-numeric: tabular-nums; }
+.dock .sw { width: 17px; height: 17px; border-radius: 50%; padding: 0;
+  border: 1px solid rgba(232,236,230,.35); }
+.dock .sw[aria-pressed="true"] { outline: 2px solid #fff; outline-offset: 1px; background-clip: padding-box; }
+.dock .msg { margin: 0; font-family: var(--mono); font-size: 10.5px; letter-spacing: .04em;
+  color: rgba(232,236,230,.70); background: rgba(10,13,10,.72); padding: 3px 9px;
+  border-radius: 4px; min-height: 17px; text-align: center; }
+.dock .msg:empty { background: none; }
+/* It is a demonstration, not the product. Studio clamps marks to real terrain;
+   this is a model of that idea, and saying so costs nothing. */
+.demo-note { margin: 9px 0 0; font-family: var(--mono); font-size: 10.5px;
+  letter-spacing: .03em; color: var(--ink-mute); text-align: right; }
+
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.stat { padding: 26px 28px 26px 0; }
+.stat + .stat { border-left: 1px solid var(--border); padding-left: 28px; }
+.stat b { display: block; font-family: var(--mono); font-weight: 500; font-size: 28px; color: var(--ink); }
+.stat span { display: block; font-family: var(--mono); font-size: 11px; letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-mute); margin-top: 8px; }
+
+/* The design put RECORD / NARRATE / EXPORT in the top nav. The site nav is
+   shared across five pages and stays as it is, so they live here instead —
+   still a way into the three sections, without a second navigation pretending
+   to be the first. */
+.jump { display: flex; gap: 8px; flex-wrap: wrap; padding: 22px 0 0;
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.06em; }
+.jump span { color: var(--ink-mute); padding: 6px 0; }
+.jump a { color: var(--ink-dim); border: 1px solid var(--border); border-radius: 4px; padding: 6px 11px; }
+.jump a:hover { color: var(--ink); border-color: var(--ink-mute); }
+
+.features { padding: 80px 0 0; }
+.section-title { font-family: var(--heading); font-weight: 600; font-size: clamp(28px, 3.2vw, 40px); line-height: 1.1; letter-spacing: -0.02em; margin: 0; max-width: 20ch; text-wrap: balance; }
+.section-sub { font-size: 16px; line-height: var(--leading); color: var(--ink-dim); max-width: 64ch; margin: 18px 0 0; }
+.cols { display: grid; grid-template-columns: repeat(2, 1fr); margin-top: 48px; border-top: 1px solid var(--border); }
+.col { padding: 40px 36px 40px 0; border-bottom: 1px solid var(--border); }
+.col:nth-child(odd) { border-right: 1px solid var(--border); padding-left: 0; }
+.col:nth-child(even) { padding-left: 36px; }
+.col .mark { width: 30px; height: 30px; border: 1px dashed var(--ink-mute); border-radius: 4px; margin-bottom: 22px; display: flex; align-items: center; justify-content: center; }
+.col .mark svg { width: 14px; height: 14px; }
+.col h3 { font-family: var(--heading); font-weight: 600; font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+.col p { font-size: 15px; line-height: 24px; color: var(--ink-dim); margin: 12px 0 0; max-width: 46ch; }
+
+.split { padding: 76px 0; border-top: 1px solid var(--border); }
+.split-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 28px clamp(24px, 5vw, 96px); align-items: center; }
+.split.rev .split-figure { order: -1; }
+.split-title { font-family: var(--heading); font-weight: 600; font-size: 28px; line-height: 1.2; letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+.split-copy .note { font-size: 15.5px; line-height: var(--leading); color: var(--ink-dim); margin: 16px 0 0; max-width: 46ch; }
+.specs { list-style: none; margin: 22px 0 0; padding: 0; display: flex; flex-direction: column; gap: 0; font-family: var(--mono); font-size: 12.5px; max-width: 48ch; }
+.specs li { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); color: var(--ink-mute); }
+.specs li:last-child { border-bottom: 1px solid var(--border); }
+.specs b { color: var(--ink); font-weight: 500; }
+.split-figure { position: relative; margin: 0; aspect-ratio: 16/10; border: 1px solid var(--border); background: var(--bg-2); }
+/* A figure holding a clip takes the clip's shape. Studio records 1920×1080, so
+   a 16:10 frame would letterbox it or crop the dock out of the bottom — and the
+   dock is the thing FIG. 01 exists to show. */
+.split-figure.is-video { aspect-ratio: 16/9; overflow: hidden; }
+.split-figure video,
+.split-figure > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.fig-tag { position: absolute; top: 12px; left: 12px; font-family: var(--mono); font-size: 11px; color: var(--ink-mute); border: 1px solid var(--border); border-radius: 3px; padding: 4px 8px; background: var(--bg); white-space: nowrap; }
+
+.quote { padding: 84px 0; border-top: 1px solid var(--border); }
+.quote figure { margin: 0; }
+.quote blockquote { font-family: var(--heading); font-weight: 500; font-size: clamp(22px, 2.6vw, 32px);
+  line-height: 1.4; letter-spacing: -0.015em; max-width: 46ch; margin: 0; color: var(--ink); }
+.quote figcaption { font-family: var(--mono); font-size: 12px; color: var(--ink-mute); margin: 26px 0 0; }
+
+.wordmark-close { position: relative; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-2); }
+.wc-copy { position: relative; z-index: 2; padding: 8px var(--edge) 40px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+.wc-copy h3 { font-family: var(--heading); font-weight: 600; font-size: clamp(24px, 3vw, 34px); letter-spacing: -0.02em; color: var(--ink); margin: 0; }
+.wc-figure { position: relative; margin: 0; aspect-ratio: 16/7; overflow: hidden; }
+.wc-figure img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* The design blends this into the photograph with mix-blend-mode: overlay. Tried
+   it, and on THIS photograph it disappears — overlay with white only lightens,
+   and the terrain along the bottom edge, where the wordmark sits, is dark and
+   busy. Subtlety was the intent, so this keeps the intent and drops the
+   mechanism: translucent white, present but not shouting. */
+.wc-wordmark { position: absolute; left: var(--edge); right: var(--edge); bottom: -0.1em; font-family: var(--wordmark); font-weight: 400;
+  font-size: clamp(80px, 15vw, 220px); line-height: 1; letter-spacing: -0.01em;
+  color: rgba(255, 255, 255, .74); pointer-events: none; }
+.foot-credit { margin: 14px 0 0; font-size: 11px; letter-spacing: 0.04em; color: var(--ink-mute); }
+.foot-credit a { color: var(--ink); border-bottom: 0; }
+.foot-credit a:hover { color: var(--accent-deep); }
+@media (max-width: 720px) { .wc-wordmark { font-size: clamp(56px, 22vw, 140px); } }
+
+@media (max-width: 900px) {
+  .cols { grid-template-columns: 1fr; }
+  .col:nth-child(odd) { border-right: none; padding-left: 0; }
+  .col:nth-child(even) { padding-left: 0; }
+  .stats { grid-template-columns: 1fr; }
+  .stat + .stat { border-left: none; border-top: 1px solid var(--border); padding-left: 0; }
+}
+@media (max-width: 720px) {
+  .split-grid { grid-template-columns: 1fr; }
+  .split-figure, .split.rev .split-figure { order: -1; }
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-links">
+    <a href="/#product">PRODUCT</a>
+    <a href="/#how-it-works">ASSET</a>
+    <a href="/#company">COMPANY</a>
+    <a href="/faq/">FAQ</a>
+    <a href="/dashboard/" style="border:none">LOG IN</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+  <section class="hero">
+    <span class="kicker">BEDROCK STUDIO</span>
+    <h1 class="display">Turn your project into a video, without leaving it</h1>
+    <p class="sub">Open Studio in a new window, walk through your deck or your live asset,
+      narrate it on camera, and export the result as an MP4 — no separate screen recorder,
+      no editing software.</p>
+    <div class="row">
+      <a class="btn btn-primary" href="/#top">SEE A DECK</a>
+      <a class="btn btn-ghost" href="/dashboard/">LOG IN</a>
+    </div>
+
+    <!-- FIGURE SLOT — deliberately empty, as it is in the design.
+         Every other picture on this site is the product doing the thing it is
+         described as doing, and there is no capture of Studio yet. The two
+         clips on the home page are Edit slides, not the presenter, and
+         labelling those as Studio is the one thing this site does not do.
+
+         To fill it: open a deck, press Studio, record the toolbar and the
+         webcam bubble over a live deck, and drop the still in here. -->
+    <figure class="hero-figure" id="demo">
+      <canvas id="terrain" width="1260" height="600"
+              aria-label="An interactive demonstration: a three-dimensional patch of ground with a mark drawn across it. Dragging turns the ground, and the mark stays on the terrain it was drawn on rather than sliding across the screen."></canvas>
+      <span class="coord s">SIMPLIFIED DEMONSTRATION</span>
+      <!-- The presenter dock, mirroring williams/index.html: same groups, same
+           labels, same icons, same keys. Pen, inks, area, ruler, undo, clear,
+           reset and layers work. Record and Camera animate the control and say
+           so — there is nothing to capture here and asking for a webcam on a
+           marketing page would be hostile. -->
+      <div class="dock" aria-label="Presenter controls (demonstration)">
+        <p class="msg" id="pr_msg" role="status"></p>
+        <div class="row">
+          <div class="grp">
+            <button type="button" class="rec" id="pr_rec" aria-pressed="false"
+                    title="Record this walkthrough (R) — animated here, not captured"><i></i>Record</button>
+            <span class="time" id="pr_time"></span>
+            <button type="button" id="pr_cam_btn" aria-pressed="false"
+                    title="Show your camera in the corner (C) — a placeholder here">Camera</button>
+          </div>
+          <div class="grp" role="group" aria-label="Mode">
+            <button type="button" class="md" id="pr_move" aria-pressed="true"
+                    aria-label="Move the view" title="Move the view (H) — drag to turn, hold shift to tilt">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+                   stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M7 12V6.2a1.4 1.4 0 0 1 2.8 0V11"/>
+                <path d="M9.8 10.6V4.6a1.4 1.4 0 0 1 2.8 0v6"/>
+                <path d="M12.6 10.6V5.6a1.4 1.4 0 0 1 2.8 0V12"/>
+                <path d="M15.4 12V9.4a1.4 1.4 0 0 1 2.8 0V14c0 3.3-2.7 6-6 6h-1.6a5 5 0 0 1-3.9-1.9l-3-3.7a1.5 1.5 0 0 1 2.1-2.2L7 13.6"/>
+              </svg></button>
+            <button type="button" class="md" id="pr_draw" aria-pressed="false"
+                    aria-label="Draw on the ground" title="Draw on the ground (P)">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+                   stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3.5 20.5l1.2-4.2 10-10a2.1 2.1 0 0 1 3 3l-10 10-4.2 1.2z"/>
+                <path d="M13.2 8.3l2.5 2.5"/>
+              </svg></button>
+          </div>
+          <div class="grp">
+            <button type="button" class="ic" id="pr_reset"
+                    title="Back to this slide's view (0)" aria-label="Back to this slide's view">⌾</button>
+          </div>
+          <div class="grp">
+            <button type="button" id="pr_area" aria-pressed="false"
+                    title="Mark out an area of ground (G)">Area</button>
+            <button type="button" id="pr_measure" aria-pressed="false"
+                    title="Measure distance across the map (M)">Ruler</button>
+            <button type="button" class="sw" data-c="#F2C14E" aria-pressed="true"
+                    style="background:#F2C14E" aria-label="Gold ink"></button>
+            <button type="button" class="sw" data-c="#5EC8E8" aria-pressed="false"
+                    style="background:#5EC8E8" aria-label="Blue ink"></button>
+            <button type="button" class="sw" data-c="#FFFFFF" aria-pressed="false"
+                    style="background:#FFFFFF" aria-label="White ink"></button>
+            <button type="button" class="ic" id="pr_undo"
+                    title="Undo the last mark" aria-label="Undo the last mark">↶</button>
+            <button type="button" class="ic" id="pr_clear"
+                    title="Clear the marks" aria-label="Clear the marks">✕</button>
+          </div>
+          <div class="grp">
+            <button type="button" id="pr_layers" aria-pressed="true"
+                    title="Layers and ground (L)">Layers</button>
+          </div>
+        </div>
+      </div>
+    </figure>
+    <p class="demo-note">In Studio the mark clamps to real terrain. This is a model of that.</p>
+  </section>
+
+  <section class="stats">
+    <div class="stat"><b>1</b><span>Window — record, narrate, mark up</span></div>
+    <div class="stat"><b>0</b><span>Extra software to install</span></div>
+    <div class="stat"><b>MP4</b><span>Ready to send or upload</span></div>
+  </section>
+
+  <p class="jump">
+    <span>ON THIS PAGE</span>
+    <a href="#record">RECORD</a>
+    <a href="#narrate">NARRATE</a>
+    <a href="#export">EXPORT</a>
+  </p>
+
+  <section class="features" id="record">
+    <span class="kicker">WHY STUDIO</span>
+    <h2 class="section-title">Present live, capture it once, send it anywhere</h2>
+    <p class="section-sub">Studio records the same window your investors would see — your deck
+      or the live asset — with you narrating over it, so the video is the pitch, not a
+      description of it.</p>
+
+    <div class="cols">
+      <div class="col">
+        <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-deep)" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><circle cx="12" cy="12" r="9"></circle></svg></div>
+        <h3>Record the deck or the live asset</h3>
+        <p>Open Studio on your slide deck or your interactive project and record exactly
+          what's on screen — no separate screen-share tool.</p>
+      </div>
+      <div class="col">
+        <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-deep)" stroke-width="1.6" aria-hidden="true"><path d="M9 18V6l8 6-8 6Z"></path></svg></div>
+        <h3>Narrate over the video</h3>
+        <p>Talk through the story as you record it. The narration is captured with the
+          visuals, in the same take.</p>
+      </div>
+      <div class="col">
+        <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-deep)" stroke-width="1.6" aria-hidden="true"><rect x="4" y="6" width="12" height="9" rx="1.5"></rect><path d="M16 9.5 20 7v9l-4-2.5"></path></svg></div>
+        <h3>Turn on your webcam</h3>
+        <p>Add a webcam picture-in-picture so viewers see you alongside the project,
+          positioned in any corner of the frame.</p>
+      </div>
+      <div class="col">
+        <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-deep)" stroke-width="1.6" aria-hidden="true"><path d="M4 20 15 9l3 3L7 23Zm14-15 1.5-1.5a2 2 0 0 1 3 3L21 8Z"></path></svg></div>
+        <h3>Mark up and draw as you go</h3>
+        <p>Circle a zone, box a target, or measure across the ground while you talk. The
+          mark is written to the terrain, so it stays on the rock as the camera moves.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="split" id="narrate">
+    <div class="split-grid">
+      <div class="split-copy">
+        <span class="kicker">ONE RECORDING WINDOW</span>
+        <h2 class="split-title">Everything you need is in the frame you're recording</h2>
+        <p class="note">Record, camera, markup tools and ink colours sit in a single dock at the
+          bottom of the window — nothing to switch to, nothing running in the background. The
+          dock sits in the letterbox band, so it stays on your screen and out of your video.</p>
+        <ul class="specs">
+          <li><span>Record start / stop</span><b>ONE CLICK</b></li>
+          <li><span>Pen, area box, ruler</span><b>BUILT IN</b></li>
+          <li><span>Webcam position</span><b>ANY CORNER</b></li>
+        </ul>
+      </div>
+      <!-- Studio open on a real client deck, captured from the live share link.
+           A still rather than a clip on purpose: this figure's job is to let you
+           READ the dock and the ground under it — the zones, the drill traces,
+           the intercept callouts — which a moving loop does not allow. The hero
+           above already demonstrates the dock in motion.
+
+           The issuer's mark and the project name are hidden in the capture; the
+           hole IDs are left as they are, so this is a client deck with the
+           branding removed, not an anonymised or invented property. -->
+      <figure class="split-figure is-video">
+        <img src="/video/studio-deck.jpg" width="1280" height="720" loading="lazy"
+             alt="Studio open on a mineral property deck. The presenter dock runs across the bottom of the window — record, camera, a grab and pen pair, reset, area, ruler, three ink colours, undo, clear and layers — over a 3D map showing two mineralised zones, drill traces and intercept callouts.">
+        <span class="fig-tag">FIG. 01 — THE RECORDING DOCK</span>
+      </figure>
+    </div>
+  </section>
+
+  <section class="split rev">
+    <div class="split-grid">
+      <div class="split-copy">
+        <span class="kicker">NARRATE ON CAMERA</span>
+        <h2 class="split-title">Put a face to the project</h2>
+        <p class="note">A live webcam circle sits over the recording, so the person talking is
+          part of the video — useful for a follow-up after a meeting, or a first approach to
+          someone who has never seen the ground.</p>
+        <ul class="specs">
+          <li><span>Your voice, through your mic</span><b>OPTIONAL</b></li>
+          <li><span>Webcam</span><b>ON / OFF ANY TIME</b></li>
+          <li><span>Sound from your computer or a call</span><b>NEVER CAPTURED</b></li>
+        </ul>
+      </div>
+      <!-- The same Williams deck, recorded with the camera on. Trimmed from 4.5s:
+           the source take opens with the webcam bubble still an empty black disc
+           while the camera wakes up, and a loop that begins on a black hole in
+           the corner undersells the one thing this figure is here to show. -->
+      <figure class="split-figure is-video">
+        <video id="studio-cam" poster="/video/studio-camera.jpg"
+               width="1280" height="720" autoplay muted loop playsinline preload="none"
+               aria-label="The Williams deck being presented in Studio with the camera on. A round webcam bubble showing the presenter sits in the top-right corner of the frame, over a slide of 45 drill holes across two zones, while the recording dock runs along the bottom of the window.">
+          <source src="/video/studio-camera.webm" type="video/webm">
+          <source src="/video/studio-camera.mp4" type="video/mp4">
+          <img src="/video/studio-camera.jpg" width="1280" height="720"
+               alt="The Williams deck in Studio with the presenter's webcam in a round bubble in the top-right corner.">
+        </video>
+        <span class="fig-tag">FIG. 02 — WEBCAM &amp; NARRATION</span>
+      </figure>
+    </div>
+  </section>
+
+  <section class="split" id="export">
+    <div class="split-grid">
+      <div class="split-copy">
+        <span class="kicker">MARKUP &amp; EXPORT</span>
+        <h2 class="split-title">Draw on the story, then send it as a file</h2>
+        <p class="note">Circle the number that matters while you're talking about it, then export
+          straight to MP4 — ready to attach to an email, drop in a data room, or post wherever
+          your audience is. The file saves to your machine; we never upload or host it.</p>
+        <ul class="specs">
+          <li><span>Markup tools</span><b>PEN · AREA · RULER</b></li>
+          <li><span>Export format</span><b>MP4</b></li>
+          <li><span>Resolution</span><b>1920 × 1080</b></li>
+        </ul>
+      </div>
+      <!-- The shortest clip on the page, and deliberately so: 2.6 seconds is the
+           whole gesture — clean ground, the stroke drawn on the terrain, the loop
+           closed, then cleared. The copy says marks belong to the moment, and this
+           is that moment at its real length rather than stretched to match the
+           others. -->
+      <figure class="split-figure is-video">
+        <video id="studio-markup" poster="/video/studio-markup.jpg"
+               width="1280" height="720" autoplay muted loop playsinline preload="none"
+               aria-label="A mark being drawn in Studio. A gold freehand loop is traced around the southern zone on the terrain, closes, and is then cleared — the ink sits on the ground itself rather than on the screen.">
+          <source src="/video/studio-markup.webm" type="video/webm">
+          <source src="/video/studio-markup.mp4" type="video/mp4">
+          <img src="/video/studio-markup.jpg" width="1280" height="720"
+               alt="A gold freehand loop drawn around a zone on the terrain, mid-recording.">
+        </video>
+        <span class="fig-tag">FIG. 03 — MARKUP IN THE RECORDING</span>
+      </figure>
+    </div>
+  </section>
+
+  <section class="quote">
+    <figure>
+      <blockquote>"By making complex geology and data easy to grasp, Bedrock helps mining
+        companies communicate their potential, build investor confidence, and stand out in a
+        competitive market for capital."</blockquote>
+      <figcaption>— BEDROCK</figcaption>
+    </figure>
+  </section>
+</div>
+
+<section class="wordmark-close">
+  <span class="kicker" style="margin: 0 0 0 var(--edge); padding-top: 40px">START RECORDING</span>
+  <div class="wc-copy">
+    <h3>Say it once, on camera, and send the file</h3>
+    <a class="btn btn-primary" href="/#top">SEE A DECK</a>
+  </div>
+  <!-- The terrain photograph the home page already carries, reused here rather
+       than sourcing a second one — same licence, same attribution, and it is
+       within a rounding error of this figure's 16:7. -->
+  <figure class="wc-figure">
+    <img src="/img/footer-terrain.jpg" alt="" width="2200" height="962" aria-hidden="true">
+    <span class="wc-wordmark">STUDIO</span>
+  </figure>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-row">
+      <span>&copy; 2026 BEDROCK</span>
+      <div class="foot-links">
+        <a href="/#product">PRODUCT</a>
+        <a href="/#how-it-works">HOW IT WORKS</a>
+        <a href="/#company">COMPANY</a>
+        <a href="/sell-sheet/">OVERVIEW</a>
+        <a href="/faq/">FAQ</a>
+        <a href="/privacy/">PRIVACY</a>
+      </div>
+    </div>
+    <!-- Pexels asks for attribution rather than requiring it. Every other image
+         on this page is the product doing what it says it does, so naming the one
+         that is not keeps the line between our own work and stock unambiguous. -->
+    <p class="foot-credit">TERRAIN PHOTOGRAPH
+      <a href="https://www.pexels.com/@gabrieluizramos" rel="noopener">GABRIEL RAMOS</a>
+      VIA <a href="https://www.pexels.com/photo/high-angle-view-of-mountains-17037740/" rel="noopener">PEXELS</a></p>
+  </div>
+</footer>
+
+<script>
+// A looping autoplay clip is motion the viewer did not ask for, and CSS cannot
+// switch autoplay off — `prefers-reduced-motion` can hide an animation but not
+// stop a <video>. So it is done here: if the visitor has asked their system for
+// reduced motion, the clip holds on its poster frame and grows a play control.
+//
+// Selected by what they are, not by a list of ids. The home page kept a list,
+// nobody extended it when new clips landed, and two figures quietly honoured
+// neither reduced motion nor on-screen-only playback for as long as they were up.
+(function () {
+  var vids = [].slice.call(document.querySelectorAll('.split-figure video'));
+  if (!vids.length) return;
+  var q = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
+  function apply() {
+    if (!q || !q.matches) return;
+    vids.forEach(function (v) {
+      v.autoplay = false; v.loop = false; v.controls = true; v.pause();
+    });
+  }
+  apply();
+  if (q && q.addEventListener) q.addEventListener('change', apply);
+
+  // Play only while on screen. `autoplay` alone is at the mercy of each
+  // browser's heuristics for off-screen media, and pausing on the way out keeps
+  // a looping clip off the CPU of everyone reading the rest of the page.
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (q && q.matches) return;
+        if (e.isIntersecting) { var r = e.target.play(); if (r && r.catch) r.catch(function () {}); }
+        else e.target.pause();
+      });
+    }, { threshold: 0.25 });
+    vids.forEach(function (v) { io.observe(v); });
+  }
+})();
+</script>
+
+<script>
+/* The hero demonstration — Studio's dock, working.
+ *
+ * One claim, shown rather than asserted: a mark is written to the GROUND, not
+ * to the screen. Marks are stored as world coordinates on a heightfield and
+ * re-projected every frame, so turning the ground leaves them on the rock they
+ * were drawn on, draped over the relief.
+ *
+ * The dock mirrors the real presenter bar in williams/index.html — same groups,
+ * same labels, same icons, same keys (R C H P 0 G M L). Pen, inks, area, ruler,
+ * undo, clear, reset and layers all genuinely work here. Record and Camera
+ * cannot: there is nothing to capture on a marketing page and asking for a
+ * webcam would be hostile. They animate the control and the status line says
+ * so, which is the honest version of "show the toolbar".
+ *
+ * No library. A yaw rotation, a perspective divide and some loops. three.js is
+ * vendored on this site at 671 KB; this page does not need an engine.
+ * Redraws only on interaction — no idle loop.
+ */
+(function () {
+  var cv = document.getElementById('terrain');
+  if (!cv || !cv.getContext) return;
+  var cx = cv.getContext('2d'), fig = document.getElementById('demo');
+  var $ = function (id) { return document.getElementById(id); };
+
+  var N = 34, EXT = 2.6, FOV = 2.2, DIST = 4.2;
+  /* Named because project() and unproject() must agree exactly. As literals,
+     changing the view silently put every drawn mark somewhere else. */
+  var HOR = 0.16, VS = 0.58, XS = 0.27;
+  var CAM0 = 1.15, YAW0 = -0.62;
+  var camH = CAM0, yaw = YAW0;
+
+  /* The ground is 2.4 km across, so the ruler can return a real number. */
+  var GROUND_M = 2400, M_PER_UNIT = GROUND_M / (EXT * 2);
+
+  var mode = 'move', armed = null, ink = '#F2C14E';
+  var marks = [], cur = null;
+  var rec = false, recT0 = 0, recTimer = null;
+  var cam = false, camCorner = 1, layers = true;
+
+  function h(x, y) {
+    return 0.42 * Math.exp(-((x + 0.9) * (x + 0.9) + (y - 0.6) * (y - 0.6)) / 1.30)
+         + 0.34 * Math.exp(-((x - 1.1) * (x - 1.1) + (y + 0.7) * (y + 0.7)) / 1.00)
+         - 0.16 * Math.exp(-((x - 0.1) * (x - 0.1) + (y - 0.1) * (y - 0.1)) / 0.40)
+         + 0.05 * Math.sin(x * 2.0) * Math.cos(y * 1.8);
+  }
+  var LX = -0.50, LY = -0.38, LZ = 0.78;
+  function shade(x, y) {
+    var e = 0.07;
+    var dx = (h(x + e, y) - h(x - e, y)) / (2 * e);
+    var dy = (h(x, y + e) - h(x, y - e)) / (2 * e);
+    var nx = -dx, ny = -dy, nz = 1, L = Math.sqrt(nx * nx + ny * ny + 1);
+    return Math.max(0, (nx * LX + ny * LY + nz * LZ) / L);
+  }
+
+  function project(x, y, z, W, H) {
+    var c = Math.cos(yaw), s = Math.sin(yaw);
+    var rx = x * c - y * s, ry = x * s + y * c;
+    var d = DIST + ry, f = FOV / d;
+    return { x: W / 2 + rx * f * W * XS, y: H * HOR + (camH - z) * f * H * VS, d: d };
+  }
+  function unproject(sx, sy, W, H) {
+    var z = 0, x = 0, y = 0;
+    for (var i = 0; i < 3; i++) {
+      var A = (sy - H * HOR) / (H * VS);
+      if (Math.abs(A) < 1e-4) return null;
+      var ry = (camH - z) * FOV / A - DIST, f = FOV / (DIST + ry);
+      if (!isFinite(f) || f <= 0) return null;
+      var rx = (sx - W / 2) / (f * W * XS);
+      var c = Math.cos(yaw), s = Math.sin(yaw);
+      x = rx * c + ry * s; y = -rx * s + ry * c; z = h(x, y);
+    }
+    return { x: x, y: y };
+  }
+
+  /* Two zones and the holes drilled in them, so the ground reads as a property
+     rather than a surface plot. Shapes echo the Williams deck's two systems. */
+  function ring(cxx, cyy, rx, ry, n, wob) {
+    var p = [];
+    for (var i = 0; i < n; i++) {
+      var a = i / n * Math.PI * 2, w = 1 + Math.sin(a * 3 + cxx) * wob;
+      p.push({ x: cxx + Math.cos(a) * rx * w, y: cyy + Math.sin(a) * ry * w });
+    }
+    return p;
+  }
+  var ZONES = [
+    { p: ring(-0.85, 0.62, 0.78, 0.44, 22, 0.10), c: '94,200,232', n: 'GIC' },
+    { p: ring(1.05, -0.62, 0.62, 0.50, 22, 0.12), c: '183,164,226', n: 'T-BILL' }
+  ];
+  var COLLARS = (function () {
+    var out = [], seed = 7;
+    function rnd() { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; }
+    ZONES.forEach(function (z, k) {
+      for (var i = 0; i < (k ? 11 : 8); i++) {
+        var a = rnd() * Math.PI * 2, r = Math.sqrt(rnd());
+        /* Clamped inside the ground. Unclamped, collars landed past the edge
+           of the surface and drew as dots floating on the sky. */
+        var hx = z.p[0].x + Math.cos(a) * r * 0.5 + (k ? 0.5 : -0.35);
+        var hy = z.p[0].y + Math.sin(a) * r * 0.36 + (k ? -0.3 : 0.1);
+        var lim = EXT - 0.25;
+        out.push({ x: Math.max(-lim, Math.min(lim, hx)),
+                   y: Math.max(-lim, Math.min(lim, hy)) });
+      }
+    });
+    return out;
+  })();
+
+  /* The area box fills with its own ink at 18%, as Studio's does — so a blue
+     box is blue, not gold. */
+  function tint(hex, a) {
+    var n = parseInt(hex.slice(1), 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+  function fmtDist(u) {
+    var m = u * M_PER_UNIT;
+    return m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(2) + ' km';
+  }
+
+  function drapePath(pts, W, H, lift) {
+    cx.beginPath();
+    pts.forEach(function (pt, i) {
+      var p = project(pt.x, pt.y, h(pt.x, pt.y) + (lift || 0), W, H);
+      i ? cx.lineTo(p.x, p.y) : cx.moveTo(p.x, p.y);
+    });
+  }
+
+  function draw() {
+    var W = cv.width, H = cv.height, st = EXT * 2 / N;
+    cx.fillStyle = '#0d110c'; cx.fillRect(0, 0, W, H);
+    var sky = cx.createLinearGradient(0, 0, 0, H * 0.46);
+    sky.addColorStop(0, '#080b09'); sky.addColorStop(1, '#161e16');
+    cx.fillStyle = sky; cx.fillRect(0, 0, W, H * 0.46);
+
+    var quads = [];
+    for (var i = 0; i < N; i++) for (var j = 0; j < N; j++) {
+      var x0 = -EXT + i * st, y0 = -EXT + j * st;
+      var mx = x0 + st / 2, my = y0 + st / 2;
+      var pr = [[x0, y0], [x0 + st, y0], [x0 + st, y0 + st], [x0, y0 + st]].map(function (q) {
+        return project(q[0], q[1], h(q[0], q[1]), W, H);
+      });
+      quads.push({ p: pr, d: (pr[0].d + pr[2].d) / 2, s: shade(mx, my), z: h(mx, my) });
+    }
+    quads.sort(function (a, b) { return b.d - a.d; });
+    quads.forEach(function (q) {
+      var t = Math.max(0, Math.min(1, (q.z + 0.20) / 0.70));
+      var l = 12 + q.s * 40 + t * 10;
+      cx.fillStyle = 'hsl(' + (86 - t * 14) + ', ' + (14 + t * 12) + '%, ' + l.toFixed(1) + '%)';
+      cx.beginPath(); cx.moveTo(q.p[0].x, q.p[0].y);
+      for (var k = 1; k < 4; k++) cx.lineTo(q.p[k].x, q.p[k].y);
+      cx.closePath(); cx.fill();
+      if (layers) { cx.strokeStyle = 'rgba(210,225,195,.07)'; cx.lineWidth = 1; cx.stroke(); }
+    });
+
+    if (layers) {
+      ZONES.forEach(function (z) {
+        drapePath(z.p.concat([z.p[0]]), W, H, 0.008);
+        cx.fillStyle = 'rgba(' + z.c + ',.20)'; cx.fill();
+        cx.strokeStyle = 'rgba(' + z.c + ',.85)'; cx.lineWidth = 2; cx.stroke();
+      });
+      COLLARS.forEach(function (c) {
+        var p = project(c.x, c.y, h(c.x, c.y) + 0.012, W, H);
+        cx.beginPath(); cx.arc(p.x, p.y, 2.6, 0, Math.PI * 2);
+        cx.fillStyle = 'rgba(232,238,228,.92)'; cx.fill();
+      });
+    }
+
+    cx.lineJoin = cx.lineCap = 'round';
+    marks.concat(cur ? [cur] : []).forEach(function (m) {
+      if (m.t === 'stroke') {
+        if (m.pts.length < 2) return;
+        cx.lineWidth = 3.5; cx.strokeStyle = m.c;
+        drapePath(m.pts, W, H, 0.014); cx.stroke();
+      } else if (m.t === 'box') {
+        var a = m.a, b = m.b, box = [{ x: a.x, y: a.y }, { x: b.x, y: a.y },
+                                     { x: b.x, y: b.y }, { x: a.x, y: b.y }];
+        drapePath(box.concat([box[0]]), W, H, 0.012);
+        cx.fillStyle = tint(m.c, .18); cx.fill();
+        cx.lineWidth = 2.5; cx.strokeStyle = m.c; cx.stroke();
+      } else if (m.t === 'rule') {
+        drapePath([m.a, m.b], W, H, 0.014);
+        cx.lineWidth = 2.5; cx.strokeStyle = m.c; cx.stroke();
+        var mid = project((m.a.x + m.b.x) / 2, (m.a.y + m.b.y) / 2,
+                          h((m.a.x + m.b.x) / 2, (m.a.y + m.b.y) / 2) + 0.05, W, H);
+        var d = Math.hypot(m.b.x - m.a.x, m.b.y - m.a.y);
+        var txt = fmtDist(d);
+        cx.font = '600 22px ui-monospace, monospace';
+        var w = cx.measureText(txt).width;
+        cx.fillStyle = 'rgba(8,11,9,.85)';
+        cx.fillRect(mid.x - w / 2 - 9, mid.y - 26, w + 18, 28);
+        cx.fillStyle = '#fff'; cx.textAlign = 'center';
+        cx.fillText(txt, mid.x, mid.y - 6); cx.textAlign = 'start';
+      }
+    });
+
+    if (cam) {
+      var r = Math.min(W, H) * 0.115;
+      var px = camCorner % 2 ? W - r - 26 : r + 26;
+      var py = camCorner < 2 ? r + 26 : H - r - 82;
+      cx.save(); cx.beginPath(); cx.arc(px, py, r, 0, Math.PI * 2); cx.clip();
+      var g = cx.createLinearGradient(px - r, py - r, px + r, py + r);
+      g.addColorStop(0, '#2b3340'); g.addColorStop(1, '#171d25');
+      cx.fillStyle = g; cx.fillRect(px - r, py - r, r * 2, r * 2);
+      cx.fillStyle = 'rgba(232,236,230,.30)';
+      cx.beginPath(); cx.arc(px, py - r * 0.18, r * 0.30, 0, Math.PI * 2); cx.fill();
+      cx.beginPath(); cx.ellipse(px, py + r * 0.62, r * 0.52, r * 0.40, 0, Math.PI, 0); cx.fill();
+      cx.restore();
+      cx.beginPath(); cx.arc(px, py, r, 0, Math.PI * 2);
+      cx.strokeStyle = 'rgba(232,236,230,.55)'; cx.lineWidth = 2; cx.stroke();
+    }
+    if (rec) {
+      cx.beginPath(); cx.arc(26, 26, 7, 0, Math.PI * 2);
+      cx.fillStyle = '#e2483a'; cx.fill();
+    }
+  }
+
+  (function seed() {
+    var s = [];
+    for (var a = 0; a <= Math.PI * 2 + 0.01; a += Math.PI / 22) {
+      s.push({ x: -0.90 + Math.cos(a) * 0.74, y: 0.60 + Math.sin(a) * 0.56 });
+    }
+    marks.push({ t: 'stroke', pts: s, c: '#F2C14E' });
+  })();
+
+  function say(t) { $('pr_msg').textContent = t || ''; }
+  function press(id, on) { $(id).setAttribute('aria-pressed', String(!!on)); }
+
+  function setMode(m) {
+    mode = m; armed = null;
+    press('pr_move', m === 'move'); press('pr_draw', m === 'draw');
+    press('pr_area', false); press('pr_measure', false);
+    fig.className = 'hero-figure' + (m === 'draw' ? ' drawing' : '');
+    say(m === 'draw' ? 'Draw on the ground — the mark stays where you put it'
+                     : 'Drag to turn the ground');
+  }
+  function arm(a) {
+    armed = armed === a ? null : a;
+    press('pr_area', armed === 'area'); press('pr_measure', armed === 'measure');
+    press('pr_move', false); press('pr_draw', false);
+    fig.className = 'hero-figure' + (armed ? ' drawing' : '');
+    say(armed === 'area' ? 'Drag a box across the ground'
+      : armed === 'measure' ? 'Drag to measure across the map'
+      : 'Drag to turn the ground');
+  }
+
+  $('pr_move').onclick = function () { setMode('move'); };
+  $('pr_draw').onclick = function () { setMode('draw'); };
+  $('pr_area').onclick = function () { arm('area'); };
+  $('pr_measure').onclick = function () { arm('measure'); };
+  $('pr_undo').onclick = function () { marks.pop(); draw(); };
+  $('pr_clear').onclick = function () { marks = []; cur = null; draw(); };
+  $('pr_reset').onclick = function () { yaw = YAW0; camH = CAM0; draw(); say('Back to the slide’s view'); };
+  $('pr_layers').onclick = function () { layers = !layers; press('pr_layers', layers); draw();
+    say(layers ? 'Zones and drilling shown' : 'Ground only'); };
+  Array.prototype.forEach.call(document.querySelectorAll('#demo .sw'), function (b) {
+    b.onclick = function () {
+      ink = b.getAttribute('data-c');
+      Array.prototype.forEach.call(document.querySelectorAll('#demo .sw'), function (o) {
+        o.setAttribute('aria-pressed', String(o === b));
+      });
+      if (mode !== 'draw') setMode('draw');
+    };
+  });
+
+  /* Record and Camera animate the control. Nothing is captured, and the status
+     line says so rather than letting the red dot imply otherwise. */
+  $('pr_rec').onclick = function () {
+    rec = !rec; press('pr_rec', rec);
+    if (rec) {
+      recT0 = Date.now();
+      recTimer = setInterval(function () {
+        var s = Math.floor((Date.now() - recT0) / 1000);
+        $('pr_time').textContent = ('0' + Math.floor(s / 60)).slice(-2) + ':' + ('0' + (s % 60)).slice(-2);
+        draw();
+      }, 1000);
+      $('pr_time').textContent = '00:00';
+      say('Recording is shown here, not captured — Studio records for real');
+    } else {
+      clearInterval(recTimer); $('pr_time').textContent = '';
+      say('Drag to turn the ground');
+    }
+    draw();
+  };
+  $('pr_cam_btn').onclick = function () {
+    if (!cam) { cam = true; press('pr_cam_btn', true); say('A placeholder, not your webcam — click again to move it'); }
+    else if (camCorner < 3) { camCorner++; say('Any corner, as in Studio'); }
+    else { cam = false; camCorner = 1; press('pr_cam_btn', false); say('Drag to turn the ground'); }
+    draw();
+  };
+
+  document.addEventListener('keydown', function (e) {
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName || '')) || e.metaKey || e.ctrlKey) return;
+    var r = fig.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > innerHeight) return;      // only when it is on screen
+    var k = e.key.toLowerCase();
+    if (k === 'h') setMode('move'); else if (k === 'p') setMode('draw');
+    else if (k === 'g') arm('area'); else if (k === 'm') arm('measure');
+    else if (k === 'r') $('pr_rec').click(); else if (k === 'c') $('pr_cam_btn').click();
+    else if (k === 'l') $('pr_layers').click(); else if (k === '0') $('pr_reset').click();
+    else return;
+    e.preventDefault();
+  });
+
+  var last = null;
+  function at(e) {
+    var r = cv.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * cv.width / r.width,
+             y: (e.clientY - r.top) * cv.height / r.height };
+  }
+  cv.addEventListener('pointerdown', function (e) {
+    cv.setPointerCapture(e.pointerId);
+    var p = at(e), w = unproject(p.x, p.y, cv.width, cv.height);
+    if (armed === 'area' && w) cur = { t: 'box', a: w, b: w, c: ink };
+    else if (armed === 'measure' && w) cur = { t: 'rule', a: w, b: w, c: ink };
+    else if (mode === 'draw' && w) cur = { t: 'stroke', pts: [w], c: ink };
+    else { last = p; fig.classList.add('dragging'); }
+  });
+  cv.addEventListener('pointermove', function (e) {
+    var p = at(e);
+    if (cur) {
+      var w = unproject(p.x, p.y, cv.width, cv.height);
+      if (!w) return;
+      if (cur.t === 'stroke') cur.pts.push(w); else cur.b = w;
+      draw();
+    } else if (last) {
+      yaw += (p.x - last.x) * 0.005;
+      if (e.shiftKey) camH = Math.max(0.75, Math.min(1.9, camH + (p.y - last.y) * 0.004));
+      last = p; draw();
+    }
+  });
+  function end(e) {
+    if (cur) {
+      var keep = cur.t === 'stroke' ? cur.pts.length > 1
+               : Math.hypot(cur.b.x - cur.a.x, cur.b.y - cur.a.y) > 0.05;
+      if (keep) marks.push(cur);
+      if (cur.t === 'rule' && keep) say('Map distance — ' + fmtDist(Math.hypot(cur.b.x - cur.a.x, cur.b.y - cur.a.y)));
+    }
+    cur = null; last = null; fig.classList.remove('dragging');
+    try { cv.releasePointerCapture(e.pointerId); } catch (err) {}
+    draw();
+  }
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+
+  press('pr_layers', true);
+  setMode('move');
+  draw();
+})();
+</script>
+
+</body>
+</html>

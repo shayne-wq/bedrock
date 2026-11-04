@@ -87,7 +87,7 @@ export const INVITE_HTML = `<!-- ===============================================
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td
       style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;color:#7d7979;">
       If you weren't expecting this invitation, you can ignore this email.<br /><br />
-      © 2026 Bedrock · getbedrock.ca
+      © 2026 Bedrock · getbedrock.ca · <a href="https://getbedrock.ca/privacy/" style="color:#7d7979;">Privacy policy</a>
     </td></tr></table>
   </td></tr>
 </table>

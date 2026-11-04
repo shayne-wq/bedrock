@@ -124,6 +124,20 @@ a:hover { text-decoration: underline; }
   font-family: var(--mono); font-size: 10px; letter-spacing: .1em;
   text-transform: uppercase; color: var(--ink-mute); padding: 18px 10px 7px;
 }
+/* The organisation switcher. Only drawn when there is more than one company to
+   switch between, so most accounts never see it. Sized to the rail rather than
+   inheriting the 200px min-width every other select in the console takes — the
+   rail is 240px wide with 16px of padding, and a 200px control plus its arrow
+   overflows it. Mono and quiet, so it reads as a label with a choice attached
+   rather than a form field sitting above the navigation. */
+#rail .orgsel {
+  width: 100%; min-width: 0; margin: 0 0 6px;
+  font-family: var(--mono); font-size: 12px; color: var(--ink);
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--r-ctl); padding: 8px 9px;
+}
+#rail .orgsel:hover { border-color: var(--ink-mute); }
+#rail .sec:first-child { padding-top: 0; }
 #rail .foot { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--border); }
 #rail .foot .who {
   font-family: var(--mono); font-size: 11.5px; color: var(--ink-mute);
@@ -198,6 +212,26 @@ textarea:focus-visible, [contenteditable]:focus-visible {
 }
 /* "Upload logo" and friends are <label>s wrapping a hidden file input. */
 label.btn { display: inline-block; }
+
+/* Sign-in panel. Google and the email form are two equal ways in, so they are
+   stacked at the same width with a rule between them — a full-width Google
+   button over a compact Sign in would make one of them look like the real
+   route and the other like a footnote. Scoped to the auth screen: .btn
+   everywhere else keeps its intrinsic width. */
+.btn.authbtn {
+  width: 100%; display: flex; align-items: center;
+  justify-content: center; gap: 10px;
+}
+/* Google's mark is required on this button; everything around it is ours —
+   our border, our radius, our type, our press. */
+.btn.google svg { flex: none; }
+.orsplit {
+  display: flex; align-items: center; gap: 10px;
+  margin: 14px 0; color: var(--ink-mute);
+}
+.orsplit::before, .orsplit::after {
+  content: ""; flex: 1; height: 1px; background: var(--border);
+}
 
 .field { margin-bottom: 14px; }
 /* Label above input, always — a placeholder is not a label. */
@@ -416,37 +450,7 @@ tbody tr[data-go]:hover td { background: var(--bg); }
   color: var(--ink-mute); font-weight: 400; margin-top: 3px;
 }
 
-/* ---- deck builder ------------------------------------------------------ */
-.builder { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-@media (max-width: 900px) { .builder { grid-template-columns: 1fr; } }
-.bcol h3 {
-  font-family: var(--mono); font-size: 11px; letter-spacing: .05em;
-  text-transform: uppercase; color: var(--ink-mute); font-weight: 500;
-  margin: 0 0 10px;
-}
-.bcol h3 .hint { margin-left: 6px; }
-.droplist {
-  min-height: 180px; max-height: 520px; overflow-y: auto;
-  border: 1px dashed var(--border); border-radius: var(--r-pan);
-  padding: 10px; display: flex; flex-direction: column; gap: 10px;
-}
-.droplist.running { border-style: solid; border-color: var(--accent); }
-.droplist.over { border-color: var(--accent); background: var(--accent-dim); }
-.scard {
-  display: flex; align-items: center; gap: 12px; padding: 10px;
-  border: 1px solid var(--border); border-radius: 8px;
-  background: var(--surface); cursor: grab;
-}
-.scard:active { cursor: grabbing; }
-.scard.dragging { opacity: .4; }
-.scard .grow { flex: 1; min-width: 0; }
-.scard b { display: block; font-size: 13px; font-weight: 600; color: var(--ink); }
-.scard .ssec {
-  display: block; font-family: var(--mono); font-size: 9.5px;
-  letter-spacing: .05em; text-transform: uppercase; color: var(--accent-700);
-  margin: 2px 0 3px;
-}
-.scard .sbody { display: block; font-size: 11.5px; line-height: 1.35; color: var(--ink-mute); }
+/* ---- ingest slots ------------------------------------------------------ */
 .empty.sm { padding: 22px 12px; }
 .empty.sm p { margin: 0; font-size: 12px; }
 
@@ -461,22 +465,6 @@ tbody tr[data-go]:hover td { background: var(--bg); }
 .dropmini input[type=file] { flex: 0 0 auto; max-width: 60%; }
 .dzname { font-family: var(--mono); font-size: 11.5px; color: var(--ink-mute); }
 .zone.dropping { border-color: var(--accent); background: var(--accent-dim); }
-/* The schematic is what a card shows until its real frame arrives — see
-   candidateGlyph() for the drawing and queueThumbs() for the capture. Enough to
-   tell a section from a plan from a drill slide while the viewer works through
-   the queue, and replaced the moment there is a photograph of the actual shot. */
-.scard .sglyph {
-  flex: 0 0 auto; line-height: 0; border-radius: 5px; overflow: hidden;
-  border: 1px solid var(--border); background: var(--bg);
-  width: 64px; height: 40px;
-  background-size: cover; background-position: center;
-}
-/* Once a frame has landed the drawing underneath it is noise. Faded rather than
-   removed so the swap does not jump the row. */
-.scard .sglyph.has > svg { opacity: 0; transition: opacity .2s; }
-.scard .sglyph.has { border-color: var(--ink-mute); }
-@media (prefers-reduced-motion: reduce) { .scard .sglyph.has > svg { transition: none; } }
-
 /* ---- studio ------------------------------------------------------------
    The chapter list and the thing it edits, side by side, because the whole
    point is that you adjust a shot while looking at it. Tall on purpose: a
@@ -668,7 +656,7 @@ tbody tr[data-go]:hover td { background: var(--bg); }
 /* A slide someone has flown to and set, versus one that is still whatever the
    generator proposed. Removing the first costs work; removing the second does
    not, and the card should say which it is. */
-.scard .tagline, .stchap .tagline {
+.stchap .tagline {
   font-style: normal; font-family: var(--mono); font-size: 9px;
   letter-spacing: .05em; text-transform: uppercase; vertical-align: 2px;
   padding: 2px 5px; border-radius: 3px; margin-left: 6px;
@@ -993,22 +981,30 @@ body.stripoff .stmain { grid-column: 1 / -1; }
    outside the frame deliberately — controls drawn over a deck cover the thing
    being edited, land in the recording, and make the author move the camera to
    see past their own tools. */
+/* One line, and it stays one line. Wrapping put the marking tools two rows
+   below the camera ones and pushed the frame down by 52px, which is the whole
+   reason the toolbar sits outside the frame in the first place. Everything in
+   here is sized to fit a folded-strip studio on a 1280 laptop; past that the
+   row scrolls sideways rather than stacking. */
 .sttools {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px;
-  padding: 7px 10px; margin-bottom: 8px;
+  display: flex; align-items: center; flex-wrap: nowrap; gap: 0 10px;
+  padding: 6px 9px; margin-bottom: 8px;
+  overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
   background: var(--raised); border: 1px solid var(--border); border-radius: 6px;
 }
-.stgrp { display: flex; align-items: center; gap: 5px; }
+.stgrp { display: flex; align-items: center; gap: 4px; flex: none; }
 /* A hairline between groups rather than a box around each: the groups are a
    reading aid, not six separate panels. */
-.stgrp + .stgrp { padding-left: 14px; border-left: 1px solid var(--border); }
+.stgrp + .stgrp { padding-left: 10px; border-left: 1px solid var(--border); }
 .stgl {
   font-family: var(--mono); font-size: 9.5px; letter-spacing: .08em;
   text-transform: uppercase; color: var(--ink-mute); margin-right: 2px;
+  white-space: nowrap;
 }
 .tbtn {
-  font: inherit; font-size: 12px; line-height: 1;
-  min-width: 28px; height: 26px; padding: 0 8px;
+  font: inherit; font-size: 11.5px; line-height: 1; white-space: nowrap;
+  min-width: 26px; height: 24px; padding: 0 7px; flex: none;
   background: var(--bg); color: var(--ink-dim);
   border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
   transition: background .12s, color .12s, border-color .12s;
@@ -1019,24 +1015,45 @@ body.stripoff .stmain { grid-column: 1 / -1; }
 .tbtn.on { background: var(--accent-dim); border-color: var(--accent); color: var(--accent-700); }
 .tbtn:active { transform: translateY(1px); }
 .tbtn:focus-visible, .sttools input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.sttools input[type="range"] { width: 88px; accent-color: var(--accent); }
+.sttools input[type="range"] { width: 62px; accent-color: var(--accent); flex: none; }
 .sttools input[type="text"] {
-  width: 120px; height: 26px; padding: 0 7px; font-size: 12px;
+  width: 92px; height: 24px; padding: 0 7px; font-size: 12px; flex: none;
   background: var(--bg); color: var(--ink);
   border: 1px solid var(--border); border-radius: 4px;
 }
+.sttools .btn.sm { flex: none; white-space: nowrap; }
 .sttools output {
-  font-family: var(--mono); font-size: 10.5px; color: var(--ink-mute);
-  min-width: 34px; font-variant-numeric: tabular-nums;
+  font-family: var(--mono); font-size: 10px; color: var(--ink-mute);
+  min-width: 28px; flex: none; font-variant-numeric: tabular-nums;
 }
+/* The status line is a sentence, so it reads under the row instead of competing
+   for width inside it — and it takes up no height at all until there is one. */
 .stnote {
-  font-size: 11.5px; color: var(--ink-dim); margin-left: auto;
-  max-width: 40ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  margin: -4px 0 8px; font-size: 11.5px; color: var(--ink-dim);
 }
-@media (max-width: 900px) {
-  /* The groups stack before any control shrinks: a 28px button that has become
-     18px is not a button anyone can hit. */
-  .stgrp + .stgrp { padding-left: 0; border-left: 0; }
+.stnote:empty { display: none; }
+/* Below this the group eyebrows go and the hairlines carry the grouping on
+   their own — the alternative is shrinking controls people have to hit. */
+@media (max-width: 1600px) {
+  /* The group eyebrows go before any control does — except the two that name a
+     slider, because a bare slider with a percentage beside it does not say
+     whether it is moving the ground or the survey image over it. */
+  .stgl:not(.nm) { display: none; }
+  .sttools { gap: 0 8px; }
+  .stgrp + .stgrp { padding-left: 6px; }
+}
+
+/* Caption size sits with the caption, in the inspector, rather than in the row
+   above the frame — it is the one control up there that acted on words instead
+   of on the scene, and it reads better beside the box it resizes. */
+.field label:has(.capsz) {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 5px;
+}
+.capsz { display: inline-flex; align-items: center; gap: 4px; }
+.capsz output {
+  font-family: var(--mono); font-size: 10px; color: var(--ink-mute);
+  min-width: 30px; text-align: center; font-variant-numeric: tabular-nums;
 }
 
 /* ---- audience: range tabs + session bars --------------------------------- */
@@ -1090,9 +1107,9 @@ body.stripoff .stmain { grid-column: 1 / -1; }
    up this file, and reusing it handed these buttons a bordered white panel
    instead of a colour. Six fixed choices rather than a free picker: over a dark
    3D scene an arbitrary colour mostly produces a mark nobody can see. */
-.mkcols { display: inline-flex; gap: 4px; align-items: center; }
+.mkcols { display: inline-flex; gap: 3px; align-items: center; flex: none; }
 .mkcol {
-  width: 18px; height: 18px; padding: 0; cursor: pointer; flex: 0 0 auto;
+  width: 14px; height: 14px; padding: 0; cursor: pointer; flex: 0 0 auto;
   border-radius: 50%; border: 1px solid var(--border);
   background: var(--sw, #ccc);
   transition: transform .12s, box-shadow .12s;

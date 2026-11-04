@@ -199,6 +199,48 @@ Deno.serve(async (req) => {
   // absence — the payload states it outright.
   const fabricated = assets.filter((a) => a.synthetic).map((a) => a.kind);
 
+  // Drilling programs, and only the progress the issuer has PUBLISHED.
+  //
+  // Everything else in this payload is a measurement of rock that is already
+  // out of the ground. A program is the part of the deck that is still moving,
+  // and it is what a shareholder opens the deck to check, so it travels with
+  // the geometry rather than in a news release the deck does not know about.
+  //
+  // Three things are deliberately absent. Drafts: `published_at is null` is an
+  // unfinished number and this is the audience it must not reach. created_by:
+  // the author's identity is a user UUID on our side of the wire and a display
+  // name on theirs. And any program belonging to a zone this deck does not
+  // span — a deck that excludes a deposit should not carry its rig.
+  const zoneIds = new Set((zones ?? []).map((z) => z!.id));
+  const { data: allPrograms } = await db
+    .from("drill_programs")
+    .select(
+      "id, zone_id, name, status, target_m, holes_planned, started_on, " +
+        "expected_end, easting, northing, elev_m, operator, note, updated_at",
+    )
+    .eq("project_id", deck.project_id)
+    .order("created_at");
+  const kept = (allPrograms ?? []).filter((g) => !g.zone_id || zoneIds.has(g.zone_id));
+
+  let programs: Record<string, unknown>[] = [];
+  if (kept.length) {
+    const { data: ups } = await db
+      .from("drill_updates")
+      .select("id, program_id, as_of, metres_total, holes_done, holes_active, body, author, published_at")
+      .in("program_id", kept.map((g) => g.id))
+      .not("published_at", "is", null)
+      .order("as_of", { ascending: false })
+      .limit(400);
+    programs = kept.map((g) => ({
+      ...g,
+      updates: (ups ?? []).filter((u) => u.program_id === g.id).map((u) => ({
+        id: u.id, as_of: u.as_of, metres_total: u.metres_total,
+        holes_done: u.holes_done, holes_active: u.holes_active,
+        body: u.body, author: u.author, published_at: u.published_at,
+      })),
+    }));
+  }
+
   return json({
     deck: {
       id: deck.id, title: deck.title, subtitle: deck.subtitle,
@@ -211,6 +253,7 @@ Deno.serve(async (req) => {
     zones,
     chapters: chapters ?? [],
     assets,
+    programs,
     fabricated,
     share: { id: link.id, embed: framed },
   }, 200, {
