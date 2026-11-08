@@ -574,6 +574,19 @@ _M = stats["by_class"]
 # rather than a patch per library. See tools/webgl_guard.js.
 _GUARD = (ROOT / "tools" / "webgl_guard.js").read_text()
 
+# ---- the drilling derivation ---------------------------------------------
+# The pace and the forecast a deck shows against a drilling programme, and the
+# rules that refuse to show one. ONE copy, shared with the console, which reads
+# the same module as an ES module and uses it to tell an issuer what their deck
+# is about to claim in public. A second implementation would eventually say
+# that about a deck showing something else, so this is a straight inline of the
+# console's file with the `export` keywords removed — the viewer is a single
+# self-contained HTML and has no module graph to import through.
+_FORECAST = (ROOT / "dashboard" / "lib" / "drill-forecast.js").read_text()
+_FORECAST = re.sub(r"^export (?=(const|function)\b)", "", _FORECAST, flags=re.M)
+if "export " in _FORECAST:
+    raise SystemExit("drill-forecast.js has an export this build cannot strip")
+
 # ---- locked slide cameras ------------------------------------------------
 # Hand-tuned chapter cameras rot. Slide 13's was solved by hand against a 480 m
 # pit, and resizing the pit left it framing a hillside with no truck in it —
@@ -1407,7 +1420,7 @@ HTML = r"""<!DOCTYPE html>
      it is the same kind of object: a panel about the drilling that hides the
      rail while it is open. The two never coexist — opening one closes the
      other — so they can share the position outright. */
-  #rig{position:fixed;left:34px;top:104px;z-index:10;width:328px;max-height:72vh;
+  #rig{position:fixed;left:34px;top:104px;z-index:10;width:328px;max-height:78vh;
         display:flex;flex-direction:column;border-radius:6px;
         background:rgba(9,12,13,.93);border:1px solid rgba(255,255,255,.12);
         backdrop-filter:blur(8px);overflow:hidden}
@@ -1418,7 +1431,9 @@ HTML = r"""<!DOCTYPE html>
         text-transform:uppercase;padding:5px 9px;border-radius:4px;cursor:pointer;
         color:#C6CAC5;background:transparent;border:1px solid rgba(255,255,255,.16)}
   #rigpick button.on{color:#07090A;background:var(--brand);border-color:var(--brand)}
-  #rigbody{padding:12px;overflow-y:auto;overscroll-behavior:contain}
+  #rigbody{padding:12px;overflow-y:auto;overscroll-behavior:contain;
+        scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.22) transparent;
+        mask-image:linear-gradient(#000 calc(100% - 16px),transparent)}
   .pgname{font-size:14.5px;line-height:1.3;color:#EDEEEC;font-weight:600}
   .pgsub{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.12em;
          text-transform:uppercase;color:#8C948C;margin-top:3px}
@@ -1435,6 +1450,34 @@ HTML = r"""<!DOCTYPE html>
            animation:pgfill .9s cubic-bezier(.16,1,.3,1)}
   @keyframes pgfill{ from{width:0} }
   @media (prefers-reduced-motion:reduce){ .pgbar i{animation:none} }
+  /* The forecast. Everything above it in this panel is a figure the issuer
+     typed; this one is arithmetic over the reports they published, so it is
+     boxed off rather than dropped in among them as though somebody had
+     entered it, and the line underneath states what it was computed from.
+     The accent is tenant-supplied, so emphasis here is BRIGHTNESS and never a
+     hue — a red "late" chip is a red chip on the deck of a company whose
+     brand colour is red. */
+  .pgfc{margin-top:14px;padding:9px 11px;border-radius:4px;
+        border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.035)}
+  .pgfc .k{display:block;font-family:'JetBrains Mono',monospace;font-size:9px;
+           letter-spacing:.12em;text-transform:uppercase;color:var(--brand)}
+  .pgfc .v{display:block;font-family:'JetBrains Mono',monospace;font-size:15px;
+           line-height:1.2;color:#EDEEEC;margin-top:4px}
+  .pgfc .vr{display:block;font-size:11px;line-height:1.4;color:#8C948C;margin-top:3px}
+  .pgfc .vr.off{color:#EDEEEC}
+  .pgbasis{margin-top:6px;font-size:10.5px;line-height:1.5;color:#6F756F}
+  .pgstale{margin-top:9px;padding:7px 9px;border-radius:4px;font-size:11px;
+           line-height:1.45;color:#C6CAC5;background:rgba(255,255,255,.04);
+           border:1px solid rgba(255,255,255,.14)}
+  /* Cumulative metres against the plan. The bar says how far through; this is
+     the only thing in the panel that tells a programme that is BEHIND from one
+     that started slowly and is now ahead of its own average — which is the
+     difference between a worry and a non-event. */
+  .pgspark{margin-top:9px}
+  .pgspark svg{display:block;width:100%;height:46px}
+  .pgsparkl{display:flex;justify-content:space-between;margin-top:4px;
+            font-family:'JetBrains Mono',monospace;font-size:9px;
+            letter-spacing:.1em;text-transform:uppercase;color:#6F756F}
   .pgfig{display:grid;grid-template-columns:1fr 1fr;gap:1px;margin-top:14px;
          background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden}
   .pgfig div{background:rgba(9,12,13,.92);padding:8px 10px}
@@ -4327,18 +4370,23 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       sec.innerHTML='<h2>Drilling in progress</h2>';
       const dt=document.createElement('table');
       dt.innerHTML='<caption>Issuer-reported progress. Not assay results, and '+
-        'not a mineral resource statement.</caption>'+
+        'not a mineral resource statement. The forecast column is computed '+
+        'from the reported pace and is not stated by the issuer.</caption>'+
         '<thead><tr><th scope="col">Programme</th><th scope="col">Status</th>'+
         '<th scope="col">Metres</th><th scope="col">Planned</th>'+
-        '<th scope="col">As of</th></tr></thead>';
+        '<th scope="col">As of</th><th scope="col">Pace</th>'+
+        '<th scope="col">Forecast</th></tr></thead>';
       const db=document.createElement('tbody');
       PROGRAMS.forEach(g=>{
         const m=progMetres(g), t=progNum(g.target_m), u=progReport(g);
+        const p=progPace(g), f=progForecast(g);
         const tr=document.createElement('tr');
         [g.name, PROG_STATUS[g.status]||g.status,
          m===null?'—':Math.round(m).toLocaleString()+' m',
          t?Math.round(t).toLocaleString()+' m':'—',
-         u?progDate(u.as_of):'—']
+         u?progDate(u.as_of):'—',
+         p?progFmtPace(p.mpd):'—',
+         f?progDate(f.iso):'—']
           .forEach((v,i2)=>{ const c=document.createElement(i2?'td':'th');
             if(!i2) c.scope='row'; c.textContent=v; tr.appendChild(c); });
         db.appendChild(tr);
@@ -4537,11 +4585,21 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
         L.push('    '+(m===null?'no metres reported yet'
                                :progM(m)+(t?' of '+progM(t)+' planned':' to date'))+
                (u?';  as of '+progDate(u.as_of):''));
+        const f=progForecast(g);
+        if(f) L.push('    At '+progFmtPace(f.pace.mpd)+' reported since '+
+                     progDate(f.pace.from)+', the remaining '+progM(f.remaining)+
+                     ' complete about '+progDate(f.iso)+
+                     (f.vs===null?'':' — '+progVariance(f.vs))+'.');
+        const sd=progStaleDays(g);
+        if(sd!==null&&sd>PROG_STALE&&g.status!=='complete')
+          L.push('    No progress has been reported in '+sd+' days.');
         if(progNum(g.easting)===null)
           L.push('    No collar coordinates were entered, so no rig is drawn on the ground.');
       });
       L.push('    Issuer-reported progress, published by the company itself.');
       L.push('    Not assay results, and not a mineral resource statement.');
+      L.push('    Any pace or completion date above is computed from those');
+      L.push('    reports, and is not a date the issuer has stated.');
     }
     L.push('');
     L.push('CAVEATS');
@@ -7632,15 +7690,15 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   let progEnts=null, progBuilding=false, progOn=PROGRAMS.length>0,
       progPanel=false, progSel=0;
 
-  const progNum=v=>(v===null||v===undefined||v==='')?null:
-    (isFinite(+v)?+v:null);
+__DRILL_FORECAST__
+
+  // Reading a figure off a programme is the same job in the deck and in the
+  // console, so it is the same code: see dashboard/lib/drill-forecast.js for
+  // why a metre count and a hole count must each come off the newest report
+  // that carries THAT field.
+  const progNum=dNum, progReport=drillReport, progMetres=drillMetres,
+        progField=drillField;
   const progInt=v=>{const n=progNum(v); return n===null?null:Math.round(n);};
-  // The newest published report that actually carries a metre count. A report
-  // can legitimately be words only — "rig mobilised, first hole collared" —
-  // and reading the metres off whatever happens to be newest would show a
-  // blank where yesterday's total belongs.
-  const progReport=g=>(g.updates||[]).find(u=>progNum(u.metres_total)!==null)||null;
-  const progMetres=g=>{const u=progReport(g); return u?progNum(u.metres_total):null;};
   function progPct(g){
     const m=progMetres(g), t=progNum(g.target_m);
     if(m===null||!t) return null;
@@ -7663,6 +7721,67 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     const m=progMetres(g), t=progNum(g.target_m);
     if(m===null) return PROG_STATUS[g.status]||'Drilling';
     return progM(m)+(t?' / '+progM(t):' to date');
+  }
+
+  // ---- derived: how fast, and when it finishes ---------------------------
+  // The question a shareholder actually arrives with is not "how many metres"
+  // but "will it be done when they said it would". That answer is in the
+  // reports and in nothing else, and it is worked out in ONE place —
+  // dashboard/lib/drill-forecast.js, inlined above — because the console tells
+  // the issuer what their own deck is about to claim in public, and two copies
+  // of these rules would eventually say that about a deck showing something
+  // else. The reasoning, and every refusal, is documented in that file.
+  const progDay=dDay, progAsc=drillAsc, progPace=drillPace, progFmtPace=fmtPace,
+        progStaleDays=drillStaleDays, progForecast=drillForecast,
+        progVariance=drillVariance, progCalc=drillCalc;
+  const PROG_STALE=DRILL.STALE, PROG_COLD=DRILL.COLD;
+
+  // Cumulative metres over time, with the plan drawn as the straight line from
+  // the start date at zero to the planned end at the target.
+  //
+  // Three reports or more. Two points are a line, and a line through two
+  // points presented as a trend is a trend asserted out of nothing.
+  function progSparkSVG(g){
+    const A=progAsc(g); if(A.length<3) return null;
+    const t=progNum(g.target_m);
+    const xs=A.map(u=>progDay(u.as_of)), ys=A.map(u=>progNum(u.metres_total));
+    const s0=progDay(g.started_on), e0=progDay(g.expected_end);
+    const planned=(t&&s0!==null&&e0!==null&&e0>s0);
+    const x0=Math.min(xs[0], s0===null?xs[0]:s0);
+    const x1=Math.max(xs[xs.length-1], planned?e0:xs[xs.length-1]);
+    const top=Math.max(t||0, ys[ys.length-1]);
+    if(!(x1>x0) || !(top>0)) return null;
+    const W=304, H=46, PAD=2;
+    const X=v=>((v-x0)/(x1-x0))*W;
+    const Y=v=>H-PAD-(v/top)*(H-PAD*2);
+    const NS='http://www.w3.org/2000/svg';
+    const mk=(n,a)=>{ const e=document.createElementNS(NS,n);
+      for(const k in a) e.setAttribute(k,a[k]); return e; };
+    const svg=mk('svg',{viewBox:'0 0 '+W+' '+H,preserveAspectRatio:'none',
+                        role:'img'});
+    // A chart in a 3D deck is still read by somebody who cannot see it, and
+    // the sentence is cheaper than the picture.
+    const ttl=document.createElementNS(NS,'title');
+    ttl.textContent='Cumulative metres drilled, '+progDate(A[0].as_of)+' to '+
+      progDate(A[A.length-1].as_of)+(t?', against '+progM(t)+' planned':'');
+    svg.appendChild(ttl);
+    if(planned) svg.appendChild(mk('line',{x1:X(s0),y1:Y(0),x2:X(e0),y2:Y(t),
+      stroke:'#8C948C','stroke-width':1,'stroke-dasharray':'3 3',
+      'vector-effect':'non-scaling-stroke'}));
+    // The actual line starts at the start date and zero when there is one: a
+    // polyline that begins at the first REPORT begins partway up the climb and
+    // reads as a programme that was handed 2,100 m on day one.
+    const pts=[]; if(s0!==null&&s0<xs[0]) pts.push([X(s0),Y(0)]);
+    xs.forEach((x,i)=>pts.push([X(x),Y(ys[i])]));
+    svg.appendChild(mk('polyline',{points:pts.map(p=>p.join(',')).join(' '),
+      fill:'none',stroke:AC,'stroke-width':1.6,
+      'stroke-linejoin':'round','vector-effect':'non-scaling-stroke'}));
+    const last=pts[pts.length-1];
+    // AC, not var(--brand): a CSS variable in an SVG presentation attribute
+    // resolves in this browser and is one of the first things to go quiet in
+    // another, and the accent is already a JS value here.
+    svg.appendChild(mk('circle',{cx:last[0],cy:last[1],r:2.4,fill:AC}));
+    return svg;
   }
 
   async function buildPrograms(){
@@ -7925,19 +8044,88 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       bar.appendChild(fill); body.appendChild(bar);
     }
 
-    const rep=progReport(g);
+    // The bar is where the programme stands; this is how it got there, and it
+    // is the only thing in the panel that tells a programme that is BEHIND
+    // from one that started slowly and is now ahead of its own average. It
+    // sits directly under the bar because the two are one object: today, and
+    // the line that arrives at today.
+    const sp=progSparkSVG(g);
+    if(sp){
+      const w=el('div','pgspark'); w.appendChild(sp); body.appendChild(w);
+      const lab=el('div','pgsparkl');
+      lab.appendChild(el('span',null,progDate(g.started_on||progAsc(g)[0].as_of)));
+      lab.appendChild(el('span',null,
+        progNum(g.target_m)&&progDay(g.expected_end)!==null
+          ? 'plan · '+progDate(g.expected_end) : 'reported'));
+      body.appendChild(lab);
+    }
+
+    // The forecast, and what it was computed from. The basis is not optional
+    // decoration: this is the one figure on the screen that the issuer did not
+    // write, so the sentence under it has to be enough for a reader to redo
+    // the arithmetic and disagree with it.
+    const fc=progForecast(g);
+    if(fc){
+      const f=el('div','pgfc');
+      f.appendChild(el('span','k','Forecast'));
+      f.appendChild(el('span','v',progDate(fc.iso)));
+      if(fc.vs!==null){
+        const vr=el('span','vr',progVariance(fc.vs));
+        // Emphasis by brightness, never by hue — see the note in the CSS.
+        if(Math.abs(fc.vs)>5) vr.className='vr off';
+        f.appendChild(vr);
+      }
+      body.appendChild(f);
+      body.appendChild(el('div','pgbasis',
+        progM(fc.pace.metres)+' in '+fc.pace.days.toLocaleString()+' days is '+
+        progFmtPace(fc.pace.mpd)+'. At that pace the remaining '+
+        progM(fc.remaining)+' take about '+fc.days.toLocaleString()+' days. '+
+        'Computed from the reports below, not stated by the issuer.'));
+    } else if(t!==null&&m!==null&&(t-m)<=0&&g.status!=='complete'){
+      // The one case worth a sentence rather than a silence: the committed
+      // metres are in the ground and the programme is still open.
+      body.appendChild(el('div','pgbasis',
+        'The planned metres have been drilled. The programme is still reported '+
+        'as '+(PROG_STATUS[g.status]||g.status).toLowerCase()+'.'));
+    }
+
+    // How long since anybody said anything. A deck that is quietly six months
+    // out of date looks exactly like a deck that is current, which is the
+    // failure this whole feature exists to fix — so when it happens here, it
+    // is on the panel in words.
+    const sd=progStaleDays(g);
+    if(sd!==null && sd>PROG_STALE && g.status!=='complete')
+      body.appendChild(el('div','pgstale',
+        'No progress reported in '+sd.toLocaleString()+' days'+
+        (sd>PROG_COLD?', so no completion date is projected from it.':'.')));
+
     const fig=el('div','pgfig');
     const cell=(k,v)=>{ const d=el('div');
       d.appendChild(el('span','k',k)); d.appendChild(el('span','v',v));
       fig.appendChild(d); };
     cell('Complete',pct===null?'—':(pct*100).toFixed(0)+'%');
+    // The metres still to drill. Spelt out rather than left as a subtraction
+    // the reader does in their head, because it is the figure a budget is
+    // read against and the one the forecast below is built out of.
+    cell('Remaining',(()=>{
+      if(t===null||m===null) return '—';
+      return (t-m)<=0 ? 'target met' : progM(t-m);
+    })());
     cell('Holes',(()=>{
-      const done=progInt(rep&&rep.holes_done), plan=progInt(g.holes_planned);
+      const done=progField(g,'holes_done'), plan=progInt(g.holes_planned);
       if(done===null&&plan===null) return '—';
-      return (done===null?'—':done)+(plan!==null?' of '+plan:'');
+      return (done===null?'—':Math.round(done))+(plan!==null?' of '+plan:'');
+    })());
+    // Holes turning right now. The console has collected this since the form
+    // was written and the deck has never shown it: "11 of 24" is a quarter of
+    // the answer when two rigs are on the property this week.
+    cell('Turning',(()=>{
+      const a=progField(g,'holes_active');
+      return a===null?'—':Math.round(a).toLocaleString()+
+        (Math.round(a)===1?' hole':' holes');
     })());
     cell('Started',progDate(g.started_on));
-    cell('Expected',progDate(g.expected_end));
+    cell('Planned end',progDate(g.expected_end));
     body.appendChild(fig);
 
     // What the programme is testing, in the issuer's own words.
@@ -10013,10 +10201,32 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       progBar:$('rigbody').querySelector('.pgbar i')
         ?$('rigbody').querySelector('.pgbar i').style.width:null,
       progReports:$('rigbody').querySelectorAll('.pgu .d').length,
-      progDeltas:[...$('rigbody').querySelectorAll('.pgu .d .dl')].map(x=>x.textContent)}),
+      progDeltas:[...$('rigbody').querySelectorAll('.pgu .d .dl')].map(x=>x.textContent),
+      // The derived half of the panel, read off the screen rather than
+      // recomputed — a forecast that is correct in progCalc and never painted
+      // is a forecast nobody sees.
+      progCells:[...$('rigbody').querySelectorAll('.pgfig div')].map(d=>
+        d.querySelector('.k').textContent+'='+d.querySelector('.v').textContent),
+      progFc:$('rigbody').querySelector('.pgfc .v')
+        ?$('rigbody').querySelector('.pgfc .v').textContent:null,
+      progVar:$('rigbody').querySelector('.pgfc .vr')
+        ?$('rigbody').querySelector('.pgfc .vr').textContent:null,
+      progBasis:$('rigbody').querySelector('.pgbasis')
+        ?$('rigbody').querySelector('.pgbasis').textContent:null,
+      progStaleMsg:$('rigbody').querySelector('.pgstale')
+        ?$('rigbody').querySelector('.pgstale').textContent:null,
+      progSpark:$('rigbody').querySelectorAll('.pgspark svg polyline').length,
+      progSparkTitle:$('rigbody').querySelector('.pgspark svg title')
+        ?$('rigbody').querySelector('.pgspark svg title').textContent:null,
+      progSparkPlan:$('rigbody').querySelectorAll('.pgspark svg line').length}),
     programs:()=>PROGRAMS.map(g=>({name:g.name, status:g.status,
       metres:progMetres(g), target:g.target_m, placed:progNum(g.easting)!==null,
-      updates:(g.updates||[]).length})),
+      updates:(g.updates||[]).length, calc:progCalc(g)})),
+    // The derivation on its own, so a check can put a programme through it
+    // that the fixture is not in. Every refusal rule in progForecast decides
+    // what a public company's deck claims about its own schedule, and a test
+    // that can only reach them through this one fixture can only test one.
+    progCalc:progCalc,
     focusProgram:(i)=>focusProgram(PROGRAMS[i]),
     titles:()=>CHAPTERS.map(c=>c.title),
     chapter:(n)=>CHAPTERS[n],
@@ -10136,6 +10346,7 @@ for k, v in {
     "__HOLES__": js(HOLES),
     "__HIGHLIGHTS__": js(HIGHLIGHTS),
     "__WEBGL_GUARD__": _GUARD,
+    "__DRILL_FORECAST__": _FORECAST,
     "__SITE__": js(SITE),
     "__PIT_DEM__": js(PIT_DEM),
     "__PIT_DEPOSIT__": js(PIT_DEPOSIT),

@@ -30,6 +30,21 @@ const CHROME = process.env.CHROME_PATH ||
 const E0 = 680000, N0 = 5520000;           // UTM 10N, somewhere in southern BC
 const RIG = { e: E0 + 1000, n: N0 + 1000 };
 
+// EVERY DATE HERE IS RELATIVE TO TODAY, and the pace and the forecast are why.
+// Those figures are arithmetic over the gap between a report and now, so a
+// fixture written as fixed dates tests a different thing every morning and
+// eventually tests a programme nobody has reported on in two years. Anchored
+// on today's UTC date — the browser's own clock is within the same day of it,
+// which is the resolution everything below works at.
+const DAY = 864e5;
+const T0 = Date.parse(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
+const d = (n) => new Date(T0 + n * DAY).toISOString().slice(0, 10);
+// The window the pace is measured over: started_on at zero metres to the
+// newest report that carries a figure. 81 days and 4,012 m, so 49.53 m/day and
+// 121 days left of the 10,000 m committed — all three asserted below, because
+// between them they are the sentence a shareholder reads off this panel.
+const START = -96, LAST_M = -15, SPAN = LAST_M - START;      // 81 days
+
 const PAYLOAD = {
   deck: {
     id: 'deck-test', title: 'Test Creek', subtitle: 'An exploration project',
@@ -57,23 +72,30 @@ const PAYLOAD = {
     {
       id: 'prog-1', zone_id: 'zone-1', name: 'Phase 2 diamond drilling',
       status: 'active', target_m: 10000, holes_planned: 24,
-      started_on: '2026-08-04', expected_end: '2026-12-15',
+      started_on: d(START), expected_end: d(37),
       easting: RIG.e, northing: RIG.n, elev_m: null,
       operator: 'Cabo Drilling', note: 'Testing the north strike extension.',
-      updated_at: '2026-10-28T12:00:00Z',
+      updated_at: new Date(T0 - 11 * DAY).toISOString(),
       updates: [
         // Newest, and words only — on purpose. The headline metre count must
         // fall through to the next report that has a figure rather than
-        // blanking out because the latest one has none.
-        { id: 'u3', as_of: '2026-10-28', metres_total: null, holes_done: null,
+        // blanking out because the latest one has none. It is ALSO the newest
+        // word on how many holes are turning, which is a different field and
+        // must not be read off the metre-bearing row below it.
+        { id: 'u3', as_of: d(-11), metres_total: null, holes_done: null,
           holes_active: 2, body: 'Second rig mobilised to the north pad.',
-          author: 'A. Geologist, VP Exploration', published_at: '2026-10-28T12:00:00Z' },
-        { id: 'u2', as_of: '2026-10-24', metres_total: 4012, holes_done: 11,
+          author: 'A. Geologist, VP Exploration', published_at: d(-11) + 'T12:00:00Z' },
+        { id: 'u2', as_of: d(LAST_M), metres_total: 4012, holes_done: 11,
           holes_active: 1, body: 'TC-26-011 completed to 412 m.',
-          author: 'A. Geologist, VP Exploration', published_at: '2026-10-24T12:00:00Z' },
-        { id: 'u1', as_of: '2026-10-17', metres_total: 3600, holes_done: 10,
+          author: 'A. Geologist, VP Exploration', published_at: d(LAST_M) + 'T12:00:00Z' },
+        { id: 'u1', as_of: d(-22), metres_total: 3600, holes_done: 10,
           holes_active: 1, body: 'Rig turning on the 010 pad.',
-          author: 'A. Geologist, VP Exploration', published_at: '2026-10-17T12:00:00Z' },
+          author: 'A. Geologist, VP Exploration', published_at: d(-22) + 'T12:00:00Z' },
+        // Three metre-bearing reports is the floor for the chart. Two points
+        // drawn as a trend are a trend asserted out of nothing.
+        { id: 'u0', as_of: d(-50), metres_total: 2100, holes_done: 6,
+          holes_active: 1, body: 'First four holes of the programme complete.',
+          author: 'A. Geologist, VP Exploration', published_at: d(-50) + 'T12:00:00Z' },
       ],
     },
     {
@@ -83,7 +105,7 @@ const PAYLOAD = {
       status: 'planned', target_m: 2500, holes_planned: null,
       started_on: null, expected_end: null,
       easting: null, northing: null, elev_m: null,
-      operator: null, note: null, updated_at: '2026-10-01T12:00:00Z',
+      operator: null, note: null, updated_at: d(-38) + 'T12:00:00Z',
       updates: [],
     },
   ],
@@ -157,7 +179,12 @@ const ch0 = await L();
 await pg.evaluate(() => document.getElementById('begin')?.click());
 await pg.waitForTimeout(2500);
 await pg.keyboard.press('m');
-await pg.waitForTimeout(1200);
+// Long enough for the bar to have FINISHED filling. Its keyframe runs on
+// animation time, which only advances when frames are produced, and a software
+// renderer driving a terrain globe produces them slowly — so a screenshot a
+// second after the panel opens is a picture of a bar that is still moving, and
+// whoever opens it next reads that as a bar that never filled.
+await pg.waitForTimeout(4000);
 await pg.screenshot({ path: '/tmp/drill-panel.png' });
 const open = await L();
 const prov = await pg.evaluate(() => window.__api.provText());
@@ -198,8 +225,81 @@ const text = await pg.evaluate(() => {
   const s = [...document.querySelectorAll('#datamode section')]
     .find((x) => /Drilling in progress/i.test(x.textContent));
   return s ? { present: true, rows: s.querySelectorAll('tbody tr').length,
+               heads: [...s.querySelectorAll('thead th')].map((x) => x.textContent),
+               cells: [...s.querySelectorAll('tbody tr')].map((r) =>
+                 [...r.children].map((c) => c.textContent)),
                body: s.textContent.replace(/\s+/g, ' ') } : { present: false };
 });
+
+// ---- the derivation on its own -------------------------------------------
+// The pace and the forecast decide what a public company's deck claims about
+// its own schedule, and most of that code is REFUSALS — paused, complete,
+// already finished, no target, a pace too slow to mean anything, a report too
+// old to project from. One fixture can only be in one of those states, so the
+// cases are put through the shipped function directly. A forecast that is
+// right here and never painted fails the DOM checks below; a forecast that is
+// painted from arithmetic nobody tested fails here.
+const CASES = {
+  // Turning, on plan: 8,000 m in 70 days is 114 m/day, and the last 2,000 m
+  // take 18 more — two days inside the planned date, which is "on the planned
+  // date" rather than a spurious two days early.
+  onPlan: { status: 'active', target_m: 10000, started_on: d(-80),
+    expected_end: d(20), updates: [{ as_of: d(-10), metres_total: 8000 }] },
+  // A pace measured while the rig was turning projects nothing about a rig
+  // that has stopped. Both of these keep their pace and lose their date.
+  paused: { status: 'paused', target_m: 10000, started_on: d(-80),
+    expected_end: d(20), updates: [{ as_of: d(-10), metres_total: 8000 }] },
+  done: { status: 'complete', target_m: 10000, started_on: d(-80),
+    expected_end: d(-1), updates: [{ as_of: d(-10), metres_total: 9990 }] },
+  // No denominator, so there is nothing to finish against — but the metres a
+  // day are still a fact and still printed.
+  noTarget: { status: 'active', target_m: null, started_on: d(-80),
+    expected_end: null, updates: [{ as_of: d(-10), metres_total: 8000 }] },
+  // The committed metres are in the ground and the programme is still open.
+  met: { status: 'active', target_m: 5000, started_on: d(-80),
+    expected_end: d(5), updates: [{ as_of: d(-10), metres_total: 5400 }] },
+  // Four months since anybody said anything. The rate is history by then, not
+  // evidence of anything current, so it stops being projected from.
+  cold: { status: 'active', target_m: 10000, started_on: d(-200),
+    expected_end: d(20), updates: [{ as_of: d(-120), metres_total: 8000 }] },
+  // Six days between two reports is one good week, not a rate.
+  shortSpan: { status: 'active', target_m: 5000, expected_end: d(40),
+    updates: [{ as_of: d(-10), metres_total: 1300 },
+              { as_of: d(-16), metres_total: 1000 }] },
+  // No start date at all: the reports' own span is the only window there is,
+  // and two of them twenty days apart is a usable one.
+  reportSpan: { status: 'active', target_m: 5000, expected_end: d(80),
+    updates: [{ as_of: d(-10), metres_total: 2000 },
+              { as_of: d(-30), metres_total: 1000 }] },
+  // Bad data: a start date AFTER the newest report. It must fall back to the
+  // reports rather than divide by a negative span.
+  startAfter: { status: 'active', target_m: 5000, started_on: d(-5),
+    expected_end: d(80), updates: [{ as_of: d(-20), metres_total: 1500 },
+                                   { as_of: d(-40), metres_total: 500 }] },
+  // 1.1 m/day against 99,900 m to go is the year 2273. Past two years a
+  // projection is a joke and printing one would be the only dishonest thing
+  // on the panel.
+  glacial: { status: 'active', target_m: 100000, started_on: d(-100),
+    expected_end: d(20), updates: [{ as_of: d(-10), metres_total: 100 }] },
+  // Words only, every time. No metre count anywhere is no pace.
+  wordsOnly: { status: 'active', target_m: 5000, started_on: d(-80),
+    expected_end: d(20), updates: [{ as_of: d(-10), metres_total: null },
+                                   { as_of: d(-40), metres_total: null }] },
+};
+const C = await pg.evaluate((cases) => {
+  const out = {};
+  for (const k in cases) out[k] = window.__api.progCalc(cases[k]);
+  return out;
+}, CASES);
+
+// A date prints as "9 Mar 2027" or "Mar 9, 2027" depending on the locale the
+// browser happens to be in, and the day comes before the year in both. So the
+// day number and the year are what gets matched, derived from the same offsets
+// the fixture was built from.
+const dayN = (iso) => String(Number(iso.slice(8, 10)));
+const yrN = (iso) => iso.slice(0, 4);
+const onDay = (iso, lead) =>
+  new RegExp(lead + '[^.]*\\b' + dayN(iso) + '\\b[^.]*' + yrN(iso));
 
 let pass = 0, fail = 0;
 const ok = (n, c, d = '') => c ? (pass++, console.log('  ok   ' + n))
@@ -235,11 +335,12 @@ ok('the drilling control is shown', await pg.evaluate(
 ok('M opens the panel', open.progPanel === true);
 ok('the panel leads with the metres to date', open.progMet === '4,012', open.progMet);
 ok('the bar is drawn against the target', /^40\.1/.test(open.progBar || ''), open.progBar);
-ok('every published report is listed', open.progReports === 3, String(open.progReports));
+ok('every published report is listed', open.progReports === 4, String(open.progReports));
 ok('the delta is computed, not typed', open.progDeltas.includes('+412 m'),
    JSON.stringify(open.progDeltas));
 ok('the panel says who reported it and when',
-   /Reported by the issuer, last updated\b.*\b28\b.*2026/.test(open.prognote), open.prognote);
+   onDay(d(-11), 'Reported by the issuer, last updated').test(open.prognote),
+   open.prognote);
 ok('the panel says these are not assays',
    /not assay results or a mineral resource statement/i.test(open.prognote));
 ok('two programmes get a picker', open.progPick === 2, String(open.progPick));
@@ -269,8 +370,8 @@ ok('the rig is visible on a slide that does not opt out',
    ch0.progShown + ' of ' + ch0.progEnts);
 ok('the audit trail reports the drilling', /DRILLING IN PROGRESS/.test(prov));
 ok('the audit trail names the source and the date',
-   /Issuer-reported progress/.test(prov) && /as of\s+\S*\s*\b24\b.*2026/.test(prov),
-   (prov.match(/DRILLING IN PROGRESS[\s\S]{0,400}/) || [''])[0]);
+   /Issuer-reported progress/.test(prov) && onDay(d(LAST_M), 'as of').test(prov),
+   (prov.match(/DRILLING IN PROGRESS[\s\S]{0,700}/) || [''])[0]);
 ok('the audit trail says a missing position draws no rig',
    /No collar coordinates were entered/.test(prov));
 ok('the text edition carries the drilling', text.present === true);
@@ -278,6 +379,120 @@ ok('the text edition tabulates both programmes', text.rows === 2, String(text.ro
 ok('the text edition repeats the reports', /TC-26-011 completed to 412 m/.test(text.body || ''));
 ok('the text edition carries the caveat',
    /not a mineral resource statement/i.test(text.body || ''));
+
+
+console.log('\n== derived');
+console.log(JSON.stringify(progs[0].calc));
+console.log(JSON.stringify(C, null, 0));
+console.log('\n== pace and the forecast');
+const K = progs[0].calc;
+// The three numbers the sentence on the panel is made of. Pinned exactly,
+// because the fixture's dates are relative to today and these are therefore
+// the same every day the suite runs — which is the whole reason it was rebased.
+ok('the pace window is the whole programme, from the start date',
+   K.span === SPAN && K.from === d(START), JSON.stringify([K.span, K.from]));
+ok('the pace is metres over that window', K.pace === 49.53, String(K.pace));
+ok('the metres remaining come off the target', K.remaining === 5988,
+   String(K.remaining));
+ok('the forecast is the remaining metres at that pace', K.days === 121,
+   String(K.days));
+// Anchored at the later of the last report and today, so it is never a finish
+// date in the past and never assumes nothing has been drilled since.
+ok('the forecast is anchored no earlier than today', K.forecast === d(121),
+   K.forecast + ' vs ' + d(121));
+ok('the variance against the plan is coarsened, not stated to the day',
+   /^about 3 months later than planned$/.test(K.variance || ''), K.variance);
+ok('a programme with no reports forecasts nothing',
+   progs[1].calc.pace === null && progs[1].calc.forecast === null,
+   JSON.stringify(progs[1].calc));
+
+console.log('\n== what the derivation refuses');
+ok('on plan reads as on plan, not two days early',
+   C.onPlan.forecast === d(18) && C.onPlan.variance === 'on the planned date',
+   JSON.stringify(C.onPlan));
+ok('a paused programme keeps its pace and loses its date',
+   C.paused.pace === 114.29 && C.paused.forecast === null,
+   JSON.stringify(C.paused));
+ok('a complete programme is not projected forward',
+   C.done.forecast === null, JSON.stringify(C.done));
+ok('no target is no forecast, and still a pace',
+   C.noTarget.forecast === null && C.noTarget.pace === 114.29,
+   JSON.stringify(C.noTarget));
+ok('a target already met is not projected past',
+   C.met.forecast === null, JSON.stringify(C.met));
+ok('a report four months old stops being projected from',
+   C.cold.forecast === null && C.cold.stale === 120, JSON.stringify(C.cold));
+ok('six days between two reports is not a rate',
+   C.shortSpan.pace === null && C.shortSpan.forecast === null,
+   JSON.stringify(C.shortSpan));
+ok('with no start date the reports own span is used',
+   C.reportSpan.pace === 50 && C.reportSpan.span === 20 &&
+   C.reportSpan.forecast === d(60), JSON.stringify(C.reportSpan));
+// Number(null) is 0 and 0 is finite; a start date later than the newest report
+// is the same shape of bad input, and dividing by its negative span would read
+// as a rig drilling backwards.
+ok('a start date after the newest report falls back rather than inverting',
+   C.startAfter.pace === 50 && C.startAfter.span === 20 &&
+   C.startAfter.forecast === d(70), JSON.stringify(C.startAfter));
+ok('a pace that would finish in 250 years projects nothing',
+   C.glacial.pace === 1.11 && C.glacial.forecast === null,
+   JSON.stringify(C.glacial));
+ok('reports with no metres in them are no pace',
+   C.wordsOnly.pace === null && C.wordsOnly.stale === null,
+   JSON.stringify(C.wordsOnly));
+
+console.log('\n== and what the panel actually paints');
+ok('the panel prints the forecast date',
+   (open.progFc || '').includes(yrN(d(121))) && dayN(d(121)) &&
+   new RegExp('\\b' + dayN(d(121)) + '\\b').test(open.progFc || ''),
+   open.progFc);
+ok('the panel prints the variance beside it',
+   /months later than planned/.test(open.progVar || ''), open.progVar);
+// The basis is not decoration. This is the one figure on the screen the issuer
+// did not write, so the sentence under it has to be enough for a reader to
+// redo the arithmetic and disagree with the answer.
+ok('the panel shows the arithmetic the forecast came from',
+   /4,012 m in 81 days is/.test(open.progBasis || '') &&
+   /50 m\/day/.test(open.progBasis || '') &&
+   /5,988 m/.test(open.progBasis || '') &&
+   /121 days/.test(open.progBasis || ''), open.progBasis);
+ok('the panel says the forecast is not the issuer\'s',
+   /not\s+stated by the issuer/.test(open.progBasis || ''), open.progBasis);
+ok('the metres remaining are spelt out, not left as a subtraction',
+   open.progCells.includes('Remaining=5,988 m'), JSON.stringify(open.progCells));
+ok('the holes done come off the newest report that counted them',
+   open.progCells.includes('Holes=11 of 24'), JSON.stringify(open.progCells));
+// The words-only report is the newest word on how many holes are turning and
+// says nothing about the total. Read off one row, the panel said one hole was
+// turning on the day a second rig arrived.
+ok('holes turning come off the newest report that said so',
+   open.progCells.includes('Turning=2 holes'), JSON.stringify(open.progCells));
+ok('the plan date is still on the panel beside the forecast',
+   open.progCells.some((c) => c.startsWith('Planned end=')),
+   JSON.stringify(open.progCells));
+ok('nothing is reported stale while it is being reported',
+   open.progStaleMsg === null, String(open.progStaleMsg));
+ok('three reports draw the metres over time',
+   open.progSpark === 1, String(open.progSpark));
+ok('the plan is drawn across the chart to compare against',
+   open.progSparkPlan === 1, String(open.progSparkPlan));
+// A chart in a 3D deck is still read by somebody who cannot see it.
+ok('the chart says in words what it draws',
+   /Cumulative metres drilled/.test(open.progSparkTitle || '') &&
+   /10,000 m planned/.test(open.progSparkTitle || ''), open.progSparkTitle);
+ok('a programme with no reports paints no forecast and no chart',
+   two.progFc === null && two.progSpark === 0,
+   JSON.stringify([two.progFc, two.progSpark]));
+ok('the text edition carries the pace and the forecast',
+   text.heads.includes('Pace') && text.heads.includes('Forecast') &&
+   text.cells[0].includes('50 m/day'), JSON.stringify(text.cells[0]));
+ok('the text edition says the forecast is computed, not stated',
+   /computed from the reported pace and is not stated by the issuer/
+     .test(text.body || ''));
+ok('the audit trail carries the pace and the forecast',
+   /At 50 m\/day reported since/.test(prov) &&
+   /is not a date the issuer has stated/.test(prov),
+   (prov.match(/At 50 m\/day[\s\S]{0,200}/) || [''])[0]);
 
 // Cesium is noisy about imagery in a software renderer; only our own errors
 // count against the run.

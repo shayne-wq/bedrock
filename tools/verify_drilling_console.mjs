@@ -24,6 +24,18 @@ const CHROME = process.env.CHROME_PATH ||
   '/Library/Caches/ms-playwright/chromium-1223/chrome-mac-arm64/' +
   'Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing';
 
+// EVERY DATE IN THE FIXTURE IS RELATIVE TO TODAY. The card now prints what the
+// deck is forecasting from these rows, which is arithmetic over the gap
+// between a report and now — so a fixture written as fixed dates would test a
+// different sentence every morning and, within a few months, a programme
+// nobody had reported on since the spring. Same offsets as
+// tools/verify_drilling.mjs, so both suites describe one programme.
+const DAY = 864e5;
+const T0 = Date.parse(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
+const d = (n) => new Date(T0 + n * DAY).toISOString().slice(0, 10);
+const dayN = (iso) => String(Number(iso.slice(8, 10)));
+const yrN = (iso) => iso.slice(0, 4);
+
 const HARNESS = `<!doctype html>
 <html><head><meta charset="utf-8">
 <link rel="stylesheet" href="/dashboard/app.css">
@@ -38,24 +50,24 @@ const HARNESS = `<!doctype html>
 window.__calls = [];
 const PROGS = [
   { id: 'p1', project_id: 'proj', zone_id: 'z1', name: 'Phase 2 diamond drilling',
-    status: 'active', target_m: 10000, holes_planned: 24, started_on: '2026-08-04',
-    expected_end: '2026-12-15', easting: 681000, northing: 5521000, elev_m: null,
+    status: 'active', target_m: 10000, holes_planned: 24, started_on: '${d(-96)}',
+    expected_end: '${d(37)}', easting: 681000, northing: 5521000, elev_m: null,
     operator: 'Cabo Drilling', note: 'Testing the north strike extension.' },
   { id: 'p2', project_id: 'proj', zone_id: null, name: 'Regional reconnaissance',
-    status: 'planned', target_m: 2500, holes_planned: null, started_on: null,
+    status: 'planned', target_m: null, holes_planned: null, started_on: null,
     expected_end: null, easting: null, northing: null, elev_m: null,
     operator: null, note: null },
 ];
 const UPS = [
-  { id: 'u3', program_id: 'p1', as_of: '2026-10-28', metres_total: null,
+  { id: 'u3', program_id: 'p1', as_of: '${d(-11)}', metres_total: null,
     holes_done: null, holes_active: 2, body: 'Second rig mobilised.',
     author: 'A. Geologist', published_at: null },
-  { id: 'u2', program_id: 'p1', as_of: '2026-10-24', metres_total: 4012,
+  { id: 'u2', program_id: 'p1', as_of: '${d(-15)}', metres_total: 4012,
     holes_done: 11, holes_active: 1, body: 'TC-26-011 completed to 412 m.',
-    author: 'A. Geologist', published_at: '2026-10-24T12:00:00Z' },
-  { id: 'u1', program_id: 'p1', as_of: '2026-10-17', metres_total: 3600,
+    author: 'A. Geologist', published_at: '${d(-15)}T12:00:00Z' },
+  { id: 'u1', program_id: 'p1', as_of: '${d(-22)}', metres_total: 3600,
     holes_done: 10, holes_active: 1, body: 'Rig turning.',
-    author: 'A. Geologist', published_at: '2026-10-17T12:00:00Z' },
+    author: 'A. Geologist', published_at: '${d(-22)}T12:00:00Z' },
 ];
 const TRACES = { traces: [ { collar: [680900, 5520900, 1310] },
                            { collar: [681100, 5521100, 1290] } ] };
@@ -114,14 +126,14 @@ const FILE_STATS = {
   files: 3, holes: 38, metres: 11240, intervals: 4810, assumed_vertical: 0,
   planned_holes: 12, planned_m: 4100,
   hole_ids: ['GC21-01', 'GC24-01', 'GC24-03'],
-  latest: { id: 'GC24-03', on: '2026-10-29',
+  latest: { id: 'GC24-03', on: '${d(-10)}',
             easting: 498168, northing: 5521008, elev_m: 1122.7 },
 };
 const PROJ = { id: 'proj', org_id: 'org-1', name: 'Test Creek', epsg: 26910 };
 const ZONES = [{ id: 'z1', name: 'Creek Zone' }];
 const DATASETS = [{ id: 'd1', kind: 'drills', zone_id: 'z1',
                     storage_path: 'org/proj/drills.json', stats: FILE_STATS,
-                    provenance: { uploaded_at: '2026-10-30T09:00:00Z' } }];
+                    provenance: { uploaded_at: '${d(-9)}T09:00:00Z' } }];
 window.__render = () => renderDrilling(PROJ, ZONES, DATASETS,
   document.getElementById('drillpanel'));
 window.__stats = FILE_STATS;
@@ -177,6 +189,9 @@ const panel = await pg.evaluate(() => {
     since: [...el.querySelectorAll('tbody tr')].map((r) => r.children[2].textContent),
     chips: [...el.querySelectorAll('tbody .chip')].map((c) => c.textContent),
     useBtns: el.querySelectorAll('[data-dpfile]').length,
+    // The line that tells the issuer what their own deck is now forecasting.
+    fc: [...el.querySelectorAll('.zone')].map((z) =>
+      (z.querySelector('.hintline')?.textContent || '').replace(/\s+/g, ' ').trim()),
   };
 });
 await pg.screenshot({ path: '/tmp/drill-console.png', fullPage: true });
@@ -326,7 +341,9 @@ ok('drafts are marked as drafts',
    panel.chips.filter((c) => c === 'Draft').length === 1 &&
    panel.chips.filter((c) => c === 'Posted').length === 2, JSON.stringify(panel.chips));
 ok('posting opens a form', form.open === true);
-ok('the form says what was last reported', /4,012 m on 24 Oct 2026|4,012 m on Oct 24, 2026/.test(form.sub || ''), form.sub);
+ok('the form says what was last reported',
+   new RegExp('4,012 m on [^.]*\\b' + dayN(d(-15)) + '\\b[^.]*' + yrN(d(-15)))
+     .test(form.sub || ''), form.sub);
 ok('it defaults to today', form.asOf === new Date().toISOString().slice(0, 10), form.asOf);
 ok('it remembers who reports', /Geologist/.test(form.author || ''), form.author);
 ok('a lower total is caught, not accepted',
@@ -402,6 +419,58 @@ ok('...and metres planned left empty, because no file knows it',
 ok('...saying where the numbers came from',
    /Filled in from your collar file: 11,240 m in 38 holes/.test(seeded.hint), seeded.hint);
 ok('nothing is written until the plan is saved', seeded.writes === 0, String(seeded.writes));
+
+// ---- the deck's forecast, said back to the issuer -------------------------
+// The metres and the plan are the issuer's own figures and they are
+// accountable for them. The finish date is not: the deck divides them and
+// publishes a date to anybody holding a share link. So the console has to say
+// what that date is — and when the deck is deliberately silent, why, because
+// three of the five reasons are things only the issuer can fix.
+console.log('\n== what the deck is forecasting');
+console.log(JSON.stringify(panel.fc, null, 0));
+ok('the card says what the deck is forecasting',
+   /Your deck shows 50 m\/day and a forecast finish of/.test(panel.fc[0] || ''),
+   panel.fc[0]);
+ok('...and how that compares with the plan on file',
+   /months later than planned/.test(panel.fc[0] || ''), panel.fc[0]);
+// The one the collar-file seeding makes common: a programme created from an
+// upload gets no target, deliberately, because no file records what a company
+// committed to. Showing nothing there reads as a feature that is broken.
+ok('a programme with nothing reported says so plainly',
+   /Nothing is reported yet/.test(panel.fc[1] || ''), panel.fc[1]);
+// A programme seeded from a collar file gets no target by design, because no
+// file records what a company committed to. The first build of the forecast
+// just showed nothing there, which reads as a feature that is broken rather
+// than one waiting for a number only the issuer has.
+ok('...and is told what the missing target costs it',
+   /no planned metres on file/i.test(panel.fc[1] || '') &&
+   /Edit plan/.test(panel.fc[1] || ''), panel.fc[1]);
+
+// The states the fixture is not in, put through the same module the card and
+// the deck both read. A sentence about a forecast that disagrees with the
+// forecast is worse than no sentence.
+const FC = await pg.evaluate(async () => {
+  const M = await import('/dashboard/lib/drill-forecast.js');
+  const base = { status: 'active', target_m: 10000, started_on: '@S',
+                 expected_end: '@E', updates: [{ as_of: '@L', metres_total: 8000 }] };
+  const sub = (o, p) => JSON.parse(JSON.stringify(o)
+    .replace('@S', p.s).replace('@E', p.e).replace('@L', p.l));
+  const day = (n) => new Date(Date.parse(new Date().toISOString().slice(0, 10) +
+    'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+  const mk = (over) => Object.assign(
+    sub(base, { s: day(-80), e: day(20), l: day(-10) }), over);
+  return {
+    live: M.drillCalc(mk({})),
+    paused: M.drillCalc(mk({ status: 'paused' })),
+    cold: M.drillCalc(mk({ updates: [{ as_of: day(-120), metres_total: 8000 }],
+                           started_on: day(-200) })),
+    noTarget: M.drillCalc(mk({ target_m: null })),
+  };
+});
+ok('the console reads the same rules the deck does',
+   FC.live.pace === 114.29 && FC.live.forecast !== null &&
+   FC.paused.forecast === null && FC.cold.forecast === null &&
+   FC.noTarget.forecast === null, JSON.stringify(FC));
 
 console.log('\nerrors:', errs.length ? errs : 'none');
 console.log('non-200:', missing.length ? missing : 'none');

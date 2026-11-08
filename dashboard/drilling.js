@@ -26,6 +26,14 @@
 import {
   db, state, $, esc, fmtInt, toast, fail, modal, closeModal,
 } from "./lib/ui.js";
+// The same arithmetic the deck publishes. Imported rather than reimplemented
+// because this screen's job below is to tell an issuer what their own deck is
+// now claiming about their schedule, and a second copy of these rules would
+// eventually say that about a deck showing something else.
+import {
+  DRILL, dNum, drillReport, drillMetres, drillPace, drillForecast,
+  drillStaleDays, drillVariance, fmtPace,
+} from "./lib/drill-forecast.js";
 
 const STATUS = {
   planned: "Planned", active: "Drilling", paused: "Paused", complete: "Complete",
@@ -34,7 +42,7 @@ const CHIP = {
   planned: "draft", active: "live", paused: "warn", complete: "draft",
 };
 
-const num = (v) => (v === null || v === undefined || v === "" || !isFinite(+v)) ? null : +v;
+const num = dNum;
 const metres = (m) => Math.round(m).toLocaleString() + " m";
 // A plain `YYYY-MM-DD` parsed without a zone lands on local or UTC midnight
 // depending on the engine, which moves a report a day either side of the date
@@ -50,7 +58,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 /** The newest report carrying a metre count. A report can legitimately be words
  *  only — "rig mobilised, first hole collared" — and reading the total off
  *  whatever happens to be newest would blank out yesterday's figure. */
-const lastMetres = (ups) => (ups || []).find((u) => num(u.metres_total) !== null) || null;
+const lastMetres = (ups) => drillReport({ updates: ups || [] });
 
 // ------------------------------------------------- figures from the file ----
 // A drilling programme used to be the one screen in this console with nothing
@@ -240,6 +248,70 @@ export async function renderDrilling(project, zones, datasets, el) {
     </div>`;
   };
 
+  // WHAT THE DECK IS NOW SAYING about this programme's schedule — in the
+  // console, because it is the one figure on that panel the issuer did not
+  // type. They enter metres and a plan; the deck divides them and publishes a
+  // finish date to anybody holding a share link. Whoever signs off on
+  // disclosure has to be able to read that sentence here, before a shareholder
+  // reads it there.
+  //
+  // And when the deck is deliberately silent, the REASON is the useful half:
+  // three of the five are things only the issuer can fix, and the first build
+  // of the forecast simply showed nothing, which reads as a feature that is
+  // broken rather than one that is waiting for a number.
+  //
+  // Published rows only, because that is all the deck ever sees.
+  const forecastStrip = (g, pub) => {
+    const prog = { ...g, updates: pub };
+    const f = drillForecast(prog), p = drillPace(prog), sd = drillStaleDays(prog);
+    const t = num(g.target_m), m = drillMetres(prog);
+    let msg;
+    if (f) {
+      msg = `Your deck shows <b>${fmtPace(f.pace.mpd)}</b> and a forecast finish of
+             <b>${onDate(f.iso)}</b>` +
+        (f.vs === null
+          ? ", with no planned end date to compare it against."
+          : ` &mdash; ${esc(drillVariance(f.vs))}.`);
+    } else if (g.status === "complete" || g.status === "paused") {
+      msg = `No finish is forecast while a programme is
+             ${esc((STATUS[g.status] || g.status).toLowerCase())}.`;
+    } else if (t && m !== null && t - m <= 0) {
+      msg = `The planned metres are drilled, so your deck forecasts nothing further.`;
+    } else {
+      // Why the deck is silent, and then — separately — the missing target,
+      // because they are two different gaps and a programme can have both. A
+      // programme seeded from a collar file has no target by design (no file
+      // records what a company committed to), so "add one" is the commonest
+      // thing this strip has to say and it must not be crowded out by a
+      // sentence about pace.
+      const bits = [];
+      if (!drillReport(prog)) {
+        bits.push(`Nothing is reported yet, so your deck shows the plan and
+                   nothing else.`);
+      } else if (sd !== null && sd > DRILL.COLD) {
+        bits.push(`Nothing reported in ${fmtInt(sd)} days, so your deck has
+                   stopped forecasting a finish from it. Post an update and it
+                   comes back.`);
+      } else if (!p) {
+        bits.push(`Not enough reported yet to measure a pace &mdash; that takes a
+                   start date and ${DRILL.MIN_SPAN} days of reports. Your deck
+                   shows the metres and the plan.`);
+      } else {
+        bits.push(`Your deck shows <b>${fmtPace(p.mpd)}</b>, and no finish date.`);
+      }
+      if (!t) {
+        bits.push(`There are no planned metres on file, so there is nothing for
+                   the deck to forecast against &mdash; add a target in
+                   <b>Edit plan</b>.`);
+      }
+      msg = bits.join(" ");
+    }
+    const late = sd !== null && sd > DRILL.STALE && sd <= DRILL.COLD &&
+      g.status !== "complete"
+      ? ` Your deck also says nothing has been reported in ${fmtInt(sd)} days.` : "";
+    return `<p class="hintline" style="margin:-4px 0 12px">${msg}${late}</p>`;
+  };
+
   el.innerHTML = `
     <div class="row">
       <div class="grow"><h2>Drilling</h2></div>
@@ -286,6 +358,7 @@ export async function renderDrilling(project, zones, datasets, el) {
           </div>
           ${pct === null ? "" : `<div class="bar" style="margin:-4px 0 12px">
             <i style="width:${(pct * 100).toFixed(1)}%"></i></div>`}
+          ${forecastStrip(g, pub)}
           ${fileStrip(g, u)}
           ${(g.easting === null || g.easting === undefined) ? `
             <p class="hintline" style="margin:-4px 0 12px">No collar coordinates,

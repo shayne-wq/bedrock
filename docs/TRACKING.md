@@ -32,6 +32,79 @@ model), and two sources of truth is one too many.
 
 ---
 
+## The drill panel answers "will it be done on time" (2026-11-08) — BUILT
+
+The panel showed how far through a programme was. The question a shareholder
+actually arrives with is whether it will be finished when the company said it
+would, and that answer was already in the deck's own data and nowhere on the
+screen: a programme that has drilled 4,012 m since 4 August is turning 50 m a
+day, and 10,000 m at 50 m a day lands in March, not on the 15 December written
+on the plan. Nobody types that number. It is now the second thing the panel
+says, after the metres.
+
+The panel gained, in reading order: a **chart of cumulative metres against the
+plan line** directly under the progress bar; the **forecast finish** with how
+it compares to the planned date; the **arithmetic it came from**, in a sentence
+the reader can redo; **metres remaining**; and **holes turning now**, which the
+console has collected since the form was written and the deck had never shown.
+All of it travels to the **text edition** and the **audit trail** too — that
+edition is the one a reader with no GPU opens for exactly this number.
+
+**No migration, no function deploy.** Every figure was already in the payload.
+
+**The derivation lives in ONE file** — `dashboard/lib/drill-forecast.js`. The
+console imports it; `build_present.py` inlines it into the deck with the
+`export` keywords stripped. That is not tidiness. The console's new job is to
+tell an issuer what their own deck is about to claim in public — *"Your deck
+shows 50 m/day and a forecast finish of 9 Mar 2027 — about 3 months later than
+planned"* — and a second copy of these rules would eventually say that about a
+deck showing something else.
+
+**The window is the whole programme**, `started_on` at zero metres through to
+the newest report carrying a figure — not the gap between the last two reports.
+Reproducible (the reader divides the two numbers already on their screen),
+conservative (standdown days count against metres, so it reads as the later
+date), and it qualifies soonest, which matters because a trailing window would
+mean no forecast through the first month of every programme and that is the
+month it is asked about most.
+
+**Most of this feature is refusals**, and they are what the suite is mostly
+about. No forecast when: there is no target to finish against; the programme is
+paused or complete, because a pace measured while the rig was turning projects
+nothing about a rig that has stopped; the target is already met; the last
+report is more than 90 days old, by which point the rate is history rather than
+evidence of anything current; the span is under 10 days, which is one good week
+and not a rate; or the answer is more than two years out. A start date later
+than the newest report — bad data of the same shape as `Number(null) === 0` —
+falls back to the reports' own span rather than dividing by a negative one.
+
+Two judgements worth keeping:
+- **The forecast is anchored at the later of the last report and today.**
+  Anchored on the report alone it slides into the past the moment a report is a
+  month old; anchored on today alone it assumes nothing has been drilled since,
+  which is also what it quietly claims. A report stale enough for the
+  difference to matter has already printed its own line saying so.
+- **Emphasis is brightness, never hue.** The accent is tenant-supplied, so a
+  red "late" chip is a red chip on the deck of a company whose brand colour is
+  red.
+
+**Both fixtures were rebased onto dates relative to today.** A feature whose
+figures are arithmetic over the gap between a report and now cannot be tested
+against fixed dates: the suite would assert a different sentence every morning
+and, within months, a programme nobody had reported on since the spring.
+
+Suites: `tools/verify_drilling.mjs` **68** (was 34 — the refusal rules go
+through the shipped function directly, because one fixture can only be in one
+of those states) and `tools/verify_drilling_console.mjs` **50** (was 45).
+`verify_formats` (68), `verify_dragdrop` (66), `verify_slides` (40) and
+`verify_modules` (14) unchanged and green. `verify_ui` times out on `main` as
+well and is not a regression from this work.
+
+Still open from the list below: per-hole progress, a chapter that frames the
+rig, and email on post.
+
+---
+
 ## The collar file reports the drilling (2026-10-30) — LIVE
 
 The programme above shipped with the metres typed into a form. The same client

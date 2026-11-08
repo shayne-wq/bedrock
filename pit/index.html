@@ -725,7 +725,7 @@
      it is the same kind of object: a panel about the drilling that hides the
      rail while it is open. The two never coexist — opening one closes the
      other — so they can share the position outright. */
-  #rig{position:fixed;left:34px;top:104px;z-index:10;width:328px;max-height:72vh;
+  #rig{position:fixed;left:34px;top:104px;z-index:10;width:328px;max-height:78vh;
         display:flex;flex-direction:column;border-radius:6px;
         background:rgba(9,12,13,.93);border:1px solid rgba(255,255,255,.12);
         backdrop-filter:blur(8px);overflow:hidden}
@@ -736,7 +736,9 @@
         text-transform:uppercase;padding:5px 9px;border-radius:4px;cursor:pointer;
         color:#C6CAC5;background:transparent;border:1px solid rgba(255,255,255,.16)}
   #rigpick button.on{color:#07090A;background:var(--brand);border-color:var(--brand)}
-  #rigbody{padding:12px;overflow-y:auto;overscroll-behavior:contain}
+  #rigbody{padding:12px;overflow-y:auto;overscroll-behavior:contain;
+        scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.22) transparent;
+        mask-image:linear-gradient(#000 calc(100% - 16px),transparent)}
   .pgname{font-size:14.5px;line-height:1.3;color:#EDEEEC;font-weight:600}
   .pgsub{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.12em;
          text-transform:uppercase;color:#8C948C;margin-top:3px}
@@ -753,6 +755,34 @@
            animation:pgfill .9s cubic-bezier(.16,1,.3,1)}
   @keyframes pgfill{ from{width:0} }
   @media (prefers-reduced-motion:reduce){ .pgbar i{animation:none} }
+  /* The forecast. Everything above it in this panel is a figure the issuer
+     typed; this one is arithmetic over the reports they published, so it is
+     boxed off rather than dropped in among them as though somebody had
+     entered it, and the line underneath states what it was computed from.
+     The accent is tenant-supplied, so emphasis here is BRIGHTNESS and never a
+     hue — a red "late" chip is a red chip on the deck of a company whose
+     brand colour is red. */
+  .pgfc{margin-top:14px;padding:9px 11px;border-radius:4px;
+        border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.035)}
+  .pgfc .k{display:block;font-family:'JetBrains Mono',monospace;font-size:9px;
+           letter-spacing:.12em;text-transform:uppercase;color:var(--brand)}
+  .pgfc .v{display:block;font-family:'JetBrains Mono',monospace;font-size:15px;
+           line-height:1.2;color:#EDEEEC;margin-top:4px}
+  .pgfc .vr{display:block;font-size:11px;line-height:1.4;color:#8C948C;margin-top:3px}
+  .pgfc .vr.off{color:#EDEEEC}
+  .pgbasis{margin-top:6px;font-size:10.5px;line-height:1.5;color:#6F756F}
+  .pgstale{margin-top:9px;padding:7px 9px;border-radius:4px;font-size:11px;
+           line-height:1.45;color:#C6CAC5;background:rgba(255,255,255,.04);
+           border:1px solid rgba(255,255,255,.14)}
+  /* Cumulative metres against the plan. The bar says how far through; this is
+     the only thing in the panel that tells a programme that is BEHIND from one
+     that started slowly and is now ahead of its own average — which is the
+     difference between a worry and a non-event. */
+  .pgspark{margin-top:9px}
+  .pgspark svg{display:block;width:100%;height:46px}
+  .pgsparkl{display:flex;justify-content:space-between;margin-top:4px;
+            font-family:'JetBrains Mono',monospace;font-size:9px;
+            letter-spacing:.1em;text-transform:uppercase;color:#6F756F}
   .pgfig{display:grid;grid-template-columns:1fr 1fr;gap:1px;margin-top:14px;
          background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden}
   .pgfig div{background:rgba(9,12,13,.92);padding:8px 10px}
@@ -3645,18 +3675,23 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       sec.innerHTML='<h2>Drilling in progress</h2>';
       const dt=document.createElement('table');
       dt.innerHTML='<caption>Issuer-reported progress. Not assay results, and '+
-        'not a mineral resource statement.</caption>'+
+        'not a mineral resource statement. The forecast column is computed '+
+        'from the reported pace and is not stated by the issuer.</caption>'+
         '<thead><tr><th scope="col">Programme</th><th scope="col">Status</th>'+
         '<th scope="col">Metres</th><th scope="col">Planned</th>'+
-        '<th scope="col">As of</th></tr></thead>';
+        '<th scope="col">As of</th><th scope="col">Pace</th>'+
+        '<th scope="col">Forecast</th></tr></thead>';
       const db=document.createElement('tbody');
       PROGRAMS.forEach(g=>{
         const m=progMetres(g), t=progNum(g.target_m), u=progReport(g);
+        const p=progPace(g), f=progForecast(g);
         const tr=document.createElement('tr');
         [g.name, PROG_STATUS[g.status]||g.status,
          m===null?'—':Math.round(m).toLocaleString()+' m',
          t?Math.round(t).toLocaleString()+' m':'—',
-         u?progDate(u.as_of):'—']
+         u?progDate(u.as_of):'—',
+         p?progFmtPace(p.mpd):'—',
+         f?progDate(f.iso):'—']
           .forEach((v,i2)=>{ const c=document.createElement(i2?'td':'th');
             if(!i2) c.scope='row'; c.textContent=v; tr.appendChild(c); });
         db.appendChild(tr);
@@ -3855,11 +3890,21 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
         L.push('    '+(m===null?'no metres reported yet'
                                :progM(m)+(t?' of '+progM(t)+' planned':' to date'))+
                (u?';  as of '+progDate(u.as_of):''));
+        const f=progForecast(g);
+        if(f) L.push('    At '+progFmtPace(f.pace.mpd)+' reported since '+
+                     progDate(f.pace.from)+', the remaining '+progM(f.remaining)+
+                     ' complete about '+progDate(f.iso)+
+                     (f.vs===null?'':' — '+progVariance(f.vs))+'.');
+        const sd=progStaleDays(g);
+        if(sd!==null&&sd>PROG_STALE&&g.status!=='complete')
+          L.push('    No progress has been reported in '+sd+' days.');
         if(progNum(g.easting)===null)
           L.push('    No collar coordinates were entered, so no rig is drawn on the ground.');
       });
       L.push('    Issuer-reported progress, published by the company itself.');
       L.push('    Not assay results, and not a mineral resource statement.');
+      L.push('    Any pace or completion date above is computed from those');
+      L.push('    reports, and is not a date the issuer has stated.');
     }
     L.push('');
     L.push('CAVEATS');
@@ -6950,15 +6995,191 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
   let progEnts=null, progBuilding=false, progOn=PROGRAMS.length>0,
       progPanel=false, progSel=0;
 
-  const progNum=v=>(v===null||v===undefined||v==='')?null:
-    (isFinite(+v)?+v:null);
+// Bedrock — what the reported metres say about when a programme finishes.
+//
+// ONE COPY, read by two things. The deck viewer inlines this file at build
+// time (tools/build_present.py, which strips the `export` keywords) and the
+// console imports it. That is not tidiness: the console's job is to tell an
+// issuer what their own deck is about to claim in public — "your deck now
+// shows a finish three months after the date on your plan" — and a second
+// implementation of these rules would eventually say that about a deck showing
+// something else. The claim and the warning about the claim have to be the
+// same arithmetic.
+//
+// Everything an issuer types is a figure they are accountable for. Everything
+// here is derived from those figures, which makes it the only part of a deck
+// that nobody has checked — so every step below REFUSES rather than guesses,
+// and the panel that prints a result also prints what it was computed from.
+//
+// THE PACE WINDOW IS THE WHOLE PROGRAMME: started_on at zero metres through to
+// the newest report carrying a figure, not the gap between the last two
+// reports. Three reasons, in the order they matter.
+//
+//   It is REPRODUCIBLE. The reader divides the two numbers already on their
+//   screen and gets the same answer. A trailing window is a number they cannot
+//   check against anything the deck shows them.
+//
+//   It is CONSERVATIVE. Mobilisation and standdown days count against the
+//   metres drilled, so it reads as the slower rig and the later date — the
+//   right direction for an error on a screen a shareholder reads.
+//
+//   It QUALIFIES SOONEST. It has the longest span, so a programme whose only
+//   two reports are a week apart still has a usable rate. Insisting on a
+//   trailing window would mean no forecast through the first month of every
+//   programme, which is the month it is asked about most.
+
+const DRILL = {
+  MIN_SPAN: 10,   // days — a shorter window is one good week, not a rate
+  MAX_FC: 730,    // days — past two years, a projected date is a joke
+  STALE: 45,      // days without a report — say so
+  COLD: 90,       // days without a report — and stop projecting from it
+  DAY: 864e5,
+};
+
+/** Null for anything that is not a finite number. `Number(null)` is 0 and 0 is
+ *  finite, which is how a programme with no coordinates once put a rig off the
+ *  coast of Africa; the same shape of bug reads a missing metre count as a
+ *  programme that has drilled nothing. */
+const dNum = (v) =>
+  (v === null || v === undefined || v === "") ? null : (isFinite(+v) ? +v : null);
+
+/** A date arrives as `YYYY-MM-DD`. Parsed without a zone, engines disagree
+ *  about whether that is local or UTC midnight, which moves a report a day
+ *  either side of the date the issuer typed. Pinned to UTC at both ends. */
+function dDay(s) {
+  if (!s) return null;
+  const d = new Date(String(s).slice(0, 10) + "T00:00:00Z");
+  return isNaN(+d) ? null : +d;
+}
+
+const ups = (g) => (g && g.updates) || [];
+
+/** The newest report carrying a metre count. A report can legitimately be
+ *  words only — "rig mobilised, first hole collared" — and reading the total
+ *  off whatever happens to be newest would blank out yesterday's figure. */
+const drillReport = (g) =>
+  ups(g).find((u) => dNum(u.metres_total) !== null) || null;
+
+function drillMetres(g) {
+  const u = drillReport(g);
+  return u ? dNum(u.metres_total) : null;
+}
+
+/** The same reasoning, one field at a time. A report that mobilises a second
+ *  rig without adding a metre is the newest word on how many holes are turning
+ *  and says nothing at all about the total — so reading both off the newest
+ *  METRE-bearing row shows whatever that row happened to carry, and the panel
+ *  said one hole was turning on the day a second rig arrived. */
+function drillField(g, key) {
+  for (const u of ups(g)) {
+    const v = dNum(u[key]);
+    if (v !== null) return v;
+  }
+  return null;
+}
+
+/** Metre-bearing reports, OLDEST FIRST. They arrive newest-first for the
+ *  panel's list and every derivation here reads forward through time. */
+const drillAsc = (g) =>
+  ups(g).filter((u) => dNum(u.metres_total) !== null && dDay(u.as_of) !== null)
+    .slice().sort((a, b) => dDay(a.as_of) - dDay(b.as_of));
+
+/** Metres per day, and the window it was measured over. Null when there is no
+ *  window worth dividing by. */
+function drillPace(g) {
+  const A = drillAsc(g);
+  if (!A.length) return null;
+  const t1 = dDay(A[A.length - 1].as_of), m1 = dNum(A[A.length - 1].metres_total);
+  let t0 = dDay(g.started_on), m0 = 0, from = g.started_on;
+  if (t0 === null || t0 >= t1) {
+    // No start date, or — bad data — one that is not before the last report.
+    // Fall back to the reports' own span, which takes two of them. Dividing by
+    // a negative span would read as a rig drilling backwards.
+    if (A.length < 2) return null;
+    t0 = dDay(A[0].as_of); m0 = dNum(A[0].metres_total); from = A[0].as_of;
+  }
+  const days = (t1 - t0) / DRILL.DAY;
+  if (!(days >= DRILL.MIN_SPAN) || !(m1 > m0)) return null;
+  return { mpd: (m1 - m0) / days, days: Math.round(days), from,
+           to: A[A.length - 1].as_of, metres: m1 - m0 };
+}
+
+const fmtPace = (mpd) =>
+  (mpd >= 10 ? Math.round(mpd) : Math.round(mpd * 10) / 10).toLocaleString() + " m/day";
+
+/** Days since the last report that carried a metre count. */
+function drillStaleDays(g, now) {
+  const A = drillAsc(g);
+  if (!A.length) return null;
+  return Math.floor(((now === undefined ? Date.now() : now) -
+    dDay(A[A.length - 1].as_of)) / DRILL.DAY);
+}
+
+/** When the committed metres are reached at the pace that has been reported.
+ *
+ *  Null — and the panel then says nothing at all rather than something
+ *  qualified into meaninglessness — when there is no target to finish AGAINST;
+ *  when the programme is paused or complete, because a pace measured while the
+ *  rig was turning projects nothing about a rig that has stopped; when the
+ *  target is already met; when the last report is older than COLD, by which
+ *  point the rate is history rather than evidence of anything current; or when
+ *  the answer is more than two years out. */
+function drillForecast(g, now) {
+  const at = now === undefined ? Date.now() : now;
+  const t = dNum(g.target_m), m = drillMetres(g);
+  if (!t || m === null) return null;
+  if (g.status === "complete" || g.status === "paused") return null;
+  const remaining = t - m;
+  if (remaining <= 0) return null;
+  const p = drillPace(g);
+  if (!p) return null;
+  const stale = drillStaleDays(g, at);
+  if (stale !== null && stale > DRILL.COLD) return null;
+  const left = Math.ceil(remaining / p.mpd);
+  if (!isFinite(left) || left <= 0 || left > DRILL.MAX_FC) return null;
+  // Anchored at the LATER of the last report and today. Anchored on the report
+  // alone, the finish date slides into the past the moment a report is a month
+  // old; anchored on today alone, it assumes nothing has been drilled since
+  // the last report, which is also what it quietly claims. The later of the
+  // two is the only one of the three that is never absurd, and a report stale
+  // enough for the difference to matter has already said so in its own line.
+  const on = new Date(Math.max(dDay(p.to), at) + left * DRILL.DAY);
+  const plan = dDay(g.expected_end);
+  return { iso: on.toISOString().slice(0, 10), days: left, remaining, pace: p,
+           vs: plan === null ? null : Math.round((+on - plan) / DRILL.DAY) };
+}
+
+/** "about 3 weeks later than planned". Coarsened as it goes out, because a
+ *  projection is not good to the day and printing one to the day says it is. */
+function drillVariance(d) {
+  const a = Math.abs(d);
+  if (a <= 5) return "on the planned date";
+  const dir = d > 0 ? "later than planned" : "earlier than planned";
+  if (a < 14) return a + " days " + dir;
+  if (a < 60) return "about " + Math.round(a / 7) + " weeks " + dir;
+  return "about " + Math.round(a / 30) + " months " + dir;
+}
+
+/** Everything derived about one programme, in one object. */
+function drillCalc(g, now) {
+  const p = drillPace(g), f = drillForecast(g, now);
+  return {
+    pace: p ? Math.round(p.mpd * 100) / 100 : null,
+    span: p ? p.days : null, from: p ? p.from : null, to: p ? p.to : null,
+    forecast: f ? f.iso : null, days: f ? f.days : null, vs: f ? f.vs : null,
+    remaining: f ? f.remaining : null, stale: drillStaleDays(g, now),
+    variance: (f && f.vs !== null) ? drillVariance(f.vs) : null,
+  };
+}
+
+
+  // Reading a figure off a programme is the same job in the deck and in the
+  // console, so it is the same code: see dashboard/lib/drill-forecast.js for
+  // why a metre count and a hole count must each come off the newest report
+  // that carries THAT field.
+  const progNum=dNum, progReport=drillReport, progMetres=drillMetres,
+        progField=drillField;
   const progInt=v=>{const n=progNum(v); return n===null?null:Math.round(n);};
-  // The newest published report that actually carries a metre count. A report
-  // can legitimately be words only — "rig mobilised, first hole collared" —
-  // and reading the metres off whatever happens to be newest would show a
-  // blank where yesterday's total belongs.
-  const progReport=g=>(g.updates||[]).find(u=>progNum(u.metres_total)!==null)||null;
-  const progMetres=g=>{const u=progReport(g); return u?progNum(u.metres_total):null;};
   function progPct(g){
     const m=progMetres(g), t=progNum(g.target_m);
     if(m===null||!t) return null;
@@ -6981,6 +7202,67 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
     const m=progMetres(g), t=progNum(g.target_m);
     if(m===null) return PROG_STATUS[g.status]||'Drilling';
     return progM(m)+(t?' / '+progM(t):' to date');
+  }
+
+  // ---- derived: how fast, and when it finishes ---------------------------
+  // The question a shareholder actually arrives with is not "how many metres"
+  // but "will it be done when they said it would". That answer is in the
+  // reports and in nothing else, and it is worked out in ONE place —
+  // dashboard/lib/drill-forecast.js, inlined above — because the console tells
+  // the issuer what their own deck is about to claim in public, and two copies
+  // of these rules would eventually say that about a deck showing something
+  // else. The reasoning, and every refusal, is documented in that file.
+  const progDay=dDay, progAsc=drillAsc, progPace=drillPace, progFmtPace=fmtPace,
+        progStaleDays=drillStaleDays, progForecast=drillForecast,
+        progVariance=drillVariance, progCalc=drillCalc;
+  const PROG_STALE=DRILL.STALE, PROG_COLD=DRILL.COLD;
+
+  // Cumulative metres over time, with the plan drawn as the straight line from
+  // the start date at zero to the planned end at the target.
+  //
+  // Three reports or more. Two points are a line, and a line through two
+  // points presented as a trend is a trend asserted out of nothing.
+  function progSparkSVG(g){
+    const A=progAsc(g); if(A.length<3) return null;
+    const t=progNum(g.target_m);
+    const xs=A.map(u=>progDay(u.as_of)), ys=A.map(u=>progNum(u.metres_total));
+    const s0=progDay(g.started_on), e0=progDay(g.expected_end);
+    const planned=(t&&s0!==null&&e0!==null&&e0>s0);
+    const x0=Math.min(xs[0], s0===null?xs[0]:s0);
+    const x1=Math.max(xs[xs.length-1], planned?e0:xs[xs.length-1]);
+    const top=Math.max(t||0, ys[ys.length-1]);
+    if(!(x1>x0) || !(top>0)) return null;
+    const W=304, H=46, PAD=2;
+    const X=v=>((v-x0)/(x1-x0))*W;
+    const Y=v=>H-PAD-(v/top)*(H-PAD*2);
+    const NS='http://www.w3.org/2000/svg';
+    const mk=(n,a)=>{ const e=document.createElementNS(NS,n);
+      for(const k in a) e.setAttribute(k,a[k]); return e; };
+    const svg=mk('svg',{viewBox:'0 0 '+W+' '+H,preserveAspectRatio:'none',
+                        role:'img'});
+    // A chart in a 3D deck is still read by somebody who cannot see it, and
+    // the sentence is cheaper than the picture.
+    const ttl=document.createElementNS(NS,'title');
+    ttl.textContent='Cumulative metres drilled, '+progDate(A[0].as_of)+' to '+
+      progDate(A[A.length-1].as_of)+(t?', against '+progM(t)+' planned':'');
+    svg.appendChild(ttl);
+    if(planned) svg.appendChild(mk('line',{x1:X(s0),y1:Y(0),x2:X(e0),y2:Y(t),
+      stroke:'#8C948C','stroke-width':1,'stroke-dasharray':'3 3',
+      'vector-effect':'non-scaling-stroke'}));
+    // The actual line starts at the start date and zero when there is one: a
+    // polyline that begins at the first REPORT begins partway up the climb and
+    // reads as a programme that was handed 2,100 m on day one.
+    const pts=[]; if(s0!==null&&s0<xs[0]) pts.push([X(s0),Y(0)]);
+    xs.forEach((x,i)=>pts.push([X(x),Y(ys[i])]));
+    svg.appendChild(mk('polyline',{points:pts.map(p=>p.join(',')).join(' '),
+      fill:'none',stroke:AC,'stroke-width':1.6,
+      'stroke-linejoin':'round','vector-effect':'non-scaling-stroke'}));
+    const last=pts[pts.length-1];
+    // AC, not var(--brand): a CSS variable in an SVG presentation attribute
+    // resolves in this browser and is one of the first things to go quiet in
+    // another, and the accent is already a JS value here.
+    svg.appendChild(mk('circle',{cx:last[0],cy:last[1],r:2.4,fill:AC}));
+    return svg;
   }
 
   async function buildPrograms(){
@@ -7243,19 +7525,88 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       bar.appendChild(fill); body.appendChild(bar);
     }
 
-    const rep=progReport(g);
+    // The bar is where the programme stands; this is how it got there, and it
+    // is the only thing in the panel that tells a programme that is BEHIND
+    // from one that started slowly and is now ahead of its own average. It
+    // sits directly under the bar because the two are one object: today, and
+    // the line that arrives at today.
+    const sp=progSparkSVG(g);
+    if(sp){
+      const w=el('div','pgspark'); w.appendChild(sp); body.appendChild(w);
+      const lab=el('div','pgsparkl');
+      lab.appendChild(el('span',null,progDate(g.started_on||progAsc(g)[0].as_of)));
+      lab.appendChild(el('span',null,
+        progNum(g.target_m)&&progDay(g.expected_end)!==null
+          ? 'plan · '+progDate(g.expected_end) : 'reported'));
+      body.appendChild(lab);
+    }
+
+    // The forecast, and what it was computed from. The basis is not optional
+    // decoration: this is the one figure on the screen that the issuer did not
+    // write, so the sentence under it has to be enough for a reader to redo
+    // the arithmetic and disagree with it.
+    const fc=progForecast(g);
+    if(fc){
+      const f=el('div','pgfc');
+      f.appendChild(el('span','k','Forecast'));
+      f.appendChild(el('span','v',progDate(fc.iso)));
+      if(fc.vs!==null){
+        const vr=el('span','vr',progVariance(fc.vs));
+        // Emphasis by brightness, never by hue — see the note in the CSS.
+        if(Math.abs(fc.vs)>5) vr.className='vr off';
+        f.appendChild(vr);
+      }
+      body.appendChild(f);
+      body.appendChild(el('div','pgbasis',
+        progM(fc.pace.metres)+' in '+fc.pace.days.toLocaleString()+' days is '+
+        progFmtPace(fc.pace.mpd)+'. At that pace the remaining '+
+        progM(fc.remaining)+' take about '+fc.days.toLocaleString()+' days. '+
+        'Computed from the reports below, not stated by the issuer.'));
+    } else if(t!==null&&m!==null&&(t-m)<=0&&g.status!=='complete'){
+      // The one case worth a sentence rather than a silence: the committed
+      // metres are in the ground and the programme is still open.
+      body.appendChild(el('div','pgbasis',
+        'The planned metres have been drilled. The programme is still reported '+
+        'as '+(PROG_STATUS[g.status]||g.status).toLowerCase()+'.'));
+    }
+
+    // How long since anybody said anything. A deck that is quietly six months
+    // out of date looks exactly like a deck that is current, which is the
+    // failure this whole feature exists to fix — so when it happens here, it
+    // is on the panel in words.
+    const sd=progStaleDays(g);
+    if(sd!==null && sd>PROG_STALE && g.status!=='complete')
+      body.appendChild(el('div','pgstale',
+        'No progress reported in '+sd.toLocaleString()+' days'+
+        (sd>PROG_COLD?', so no completion date is projected from it.':'.')));
+
     const fig=el('div','pgfig');
     const cell=(k,v)=>{ const d=el('div');
       d.appendChild(el('span','k',k)); d.appendChild(el('span','v',v));
       fig.appendChild(d); };
     cell('Complete',pct===null?'—':(pct*100).toFixed(0)+'%');
+    // The metres still to drill. Spelt out rather than left as a subtraction
+    // the reader does in their head, because it is the figure a budget is
+    // read against and the one the forecast below is built out of.
+    cell('Remaining',(()=>{
+      if(t===null||m===null) return '—';
+      return (t-m)<=0 ? 'target met' : progM(t-m);
+    })());
     cell('Holes',(()=>{
-      const done=progInt(rep&&rep.holes_done), plan=progInt(g.holes_planned);
+      const done=progField(g,'holes_done'), plan=progInt(g.holes_planned);
       if(done===null&&plan===null) return '—';
-      return (done===null?'—':done)+(plan!==null?' of '+plan:'');
+      return (done===null?'—':Math.round(done))+(plan!==null?' of '+plan:'');
+    })());
+    // Holes turning right now. The console has collected this since the form
+    // was written and the deck has never shown it: "11 of 24" is a quarter of
+    // the answer when two rigs are on the property this week.
+    cell('Turning',(()=>{
+      const a=progField(g,'holes_active');
+      return a===null?'—':Math.round(a).toLocaleString()+
+        (Math.round(a)===1?' hole':' holes');
     })());
     cell('Started',progDate(g.started_on));
-    cell('Expected',progDate(g.expected_end));
+    cell('Planned end',progDate(g.expected_end));
     body.appendChild(fig);
 
     // What the programme is testing, in the issuer's own words.
@@ -9331,10 +9682,32 @@ if(new URLSearchParams(location.search).get('fresh')==='1'){
       progBar:$('rigbody').querySelector('.pgbar i')
         ?$('rigbody').querySelector('.pgbar i').style.width:null,
       progReports:$('rigbody').querySelectorAll('.pgu .d').length,
-      progDeltas:[...$('rigbody').querySelectorAll('.pgu .d .dl')].map(x=>x.textContent)}),
+      progDeltas:[...$('rigbody').querySelectorAll('.pgu .d .dl')].map(x=>x.textContent),
+      // The derived half of the panel, read off the screen rather than
+      // recomputed — a forecast that is correct in progCalc and never painted
+      // is a forecast nobody sees.
+      progCells:[...$('rigbody').querySelectorAll('.pgfig div')].map(d=>
+        d.querySelector('.k').textContent+'='+d.querySelector('.v').textContent),
+      progFc:$('rigbody').querySelector('.pgfc .v')
+        ?$('rigbody').querySelector('.pgfc .v').textContent:null,
+      progVar:$('rigbody').querySelector('.pgfc .vr')
+        ?$('rigbody').querySelector('.pgfc .vr').textContent:null,
+      progBasis:$('rigbody').querySelector('.pgbasis')
+        ?$('rigbody').querySelector('.pgbasis').textContent:null,
+      progStaleMsg:$('rigbody').querySelector('.pgstale')
+        ?$('rigbody').querySelector('.pgstale').textContent:null,
+      progSpark:$('rigbody').querySelectorAll('.pgspark svg polyline').length,
+      progSparkTitle:$('rigbody').querySelector('.pgspark svg title')
+        ?$('rigbody').querySelector('.pgspark svg title').textContent:null,
+      progSparkPlan:$('rigbody').querySelectorAll('.pgspark svg line').length}),
     programs:()=>PROGRAMS.map(g=>({name:g.name, status:g.status,
       metres:progMetres(g), target:g.target_m, placed:progNum(g.easting)!==null,
-      updates:(g.updates||[]).length})),
+      updates:(g.updates||[]).length, calc:progCalc(g)})),
+    // The derivation on its own, so a check can put a programme through it
+    // that the fixture is not in. Every refusal rule in progForecast decides
+    // what a public company's deck claims about its own schedule, and a test
+    // that can only reach them through this one fixture can only test one.
+    progCalc:progCalc,
     focusProgram:(i)=>focusProgram(PROGRAMS[i]),
     titles:()=>CHAPTERS.map(c=>c.title),
     chapter:(n)=>CHAPTERS[n],
