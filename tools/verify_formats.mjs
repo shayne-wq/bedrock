@@ -214,6 +214,151 @@ ok("...and the finish date", mt.traces.find((t) => t.id === "GC24-03").on === "2
 ok("a planned hole is not reported as assumed-vertical",
    !mt.assumedVertical.some((id) => /GC26-P/.test(id)), mt.assumedVertical.join(","));
 
+// ---- a hole with no survey, but a collar that says which way it went -----
+// Until this was read, EVERY hole without a downhole survey was drawn straight
+// down — including proposed holes, whose azimuth and inclination are the two
+// things a plan does carry. The deck drew a fan of planned holes as a bundle
+// of vertical sticks.
+//
+// Same trigonometry as the survey case above, computed here rather than taken
+// from the desurvey: 100 m on azimuth 090 at -60 is 50 m east and 86.60 m down.
+const oriented = F.readCollars([
+  "hole_id,x,y,z,depth,azimuth,dip",
+  "OR-01,692500,5525500,1400,100,90,-60",
+].join("\n"));
+ok("the collar's azimuth and dip are read", oriented[0].az === 90 && oriented[0].dip === -60,
+   JSON.stringify(oriented[0]));
+const ot = F.desurvey(oriented, new Map(), 5);
+const oend = ot.traces[0].pts[ot.traces[0].pts.length - 1];
+ok("a hole with no survey follows its collar bearing, not gravity",
+   near(oend[0] - 692500, 50, 0.5) && near(oend[1] - 5525500, 0, 0.01) &&
+   near(1400 - oend[2], 86.60, 0.5),
+   `east ${(oend[0]-692500).toFixed(2)} north ${(oend[1]-5525500).toFixed(2)} drop ${(1400-oend[2]).toFixed(2)}`);
+ok("...and is reported as projected, not as assumed vertical",
+   ot.projected.length === 1 && ot.projected[0] === "OR-01" && ot.assumedVertical.length === 0,
+   JSON.stringify({ p: ot.projected, av: ot.assumedVertical }));
+
+// Both columns or neither. An azimuth with no dip cannot place a hole in three
+// dimensions, and defaulting the dip would be the vertical guess in disguise.
+const halfOnly = F.readCollars([
+  "hole_id,x,y,z,depth,azimuth", "HALF-01,0,0,0,100,90",
+].join("\n"));
+const ht = F.desurvey(halfOnly, new Map(), 5);
+ok("an azimuth with no dip is not enough to project a hole",
+   halfOnly[0].az === undefined && ht.assumedVertical[0] === "HALF-01" &&
+   ht.projected.length === 0, JSON.stringify({ c: halfOnly[0], r: ht.assumedVertical }));
+
+// THE SIGN. A collar sheet writes inclination both ways, and reading 60 as
+// upward does not draw the hole slightly wrong — it draws it into the sky.
+const unsignedSheet = F.readCollars([
+  "hole_id,x,y,z,depth,azimuth,inclination",
+  "UP-01,0,0,0,100,90,60",
+  "UP-02,0,0,0,100,90,90",
+].join("\n"));
+ok("a sheet with no negative inclinations is read as degrees DOWN",
+   unsignedSheet.every((c) => c.dip < 0) && unsignedSheet.dipUnsigned === true,
+   JSON.stringify(unsignedSheet.map((c) => c.dip)));
+const ut = F.desurvey(unsignedSheet, new Map(), 5);
+ok("...so an unsigned hole goes down, not up",
+   ut.traces.every((t) => t.pts[t.pts.length - 1][2] < 0),
+   JSON.stringify(ut.traces.map((t) => t.pts[t.pts.length - 1][2].toFixed(1))));
+ok("...and a 90 in an unsigned sheet is vertical, under its collar", (() => {
+  const v = ut.traces.find((t) => t.id === "UP-02");
+  const e = v.pts[v.pts.length - 1];
+  return near(e[0], 0, 0.01) && near(e[1], 0, 0.01) && near(e[2], -100, 0.01);
+})());
+
+// One negative value anywhere means the sheet is signed, and then the signs
+// are the author's and are kept — including the rare hole that climbs.
+const signedSheet = F.readCollars([
+  "hole_id,x,y,z,depth,azimuth,inclination",
+  "SG-01,0,0,0,100,90,-60",
+  "SG-02,0,0,0,100,90,45",
+].join("\n"));
+ok("one negative dip makes the whole sheet signed",
+   signedSheet.dipUnsigned === false && signedSheet[0].dip === -60 &&
+   signedSheet[1].dip === 45, JSON.stringify(signedSheet.map((c) => c.dip)));
+// A zero carries no sign, so it cannot decide the question either way.
+ok("a horizontal hole does not make a sheet look signed",
+   F.readCollars(["hole_id,x,y,z,depth,azimuth,dip", "Z,0,0,0,10,90,0"].join("\n"))
+     .dipUnsigned === false);
+
+// Header aliases. `dip_dir` is a direction and `dip` is an angle, and reading
+// one as the other points every hole at the wrong quarter of the compass.
+const dd = F.readCollars([
+  "hole_id,x,y,z,depth,dip_direction,dip", "DD-01,0,0,0,100,135,-50",
+].join("\n"));
+ok("dip_direction is read as the azimuth and dip as the angle",
+   dd[0].az === 135 && dd[0].dip === -50, JSON.stringify(dd[0]));
+ok("an `az` column is read when it is the whole header",
+   F.readCollars(["hole_id,x,y,z,depth,az,dip", "A,0,0,0,10,45,-45"].join("\n"))[0].az === 45);
+// Short names are exact-only in `col`, which is what stops "az" matching
+// hazard, azimuth_of_something_else, or half the mining vocabulary.
+ok("a column merely containing `az` is not an azimuth",
+   F.readCollars(["hole_id,x,y,z,depth,hazard_class,dip", "A,0,0,0,10,3,-45"].join("\n"))[0]
+     .az === undefined);
+
+// And the planned fan, which is the case that prompted this.
+const fan = F.readCollars([
+  "hole_id,status,x,y,z,depth,azimuth,inclination",
+  "P-01,proposed,0,0,0,200,45,60",
+  "P-02,proposed,0,0,0,200,225,60",
+].join("\n"));
+const ft = F.desurvey(fan, new Map(), 5);
+const [e1, e2] = ft.traces.map((t) => t.pts[t.pts.length - 1]);
+ok("two proposed holes on opposite azimuths no longer land on each other",
+   Math.hypot(e1[0] - e2[0], e1[1] - e2[1]) > 100,
+   `separation ${Math.hypot(e1[0]-e2[0], e1[1]-e2[1]).toFixed(1)} m`);
+ok("a projected PLANNED hole is not filed as a caveat either",
+   ft.projected.length === 0 && ft.assumedVertical.length === 0,
+   JSON.stringify({ p: ft.projected, av: ft.assumedVertical }));
+
+// ---- which hole the rig is standing on ----------------------------------
+// The programme knew its metres and not its holes. A hole with a start date
+// and NO finish date has not been left: it is open, and that is where the rig
+// is — a better answer than the newest FINISHED hole, which is where the rig
+// was when it last moved.
+const open = F.readCollars([
+  "hole_id,status,x,y,z,depth,start_date,finish_date",
+  "GC24-01,complete,498100,5521000,1120,300,2026-09-01,2026-09-14",
+  "GC24-02,complete,498150,5521000,1121,280,2026-09-15,2026-10-02",
+  "GC24-03,logged,498200,5521000,1122,210,2026-10-03,",
+  "GC26-P1,proposed,498300,5521200,1130,400,,",
+].join("\n"));
+const byId = (cs, id) => cs.find((c) => c.id === id);
+ok("a hole started and not finished is turning",
+   byId(open, "GC24-03").turning === true, JSON.stringify(byId(open, "GC24-03")));
+ok("a hole with both dates is not turning",
+   byId(open, "GC24-01").turning === undefined &&
+   byId(open, "GC24-02").turning === undefined);
+// The one that would put a rig on ground nobody has stood on.
+ok("a proposed hole is never turning, whatever its dates",
+   byId(open, "GC26-P1").turning === undefined);
+ok("only one hole is open in this file",
+   open.filter((c) => c.turning).length === 1);
+// `on` still answers the old question, and for an open hole the only date it
+// has IS the start date — which is what makes it open.
+ok("the finish date still wins where there is one",
+   byId(open, "GC24-01").on === "2026-09-14" && byId(open, "GC24-01").fin === "2026-09-14");
+ok("an open hole's `on` is its start date",
+   byId(open, "GC24-03").on === "2026-10-03" &&
+   byId(open, "GC24-03").fin === undefined &&
+   byId(open, "GC24-03").started === "2026-10-03");
+// A file with only a finish-date column cannot answer the question, and must
+// not pretend to: silence here is what leaves `latest` as the best answer.
+ok("a file with no start-date column reports nothing turning",
+   F.readCollars(["hole_id,x,y,z,depth,finish_date",
+                  "A,1,2,3,100,2026-03-02"].join("\n"))
+     .filter((c) => c.turning).length === 0);
+// And it rides on the trace, so the console never re-reads the collar file.
+const opt = F.desurvey(open, new Map(), 5);
+ok("the turning flag rides onto the trace",
+   opt.traces.filter((t) => t.turning).length === 1 &&
+   opt.traces.find((t) => t.turning).id === "GC24-03",
+   opt.traces.filter((t) => t.turning).map((t) => t.id).join(","));
+ok("...and is omitted on every hole that is not open",
+   opt.traces.filter((t) => "turning" in t).length === 1);
+
 console.log("\n== geochemistry");
 const soil = `SampleID,East,North,Au_ppb,Cu_ppm
 S-001,692500,5525500,12,45

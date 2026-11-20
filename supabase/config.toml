@@ -433,5 +433,14 @@ verify_jwt = false
 [functions.diag]
 verify_jwt = false
 
+# Two halves, one function, and only one of them has a caller with an account.
+# The POST that mails a drill report runs on the signed-in issuer's own JWT and
+# checks it itself — every read it makes goes through RLS as that user, so a
+# missing or wrong token sees nothing. The GET is the unsubscribe link in the
+# footer of those emails, clicked by somebody who has no account and never
+# will, which is the same position `deck` is in.
+[functions.drill-notice]
+verify_jwt = false
+
 [functions.tenure]
 verify_jwt = true

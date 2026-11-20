@@ -763,6 +763,9 @@ export async function putAux(project, zone, kind, chosen, synthetic, note) {
     // told about — which is the state this replaces. A file we cannot read is
     // refused here, by name, with what to export instead.
     const derived = await parseAux(kind, chosen);
+    // From the filenames, which are what routed these files here to begin with.
+    const medium = kind === "geochem"
+      ? geochemMedium(chosen.map((c) => c.file.name).join(" ")) : null;
     // Null zone means the whole project — the property's own tenure and
     // topography always, and everything else when the project never named a
     // zone. `_project` keeps the path the same depth as a zone's.
@@ -779,6 +782,25 @@ export async function putAux(project, zone, kind, chosen, synthetic, note) {
       if (error) throw error;
     };
 
+    // One dataset of each kind per zone — replace, do not accumulate.
+    // `stats` comes back too, and only because of the drills case: the row is
+    // about to be deleted, and its hole ids are the only record of which holes
+    // existed before this upload. Read it here or lose it.
+    const prev = db.from("datasets").select("id, storage_path, stats")
+      .eq("project_id", project.id).eq("kind", kind);
+    const { data: old } = await (zid ? prev.eq("zone_id", zid) : prev.is("zone_id", null));
+    const prevHoleIds = old?.find((d) => Array.isArray(d.stats?.hole_ids))
+      ?.stats.hole_ids || null;
+
+    if (kind === "geochem") {
+      const clash = geochemClash(medium, old, zone?.name);
+      if (clash) throw new Error(clash);
+    }
+    // Uploaded only once the collision above has been cleared. The read is
+    // cheap and the guard refuses; doing it after the loop meant a refused
+    // drop left every one of its files orphaned in the bucket, which is the
+    // same fault as parsing after storing — called out at the top of this
+    // function and just as true here.
     const files = [];
     let total = 0;
     for (const c of chosen) {
@@ -789,15 +811,6 @@ export async function putAux(project, zone, kind, chosen, synthetic, note) {
       total += c.file.size;
     }
 
-    // One dataset of each kind per zone — replace, do not accumulate.
-    // `stats` comes back too, and only because of the drills case: the row is
-    // about to be deleted, and its hole ids are the only record of which holes
-    // existed before this upload. Read it here or lose it.
-    const prev = db.from("datasets").select("id, storage_path, stats")
-      .eq("project_id", project.id).eq("kind", kind);
-    const { data: old } = await (zid ? prev.eq("zone_id", zid) : prev.is("zone_id", null));
-    const prevHoleIds = old?.find((d) => Array.isArray(d.stats?.hole_ids))
-      ?.stats.hole_ids || null;
     if (old?.length) {
       await purgeDatasetFiles(old).catch((e) => console.warn("previous files not removed", e));
       await db.from("datasets").delete().in("id", old.map((d) => d.id));
@@ -818,7 +831,8 @@ export async function putAux(project, zone, kind, chosen, synthetic, note) {
       label: files.length === 1 ? files[0].name : `${files.length} files`,
       storage_path: derivedPath || files[0].path,
       bytes: total,
-      stats: { files: files.length, ...(derived?.stats || {}) },
+      stats: { files: files.length, ...(derived?.stats || {}),
+               ...(medium ? { medium } : {}) },
       provenance: { uploaded_at: new Date().toISOString(), files,
                     formats: chosen.map((c) => sniff(c.file).format),
                     derived_path: derivedPath,
@@ -833,11 +847,83 @@ export async function putAux(project, zone, kind, chosen, synthetic, note) {
     // What IS returned is what the upload learned, so a caller can act on it
     // without re-reading the row it just wrote. The drilling panel uses it to
     // fill a progress report from the file; every other caller ignores it.
-    return { kind, zone_id: zid, stats: { files: files.length, ...(derived?.stats || {}) },
+    return { kind, zone_id: zid,
+             stats: { files: files.length, ...(derived?.stats || {}),
+                      ...(medium ? { medium } : {}) },
              prev_hole_ids: prevHoleIds };
   }
 }
 
+
+// --------------------------------------------------- geochemical medium ----
+// A real property carries SEVERAL geochemical surveys: soil over the covered
+// ground, rock chips on the outcrop, till or stream sediment regionally. They
+// are different sample media, collected differently, and they are not versions
+// of one another.
+//
+// `putAux` replaces one dataset of each kind per zone, which is right for
+// drills — every logging package exports the whole programme every week — and
+// destructive here. Uploading rock chips into a zone that held a soil survey
+// deleted 4,298 samples and said "Geochemistry saved", twice. The medium is
+// what tells the two apart, and it is already in the filename that routed the
+// file in the first place.
+//
+// Read from the name, so it can be null: a file called geochem.csv does not
+// say what it is of. Null means the guard below cannot prove harm and does not
+// pretend to, which is the whole difference between a guard people keep and
+// one they learn to click past.
+//
+// `\b` IS THE WRONG BOUNDARY FOR A FILENAME. An underscore is a word
+// character, so /\btill\b/ does not match `till_geochem_2025.csv` — the very
+// shape every export writes. The word has to be bounded by "not a letter"
+// instead, which is what `w()` builds.
+const w = (body) => new RegExp(`(^|[^a-z])(${body})([^a-z]|$)`);
+const MEDIA = [
+  [w("soils?"), "soil"],
+  [w("stream(_?sed(iment)?s?)?|silts?"), "stream sediment"],
+  [w("rock_?chips?|rocks?_?(chip|sample|geochem|grab)s?|grabs?"), "rock chip"],
+  [w("tills?"), "till"],
+  [w("talus"), "talus"],
+];
+
+/** The sample medium a geochemistry filename declares, or null if it does not. */
+export function geochemMedium(name) {
+  const n = String(name || "").toLowerCase();
+  for (const [re, m] of MEDIA) if (re.test(n)) return m;
+  return null;
+}
+
+/**
+ * Why a geochemistry upload must not replace what is already in this zone, or
+ * null to go ahead.
+ *
+ * A DIFFERENT SAMPLE MEDIUM IS NOT A NEW VERSION OF THIS ONE. Refused rather
+ * than asked about: the destructive act already exists and already stops to
+ * confirm — Remove, on the slot — and putting a second confirmation in the
+ * path of an ordinary drop is how people learn to dismiss confirmations.
+ *
+ * Fires only where BOTH media are known AND differ. Re-uploading a corrected
+ * soil survey over a soil survey is the common case and stays silent, and a
+ * file that does not say what it is of cannot prove harm. A guard that fires
+ * on those two is a guard nobody keeps.
+ *
+ * @param {string|null} medium   what is being uploaded
+ * @param {Array|null|undefined} rows  the geochem datasets already in the zone
+ * @param {string} [zoneName]
+ * @returns {string|null} the sentence to show, or null
+ */
+export function geochemClash(medium, rows, zoneName) {
+  if (!medium || !rows?.length) return null;
+  const clash = rows.find((d) => d.stats?.medium && d.stats.medium !== medium);
+  if (!clash) return null;
+  const n = Number(clash.stats?.samples);
+  return `This ${zoneName ? `zone (${zoneName})` : "project"} already holds ` +
+    `${Number.isFinite(n) ? `${n.toLocaleString()} ` : ""}${clash.stats.medium} ` +
+    `samples, and one geochemistry dataset is kept per zone — saving ` +
+    `${medium} here would delete them. Load it into its own zone, or remove ` +
+    `the ${clash.stats.medium} survey from this one first if you mean to ` +
+    `replace it.`;
+}
 
 // ------------------------------------------------------------- routing ----
 /**
@@ -1168,7 +1254,7 @@ async function parseAux(kind, chosen) {
       ? readSurveys(await textOf(byPart.surveys), byPart.surveys.name) : new Map();
     const assays = byPart.assays
       ? readAssays(await textOf(byPart.assays), byPart.assays.name) : null;
-    const { traces, assumedVertical } = desurvey(collars, surveys, 5);
+    const { traces, assumedVertical, projected } = desurvey(collars, surveys, 5);
 
     // A proposed hole is drawn and never counted. See plannedStatus in
     // formats.js for why the metres matter: a collar export carrying both
@@ -1186,6 +1272,15 @@ async function parseAux(kind, chosen) {
     const newest = dated.length
       ? dated.reduce((a, t) => (t.on > a.on ? t : a)) : null;
 
+    // WHICH HOLE THE RIG IS ON, which is not the same question as which it
+    // finished last. An open hole — started, never finished — is answered by
+    // the file rather than inferred from a sort, and it is the only one of the
+    // two that is actually current: `newest` is where the rig was when it last
+    // moved. Newest start wins if a property has more than one rig.
+    const turning = drilled.filter((t) => t.turning && t.on);
+    const rigAt = turning.length
+      ? turning.reduce((a, t) => (t.on > a.on ? t : a)) : null;
+
     return {
       payload: {
         format: "orebody-drills/1", traces,
@@ -1196,11 +1291,25 @@ async function parseAux(kind, chosen) {
         metres: metresOf(drilled),
         intervals: assays ? [...assays.byHole.values()].reduce((a, v) => a + v.length, 0) : 0,
         assumed_vertical: assumedVertical.length,
+        // Drawn down the azimuth and dip on their own collar row rather than
+        // straight down. A weaker caveat than assumed_vertical and a separate
+        // one: the hole's direction is known, only its deviation is not.
+        projected_from_collar: projected.length,
         // Named, not silently dropped. A geologist who exports 62 holes and
         // reads "45" needs the other 17 accounted for in the same breath, or
         // the count looks like a parse failure.
         ...(planned.length
           ? { planned_holes: planned.length, planned_m: metresOf(planned) } : {}),
+        // The holes standing open, so the panel can name them and the report
+        // can fill in "holes turning now" from the file instead of asking a
+        // geologist to count them. Capped hard: a dozen rigs on one property
+        // is not a thing, and a file claiming fifty open holes is a file whose
+        // finish-date column was never filled in.
+        ...(turning.length
+          ? { holes_turning: turning.length,
+              turning: turning.slice(0, 12)
+                .map((t) => ({ id: t.id, on: t.on, td: t.td })) }
+          : {}),
         // What the drilling panel fills a progress report from, so nobody
         // retypes a number that is already in the file. The hole ids let the
         // NEXT upload tell which holes are new, which is how the rig moves on a
@@ -1215,6 +1324,14 @@ async function parseAux(kind, chosen) {
           easting: newest.collar[0], northing: newest.collar[1],
           elev_m: newest.collar[2],
         } } : {}),
+        // Same shape as `latest`, and present only when the file can answer
+        // it, so a consumer reads `rig || latest` and gets the best position
+        // the data supports without having to know which question it asked.
+        ...(rigAt ? { rig: {
+          id: rigAt.id, on: rigAt.on, turning: true,
+          easting: rigAt.collar[0], northing: rigAt.collar[1],
+          elev_m: rigAt.collar[2],
+        } } : {}),
       },
       // Said out loud rather than buried: a hole drawn vertical because no
       // survey came with it is a guess, and it is the reader's job to admit it.
@@ -1222,6 +1339,11 @@ async function parseAux(kind, chosen) {
         parsed: "drills", desurvey: "minimum-curvature", step_m: 5,
         grade_column: assays?.gradeColumn || null,
         assumed_vertical: assumedVertical,
+        projected_from_collar: projected.length ? projected.slice(0, 60) : undefined,
+        // Which way the sheet wrote its inclinations. An unsigned sheet had
+        // every dip read as downward, and that is an inference about the file
+        // rather than a fact in it, so it travels with the data.
+        collar_dip_unsigned: collars.dipUnsigned || undefined,
         planned_excluded: planned.length
           ? planned.map((t) => t.id).slice(0, 60) : undefined,
       },

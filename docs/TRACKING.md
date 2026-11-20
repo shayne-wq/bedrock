@@ -32,6 +32,188 @@ model), and two sources of truth is one too many.
 
 ---
 
+## The drill feature's last six gaps (2026-11-19) — BUILT
+
+Six items, all of them the leftovers listed at the bottom of the two sections
+below. Five were engineering; the sixth was a product decision and is the one
+worth reading.
+
+**1. Assay discipline is a control now, not a placeholder.** The report body
+and the programme note are the only free-text fields on this screen, and a
+sentence is where an assay result goes. The placeholder asked people not to;
+`gradeClaims()` now reads the text and, on a POST, quotes back what looks like
+a result and makes the send a second, deliberate press that says the figure is
+already public.
+
+It does **not** refuse, and that is the design. Whether a result is public is
+not knowable from here — only the person typing it knows — and a guard that
+blocks legitimate text is one people route around by writing "four point five
+grammes". The affirmation is the control; the detection is only how the
+question gets asked. Editing the text withdraws an affirmation given about
+different text.
+
+What it matches is tight on purpose: a guard that fires on "4,012 m to date"
+is dismissed reflexively by week two, and a dismissed guard is worse than
+none. Metres, bare percentages ("40% complete", "100% owned") and hole names
+are deliberately **not** results. A percentage is only a grade beside the
+metal it is of. `visible gold` and `massive sulphides` are caught because they
+are results carrying no number.
+
+**The programme note is the more exposed of the two fields, and it was the one
+nobody had noticed.** A programme has no draft state — saving it IS publishing
+it, and the note goes into the deck payload. Same guard, one press earlier.
+
+**2. A hole with no survey is no longer drawn straight down.** `readCollars`
+read no azimuth and no dip, so every un-surveyed hole was drawn vertical —
+including proposed holes, whose azimuth and inclination are the two things a
+plan does carry. A planned fan rendered as a bundle of vertical sticks.
+
+**The sign of the dip is decided once for the FILE, not per row.** A downhole
+survey is signed (negative is down); a collar sheet's inclination column is
+written both ways, and reading 60 as upward does not draw the hole slightly
+wrong — it draws it into the sky, the same class of error as the first version
+of `desurvey`, which went through `(90 + dip)` and drilled every hole upwards.
+One negative value anywhere means the sheet is signed and every sign is kept;
+all-positive means the sheet is unsigned and they all mean down. Zeroes are
+ignored in that decision, because a horizontal hole is the one value carrying
+no sign. It is an inference, so it is recorded as one, in provenance.
+
+Projected holes are a **separate, weaker caveat** from assumed-vertical ones
+(`projected_from_collar`): the hole's direction is known, only its deviation
+is not. `\b` is the wrong boundary for a filename — an underscore is a word
+character, so `/\btill\b/` does not match `till_geochem_2025.csv`.
+
+**3. The rig stands on the hole it is actually drilling.** A hole with a start
+date and no finish date has not been left: it is open, and that is where the
+rig is. `latest` is where the rig was when it last *moved*; `rig` is where it
+*is*, and a consumer reads `rig || latest` to get the best answer the file
+supports. "Holes turning now" fills itself in from the same place.
+
+Null, never zero, when the file cannot answer — a zero there reads as "the rig
+has stopped", which is a claim, and a missing finish-date column is not.
+
+**4. The rig has a slide of its own.** `layers.drilling` could always switch
+the rig OFF — it is on by default on every chapter, like the north arrow — and
+nothing could switch it ON as the subject, so the most current fact in the
+deck was a pin in the corner of a slide about something else. `layers.rig`
+carries the **programme's id**, because a chapter row has no zone and `true`
+would leave a two-programme property guessing.
+
+Placed **after** `c.free` in `frameFor`, deliberately: `property` returns
+before a chapter's own camera is ever read, which threw away twelve authored
+cameras during the Williams port and is written up below as a trap for
+authors. A rig chapter does not repeat it. No figure is baked into its copy —
+every metre count in a deck is read when the deck is opened, and a number
+written into slide prose is frozen on the day it was generated.
+
+**5. Soil no longer silently deletes rock.** One geochemistry dataset is kept
+per zone, so uploading rock chips over a soil survey deleted 4,298 samples and
+said "Geochemistry saved" both times. The medium is already in the filename
+that routed the file; `geochemClash()` refuses the replacement **before
+anything is uploaded** — doing it after the upload loop left every file of a
+refused drop orphaned in the bucket, the same fault as parsing after storing.
+
+Refused rather than asked about: the destructive act already exists and
+already stops to confirm (Remove, on the slot), and putting a second
+confirmation in the path of an ordinary drop is how people learn to dismiss
+confirmations. It fires only where **both** media are known and differ, so
+re-uploading a corrected soil survey stays silent.
+
+**This is not full multi-medium support** — a zone still holds one geochemistry
+dataset. It stops the data loss. Real projects carry soil, rock, till and
+stream sediment at once, and that remains open (it needs the slot UI, the deck
+payload and the viewer's legend, not just the ingest).
+
+**6. Email on post: mailing is a THIRD act.** This is the one that was a
+decision rather than a task, and the shape chosen matters more than the code.
+
+The temptation is to hang it off Post. That would silently turn one act into
+two. The schema already draws this line once and for a stated reason — reading
+a figure off a file is arithmetic, telling the shareholders of a public company
+what it is, is disclosure — and broadcasting it to a list of named people is a
+third decision. **A deck can be withdrawn; an email cannot.** So the console
+counts the audience, names what it is about to do, and sends only on a second
+press.
+
+The count comes from the **server**, not from arithmetic in the console. Which
+decks show this programme, whose share link still opens, and who has
+unsubscribed are all server-side rules, and a second copy in the console would
+eventually put a different number on the button than the one actually mailed —
+and that number is the entire point of asking.
+
+Four things in it that are correctness rather than polish:
+- **A draft can never be mailed.** 409, before anything else.
+- **`unique (update_id, lead_id)` is the double-send guard**, in the database.
+  A send log kept only in application code is one that eventually sends twice.
+  The row is claimed BEFORE the send: at-most-once is the right failure mode,
+  because a missed recipient can be retried and a doubled one cannot be
+  un-sent. A failed row is cleared on retry, so retrying reaches nobody twice.
+- **A lead whose share link is revoked or expired is skipped.** The email
+  points at a deck that would not open for them.
+- **A partial send is reported as one.** "Sent" over a run where four bounced
+  is the kind of reassurance that costs somebody a follow-up they thought they
+  had already made.
+
+Authorisation is **RLS, not code**: every read runs on the caller's own JWT, so
+the function can only see a report, a deck and a lead list the caller is
+already entitled to. The service role appears exactly twice, for the two
+writes the caller has no grant for — the send log and an unsubscribe. The same
+reasoning as `invite`: a service-role version of the reads would be an open
+relay wearing our sender reputation.
+
+The share URL is **not constructed from anything the caller says**. The viewer
+path and `&api=` are both load-bearing, and the viewer directory has silently
+broken every share link once already; the api base comes from the function's
+own `SUPABASE_URL`.
+
+**The unsubscribe page is plain text on purpose.** The first version served
+styled HTML and the platform rewrote the content type — Supabase sanitises
+HTML from functions on the shared `*.supabase.co` domain, which is why `px`
+can return `image/gif` and `deck` `application/json` but this cannot return
+`text/html`. It rendered as its own markup. Serving it prettily means a static
+page on getbedrock.ca and a 302, which is a second thing to keep working for
+no gain to the person reading it. It is `no-store`: a cached unsubscribe is a
+link that looks like it worked without doing anything. Setting
+`unsubscribed_at` is idempotent and it is never cleared — opting back in is
+their decision to make again, not ours to undo.
+
+**Deployed and verified.** Migration `20261119000100_drill_notices` applied with
+`db query --linked` and recorded in the ledger by hand under the repo file's own
+version — `db push` is still unsafe here. `drill-notice` deployed
+`--no-verify-jwt` and **declared in `config.toml`**, which exists precisely so a
+later deploy without the flag cannot silently re-arm the gate. Verified live:
+401 with no token, 404 with a junk one (not-found and not-allowed are the same
+answer on purpose), 400 with no id, 405 on PUT, and an unsubscribe end to end
+against a probe lead that was then deleted. Production holds 0 leads and 0
+notices, so **nothing has been mailed to anybody.**
+
+**Two things still needed before this can be switched on for a client**, and
+neither is code:
+- `hello@getbedrock.ca` **has no MX**, so the contact path CASL expects does
+  not work. Postmark's token and sender are both set, and untested.
+- The published privacy policy says a lead's details are held so the issuer can
+  "follow up", which covers this — but it does not mention update emails or the
+  unsubscribe link. A sentence there is worth adding before the first send.
+
+Suites: `verify_formats` **91** (was 68), `verify_dragdrop` **85** (was 66),
+`verify_drilling_console` **89** (was 50), `verify_drilling` **73** (was 68),
+`verify_slides` **54** (was 40). `verify_slots` (37), `verify_extract` (34),
+`verify_omf` (35), `verify_stage` (19), `verify_dxf` (12) and `verify_subblock`
+(18) unchanged and green. `verify_ui`, `verify_site`, `verify_modules`,
+`verify_topography`, `verify_geotiff`, `verify_holeview`, `verify_deposit` and
+`verify_holders` all want a URL argument and fail the same way on `main`.
+
+`pit/index.html` regenerated: **+32 lines, nothing removed.** The committed file
+was byte-identical to the generator's output beforehand, which is worth
+checking before every regeneration.
+
+Still open from the lists below, after this: per-hole *assay* progress (which
+holes have results back, not just which are turning), full multi-medium
+geochemistry, the geophysics product-key collision, and overlapping intercept
+callouts.
+
+---
+
 ## The drill panel answers "will it be done on time" (2026-11-08) — BUILT
 
 The panel showed how far through a programme was. The question a shareholder
@@ -101,7 +283,7 @@ of those states) and `tools/verify_drilling_console.mjs` **50** (was 45).
 well and is not a regression from this work.
 
 Still open from the list below: per-hole progress, a chapter that frames the
-rig, and email on post.
+rig, and email on post. **All three built 2026-11-19 — see the section above.**
 
 ---
 
@@ -190,7 +372,8 @@ a trace) and `tools/verify_drilling_console.mjs` (44, +21 on the figures, the
 draft, the rig and the seeded plan). `verify_dragdrop.mjs` (66) and
 `verify_drilling.mjs` (34) unchanged and green.
 
-Still typed, and should stay typed: **metres planned**. Known gap: the console
+Still typed, and should stay typed: **metres planned**. Known gap, **FIXED
+2026-11-19 (see above)**: the console
 desurveys a hole with no survey as vertical even when the collar row carries an
 azimuth and an inclination — `williams/extract.py` projects those properly and
 `desurvey` ignores them, so proposed holes are drawn straight down. Separate
@@ -320,7 +503,8 @@ Williams is a client's: inventing metres on either would be attributing
 fabricated progress to a named company, which is the one thing this feature
 must never do. The first real programme is the client's to enter.
 
-Still open, in the order they are likely to be asked for:
+Still open, in the order they are likely to be asked for — **all four built
+2026-11-19, see "The drill feature's last six gaps" above**:
 - **Per-hole progress.** A programme knows its metres; it does not know which
   holes. Collars uploaded mid-programme would let the rig sit on the hole it is
   actually drilling.

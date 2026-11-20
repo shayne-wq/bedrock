@@ -53,19 +53,24 @@ export async function renderDeck(id, view) {
   }
   deck = d;
 
-  const [{ data: p }, { data: ch }, { data: ln }, { data: ds }] = await Promise.all([
+  const [{ data: p }, { data: ch }, { data: ln }, { data: ds }, { data: gs }] = await Promise.all([
     db.from("projects").select("id, name, org_id, commodity").eq("id", d.project_id).single(),
     db.from("chapters").select("*").eq("deck_id", id).order("ord"),
     db.from("share_links").select("*").eq("deck_id", id).order("created_at", { ascending: false }),
     db.from("datasets").select("id, zone_id, kind, synthetic, synthetic_note, stats")
       .eq("project_id", d.project_id),
+    // The drilling programmes, which justify the rig chapter the way a dataset
+    // justifies every other candidate. Read here rather than in slides.js so
+    // the generator stays a pure function of what it is handed.
+    db.from("drill_programs").select("id, zone_id, name, status")
+      .eq("project_id", d.project_id).order("created_at"),
   ]);
   const { data: zs } = await db.from("zones")
     .select("id, name, slug, ord").eq("project_id", d.project_id).order("ord");
   zones = zs || []; datasets = ds || [];
   // Every slide the uploaded data can justify. Proposals only — none of this
   // is written until it is dragged across.
-  candidates = projectCandidates(p, zones, datasets);
+  candidates = projectCandidates(p, zones, datasets, gs || []);
   // The deck we would build if nobody touched it. Every candidate is still
   // offered; this is just the running order that reads as an argument.
   // `p`, not `project` — the module-level `project` is not assigned until the

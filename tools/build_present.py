@@ -7957,6 +7957,20 @@ __DRILL_FORECAST__
     return stGround(ll[0],ll[1]);
   }
 
+  // Which programme a `layers.rig` chapter is about. The layer carries the
+  // programme's id, because a chapter row carries no zone and a two-programme
+  // property would otherwise be guessing. An id that no longer resolves — the
+  // programme was deleted, or this deck was built before it existed — falls
+  // back to whichever is turning, then to the first: a slide whose copy is
+  // about drilling is better pointed at the wrong rig than at the orebody.
+  function programFor(c){
+    if(!PROGRAMS.length) return null;
+    const want=typeof c.rig==='string'?c.rig:null;
+    const byId=want?PROGRAMS.find(g=>String(g.id)===want):null;
+    if(byId) return byId;
+    return PROGRAMS.find(g=>g.status==='active')||PROGRAMS[0];
+  }
+
   function focusProgram(g){
     const i=PROGRAMS.indexOf(g);
     if(i>=0) progSel=i;
@@ -9249,6 +9263,24 @@ __DRILL_FORECAST__
     // camera inside one corner of the view.
     if(c.property){ frameProperty(); return; }
     if(c.free){ frameFree(c.free,animate); return; }
+    // A rig chapter's subject IS the drilling, so it frames the rig from the
+    // coordinates on the programme rather than the deposit centre — a 12 m
+    // mast is not findable in a shot composed around an orebody.
+    //
+    // Placed AFTER c.free on purpose. `property` above returns before the
+    // authored camera is ever read, which threw away twelve cameras during the
+    // Williams port and is noted in the tracker as a trap for authors; a rig
+    // chapter does not repeat it. An author who framed their own shot keeps it.
+    //
+    // Falls through when the programme has no coordinates, or when there are
+    // no programmes at all: `focusProgram` returns early on an unplaced rig,
+    // so the branch only claims the camera when it can actually move it.
+    if(c.rig){
+      const g=programFor(c);
+      if(g&&progNum(g.easting)!==null&&progNum(g.northing)!==null){
+        focusProgram(g); return;
+      }
+    }
     const curH=DEG(viewer.camera.heading);
     const h=shortestHeading(curH,c.h);
     const hpr=new Cesium.HeadingPitchRange(rad(h),rad(c.p),c.r);

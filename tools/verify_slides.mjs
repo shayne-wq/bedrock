@@ -141,5 +141,71 @@ ok("a chapter records the candidate it came from", row.source === cR[0].id, Stri
 ok("ord is carried", row.ord === 3);
 ok("a hand-made chapter has no source", toChapter({ title: "x" }, 0).source === null);
 
+
+console.log("\n== the rig gets a slide of its own");
+// `layers.drilling` could always switch the rig OFF — it is on by default on
+// every chapter, like the north arrow — and nothing could switch it on as the
+// SUBJECT. So the most current fact in the deck had no slide, only a pin in
+// the corner of a slide about something else.
+const zRig = [{ id: "z1", name: "North Zone" }];
+const dRig = [ds("z1", "site"), ds("z1", "drills")];
+const GPROG = [{ id: "prog-1", zone_id: "z1", name: "2026 Phase 2", status: "active" }];
+const cRig = projectCandidates(PROJ, zRig, dRig, GPROG);
+const rig = cRig.find((c) => c.id === "z1:rig");
+ok("a programme earns a chapter", !!rig, cRig.map((c) => c.id).join(","));
+ok("...titled for a rig that is turning", rig?.title === "Drilling under way", rig?.title);
+// The id, not `true`: a chapter row carries no zone, so `true` would leave a
+// two-programme property guessing which rig the slide meant.
+ok("...naming the programme by id, so the viewer cannot pick the wrong rig",
+   rig?.layers?.rig === "prog-1", JSON.stringify(rig?.layers));
+ok("...with the drilling layer on as the subject, not merely allowed",
+   rig?.layers?.drilling === true && rig?.layers?.drills === true,
+   JSON.stringify(rig?.layers));
+// Every metre count in a deck is read when the deck is OPENED. A figure
+// written into slide copy is frozen on the day it was generated and would
+// eventually contradict the live panel on the same screen.
+ok("...and no figure baked into its copy",
+   !/\d{2,}/.test(rig?.body || ""), rig?.body);
+ok("it is justified by a programme rather than a dataset kind",
+   rig?.needs?.includes("programs") === true, JSON.stringify(rig?.needs));
+// It reads after the holes and what they hit: here is what we drilled, here is
+// what it hit, here is the rig still turning.
+ok("it sits after the intercepts in the argument",
+   rig?.spine > (cRig.find((c) => c.id === "z1:intercepts")?.spine ?? 0),
+   `${rig?.spine} vs ${cRig.find((c) => c.id === "z1:intercepts")?.spine}`);
+ok("...and makes the default deck", defaultOrder(cRig, zRig).order.some((c) => c.id === "z1:rig"));
+
+// THE RULE THAT MATTERS, applied to this beat too: nothing is proposed that
+// the data does not support. No programme, no slide about a rig.
+ok("no programme, no rig chapter",
+   !projectCandidates(PROJ, zRig, dRig).some((c) => c.id === "z1:rig"));
+ok("...and a programme in ANOTHER zone does not put a rig in this one",
+   !projectCandidates(PROJ, zRig, dRig,
+     [{ id: "p9", zone_id: "z9", name: "Elsewhere", status: "active" }])
+     .some((c) => c.id === "z1:rig"));
+// A finished programme is still worth a slide; it just is not news.
+const cDone = projectCandidates(PROJ, zRig, dRig,
+  [{ id: "p2", zone_id: "z1", name: "2024 Phase 1", status: "complete" }]);
+ok("a completed programme is titled in the past tense",
+   cDone.find((c) => c.id === "z1:rig")?.title === "The programme, as drilled",
+   cDone.find((c) => c.id === "z1:rig")?.title);
+const cPlan = projectCandidates(PROJ, zRig, dRig,
+  [{ id: "p3", zone_id: "z1", name: "2027 Phase 3", status: "planned" }]);
+ok("a planned one is titled with its own name",
+   cPlan.find((c) => c.id === "z1:rig")?.title === "2027 Phase 3",
+   cPlan.find((c) => c.id === "z1:rig")?.title);
+// Two programmes on one zone: lead with the one that is turning.
+const cTwo = projectCandidates(PROJ, zRig, dRig, [
+  { id: "old", zone_id: "z1", name: "2024 Phase 1", status: "complete" },
+  { id: "now", zone_id: "z1", name: "2026 Phase 2", status: "active" },
+]);
+ok("with two programmes it leads with the live one",
+   cTwo.find((c) => c.id === "z1:rig")?.layers?.rig === "now",
+   JSON.stringify(cTwo.find((c) => c.id === "z1:rig")?.layers));
+// And the flattening the viewer relies on: layers become chapter keys.
+ok("toChapter carries the rig layer through to the row",
+   toChapter(rig, 3).layers.rig === "prog-1",
+   JSON.stringify(toChapter(rig, 3).layers));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

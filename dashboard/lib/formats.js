@@ -543,6 +543,19 @@ export function readCollars(text, what = "collars") {
                    "date_finished", "datefinished");
   const ist = col(header, "start_date", "startdate", "date_started",
                   "datestarted", "drill_date", "drilldate", "date");
+  // Collar ORIENTATION, for the holes that have no downhole survey. A proposed
+  // hole never has one, and plenty of shallow holes never got one either — and
+  // until this was read, every one of them was drawn straight down even where
+  // the sheet said, in the next two columns, exactly which way it went.
+  //
+  // "az" and "azi" are under four characters, so `col` will only take them as
+  // an exact header. That is the point: as substrings they are inside half the
+  // vocabulary. "dipdir" is safe at six and matches dip_direction without
+  // matching dip, because the candidate has to be inside the header name and
+  // not the other way round.
+  const iaz = col(header, "azimuth", "azi", "az", "bearing", "brg",
+                  "dip_dir", "dipdirection", "dipdir");
+  const idip = col(header, "dip", "inclination", "incl", "plunge");
   const missing = [["hole id", ih], ["easting", ix], ["northing", iy], ["elevation", iz]]
     .filter(([, i]) => i < 0).map(([n]) => n);
   if (missing.length) {
@@ -555,12 +568,61 @@ export function readCollars(text, what = "collars") {
     const x = num(r[ix]), y = num(r[iy]), z = num(r[iz]);
     if (!id || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
     const c = { id, x, y, z, td: it >= 0 ? num(r[it]) : NaN };
+    const az = iaz >= 0 ? num(r[iaz]) : NaN;
+    const dip = idip >= 0 ? num(r[idip]) : NaN;
+    // Both or neither. An azimuth with no dip cannot place a hole in three
+    // dimensions, and filling in the missing half with a default would be the
+    // vertical guess wearing a disguise.
+    if (Number.isFinite(az) && Number.isFinite(dip)) { c.az = az; c.dip = dip; }
     if (is_ >= 0 && plannedStatus(r[is_])) c.planned = true;
-    const on = dateOf(r, ifin, ist);
+    // The two date columns, kept APART as well as together.
+    //
+    // `on` stays finish-or-start, because "when did the rig leave this hole"
+    // is the single date everything downstream asks for. But collapsing the
+    // columns is exactly what made the more useful question unanswerable: a
+    // hole with a start date and NO finish date has not been left. It is open,
+    // and the rig is standing on it. That is a better answer to "where is the
+    // rig" than the newest finished hole, which is where it was when it last
+    // moved — and it is the file saying so rather than us inferring it.
+    const fin = dateOf(r, ifin);
+    const started = dateOf(r, ist);
+    const on = fin || started;
     if (on) c.on = on;
+    if (fin) c.fin = fin;
+    if (started) c.started = started;
+    // A planned hole has neither date and is excluded on purpose: it is a
+    // plan, not a hole in progress, and counting it as turning would put a rig
+    // on ground nobody has stood on.
+    if (started && !fin && !c.planned) c.turning = true;
     out.push(c);
   }
   if (!out.length) throw new Error(`${what}: no rows with a hole id and a complete position.`);
+
+  // THE SIGN OF THE DIP, decided once for the file and not per row.
+  //
+  // A downhole survey is signed: dip is negative downward, which is near
+  // universal and what `desurvey` already assumes. A COLLAR sheet's
+  // inclination column is written both ways — -60 and 60 both mean sixty
+  // degrees below horizontal, depending on which package wrote it — and
+  // getting it wrong does not draw the hole slightly off. It draws it into the
+  // sky: the same class of error as the first version of `desurvey`, which
+  // went through (90 + dip) and drilled every hole upwards.
+  //
+  // So it is read off the file. One negative value anywhere means the sheet is
+  // signed and every sign is kept. All positive means the sheet is unsigned
+  // and they all mean down. Zeroes are ignored in that decision because a
+  // horizontal hole is the one value that carries no sign.
+  //
+  // This is an inference, so it is recorded as one, on the array for the
+  // caller to put in provenance. It is also narrower than it looks: a surface
+  // exploration hole that genuinely climbs is an underground wedge, and not
+  // something a collar export of a drill programme carries.
+  const dips = out.map((c) => c.dip).filter((d) => Number.isFinite(d) && d !== 0);
+  const unsigned = dips.length > 0 && !dips.some((d) => d < 0);
+  if (unsigned) for (const c of out) if (Number.isFinite(c.dip)) c.dip = -Math.abs(c.dip);
+  // A property on the array, not an element of it: every caller treats this
+  // return as the list of collars and iterates it.
+  out.dipUnsigned = unsigned;
   return out;
 }
 
@@ -632,15 +694,24 @@ export function readAssays(text, what = "assays") {
  */
 export function desurvey(collars, surveysByHole, step = 5) {
   const rad = Math.PI / 180;
-  const traces = [], assumedVertical = [];
+  const traces = [], assumedVertical = [], projected = [];
   for (const c of collars) {
     let st = surveysByHole?.get(c.id);
     if (!st || !st.length) {
-      st = [{ d: 0, az: 0, dip: -90 }];
-      // A planned hole has no survey because it has not been drilled. Saying
-      // "assumed vertical" about it would file a consequence of the plan as a
-      // defect in the data, and that list is read as a list of defects.
-      if (!c.planned) assumedVertical.push(c.id);
+      if (Number.isFinite(c.az) && Number.isFinite(c.dip)) {
+        // The collar row says which way the hole went, so draw it that way.
+        // Still ONE straight segment and not a desurveyed path — a 400 m hole
+        // wanders tens of metres off its collar bearing — so this is a
+        // different caveat from "assumed vertical", not the absence of one.
+        st = [{ d: 0, az: c.az, dip: c.dip }];
+        if (!c.planned) projected.push(c.id);
+      } else {
+        st = [{ d: 0, az: 0, dip: -90 }];
+        // A planned hole has no survey because it has not been drilled. Saying
+        // "assumed vertical" about it would file a consequence of the plan as a
+        // defect in the data, and that list is read as a list of defects.
+        if (!c.planned) assumedVertical.push(c.id);
+      }
     }
     if (st[0].d > 0) st = [{ d: 0, az: st[0].az, dip: st[0].dip }, ...st];
     const td = Number.isFinite(c.td) && c.td > 0 ? c.td : st[st.length - 1].d;
@@ -683,17 +754,20 @@ export function desurvey(collars, surveysByHole, step = 5) {
       prev = d;
       if (d >= td) break;
     }
-    // `planned` and `on` ride along so that whatever consumes a trace can
-    // count the drilled holes without re-reading the collar file, and so the
-    // console can say which hole the rig left last. Omitted rather than false
+    // `planned`, `turning` and `on` ride along so that whatever consumes a
+    // trace can count the drilled holes without re-reading the collar file,
+    // and can say which hole the rig left last and which it is on. For a
+    // turning hole `on` IS its start date, because it has no finish date —
+    // which is what makes it turning. Omitted rather than false
     // or null: these payloads are stored per project and a key on every hole of
     // a thousand-hole property is paid for a thousand times.
     traces.push({ id: c.id, collar: [c.x, c.y, c.z], td, pts, step,
                   ...(c.planned ? { planned: true } : {}),
+                  ...(c.turning ? { turning: true } : {}),
                   ...(c.on ? { on: c.on } : {}) });
   }
   if (!traces.length) throw new Error("No holes could be desurveyed — check the collar depths.");
-  return { traces, assumedVertical };
+  return { traces, assumedVertical, projected };
 }
 
 /** Position along a desurveyed trace at a given depth. */

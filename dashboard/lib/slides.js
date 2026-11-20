@@ -47,6 +47,10 @@ const sid = (zoneId, key) => `${zoneId || "z"}:${key}`;
  * @param {object} zone      { id, name }
  * @param {Array}  datasets  every dataset row for the project
  * @param {object} project   { name, commodity, location }
+ * @param {object} [opts]    { skipOverview, programs } — `programs` is the
+ *   project's drill_programs rows, which justify the rig chapter the way a
+ *   dataset justifies the others. Absent means no rig chapter, never a rig
+ *   chapter about nothing.
  */
 export function zoneCandidates(zone, datasets, project, opts = {}) {
   const K = kindsOf(datasets, zone.id);
@@ -143,6 +147,58 @@ export function zoneCandidates(zone, datasets, project, opts = {}) {
       camera: { h: 26, p: -18, r: 2400 },
       layers: { ground: 0.0, drills: true, highlights: true, callouts: true },
       needs: ["drills"],
+    });
+  }
+
+  // ---- the rig, which is the one thing in here still happening -----------
+  // `layers.drilling` has always been able to switch the rig OFF — it is on by
+  // default on every chapter, the way the north arrow is — and nothing could
+  // switch it ON as the subject. So the most current fact in the deck, and the
+  // one a shareholder opens it to check, had no slide of its own: it was a pin
+  // in the corner of a slide about something else.
+  //
+  // Gated on a PROGRAMME, not on a dataset. Every other candidate here is
+  // justified by an uploaded file; this one is justified by a plan the issuer
+  // typed and reports against, which is why `needs` names something that is
+  // not a dataset kind.
+  const progs = (opts.programs || [])
+    .filter((g) => (g.zone_id || null) === (zone.id || null));
+  if (progs.length) {
+    // The one that is turning, if any — a property with a finished programme
+    // and a live one should lead with the live one.
+    const g = progs.find((x) => x.status === "active") || progs[0];
+    const done = g.status === "complete";
+    push("rig", {
+      spine: 65,
+      section: zone.name,
+      title: g.status === "active" ? "Drilling under way"
+           : done ? "The programme, as drilled"
+           : String(g.name || "The drill programme"),
+      // NO FIGURES IN THIS COPY, deliberately. Every metre count in the deck
+      // comes from the issuer's own published reports and is read at the
+      // moment the deck is opened; a number written into a slide body is
+      // frozen on the day it was generated and would eventually contradict
+      // the panel directly above it.
+      body: g.status === "active"
+        ? "Where the rig is standing, and how far through the programme it is. " +
+          "These figures are the company's own latest report rather than a " +
+          "number typed into this slide — they move when it files the next one."
+        : done
+        ? "The programme as it was drilled: metres and holes against what was " +
+          "committed to, from the company's own reports."
+        : "The programme as planned, and whatever has been reported against it " +
+          "so far.",
+      // A fallback only: the viewer frames the rig itself, from the
+      // coordinates on the programme. An author who sets their own camera
+      // keeps it.
+      camera: { h: 30, p: -16, r: 900 },
+      // The programme's OWN ID, not `true`. A chapter row carries no zone, so
+      // `true` would leave a two-programme property guessing which rig the
+      // slide meant — and an id survives a rename, where a name does not. The
+      // viewer falls back to the live programme when the id no longer resolves.
+      layers: { ground: 1.0, drills: true, drilling: true, rig: String(g.id),
+                blocks: false },
+      needs: ["programs"],
     });
   }
 
@@ -328,7 +384,7 @@ export function openingChapters(project, zones, datasets) {
   return out;
 }
 
-export function projectCandidates(project, zones, datasets) {
+export function projectCandidates(project, zones, datasets, programs = []) {
   const out = [];
   out.push(...openingChapters(project, zones, datasets));
 
@@ -375,9 +431,11 @@ export function projectCandidates(project, zones, datasets) {
   }
 
   if (projectKinds.size) {
-    out.push(...zoneCandidates(projectZone, datasets, project, { skipOverview: true }));
+    out.push(...zoneCandidates(projectZone, datasets, project,
+      { skipOverview: true, programs }));
   }
-  (zones || []).forEach((z) => out.push(...zoneCandidates(z, datasets, project)));
+  (zones || []).forEach((z) =>
+    out.push(...zoneCandidates(z, datasets, project, { programs })));
   return out;
 }
 

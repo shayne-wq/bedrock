@@ -26,6 +26,10 @@
 import {
   db, state, $, esc, fmtInt, toast, fail, modal, closeModal,
 } from "./lib/ui.js";
+// The edge function's base, same derivation as every other call in the
+// console. Telling an audience is the one thing on this screen that leaves the
+// browser for somewhere other than the database.
+import { CONFIG } from "./config.js";
 // The same arithmetic the deck publishes. Imported rather than reimplemented
 // because this screen's job below is to tell an issuer what their own deck is
 // now claiming about their schedule, and a second copy of these rules would
@@ -59,6 +63,81 @@ const today = () => new Date().toISOString().slice(0, 10);
  *  only — "rig mobilised, first hole collared" — and reading the total off
  *  whatever happens to be newest would blank out yesterday's figure. */
 const lastMetres = (ups) => drillReport({ updates: ups || [] });
+
+// --------------------------------------------------- assay discipline ------
+// Everything else on these two forms is a number this console read off a file,
+// or a date, or a name. The two free-text fields are the only places an issuer
+// can type a sentence, and a sentence is where an assay result goes.
+//
+// Why that is a control and not a preference: a posted report is visible on
+// every deck link for this project the moment the button is pressed, and the
+// programme note has no draft state at all — saving it IS publishing it. A
+// grade in either one, ahead of the news release carrying it, is selective
+// disclosure by a public company. The placeholder has always asked for this;
+// a placeholder is a hint, and this is the field where a hint is not enough.
+//
+// IT DOES NOT REFUSE, and that is deliberate. Whether a result is already
+// public is not knowable from here — only the person typing it knows — and a
+// guard that blocks legitimate text is one people route around by writing
+// "four point five grammes". So it quotes back what it found and makes the
+// post a second, deliberate press that says the figure is already out. The
+// affirmation is the control; the detection is only how the question is asked.
+//
+// WHAT IT MATCHES IS TIGHT ON PURPOSE. A guard that fires on "4,012 m to
+// date" is dismissed reflexively by week two, and a dismissed guard is worse
+// than none: metres, bare percentages ("40% complete", "100% owned") and hole
+// names are all deliberately NOT results.
+const GRADE = [
+  // A number against a grade unit. g/t and ppm are grades; m is not.
+  /\d[\d.,]*\s*(?:g\s*\/\s*t(?:onne)?|gpt|gm\s*\/\s*t|ppm|ppb|oz\s*\/\s*t(?:on)?|opt)\b/gi,
+  // A percentage is a grade only beside the metal it is of, in either order.
+  // On its own it is far more often the programme's own progress.
+  /\d[\d.,]*\s*%\s*(?:cu|zn|pb|ni|co|fe|mo|li|mn|sn|u3o8|wo3|graphite|copper|zinc|lead|nickel|cobalt|moly\w*)\b/gi,
+  /\b(?:cu|zn|pb|ni|co|fe|mo|li|copper|zinc|lead|nickel|cobalt)\s*(?:grade\s*)?(?:of\s*)?\d[\d.,]*\s*%/gi,
+  // An equivalent grade is a grade whether or not a unit was written.
+  /\d[\d.,]*\s*(?:g\s*\/\s*t\s*)?(?:au|ag|cu|ni|zn|pb|co)\s*eq\b/gi,
+  // The intercept form. Only the "@" spelling, which is unambiguous: "412 m
+  // of the 10,000 m programme" is a sentence about progress, and reading
+  // "of" as an intercept would fire on it.
+  /\d[\d.,]*\s*m\s*@\s*\d[\d.,]*/gi,
+  // Two results that carry no number. Visible gold moves a share price on its
+  // own and is the classic junior-mining disclosure accident; "mineralised"
+  // and "intersected" are ordinary progress words and are deliberately absent.
+  /\bvisible\s+gold\b/gi,
+  /\bmassive\s+sulph?ides?\b/gi,
+];
+
+/** The result-shaped phrases in a block of free text, deduplicated, in the
+ *  order they appear. Empty means nothing in it reads as an assay. */
+export function gradeClaims(text) {
+  const hits = [];
+  for (const re of GRADE) {
+    for (const m of String(text || "").matchAll(re)) {
+      const t = m[0].trim().replace(/\s+/g, " ");
+      if (!hits.some((h) => h.toLowerCase() === t.toLowerCase())) hits.push(t);
+    }
+  }
+  return hits;
+}
+
+/** The warning both forms show, in one place because both say the same thing
+ *  about the same risk. `posting` picks the sentence: a report is posted, a
+ *  programme note is live the moment it is saved. */
+function sayClaims(el, hits, posting, pressed) {
+  if (!hits.length) { el.hidden = true; el.textContent = ""; return; }
+  el.hidden = false;
+  el.style.color = pressed ? "var(--bad)" : "var(--warn)";
+  const quoted = hits.slice(0, 3).map((h) => `“${h}”`).join(", ") +
+    (hits.length > 3 ? ` and ${hits.length - 3} more` : "");
+  el.textContent = pressed
+    ? `${hits.length === 1 ? "That reads" : "Those read"} as an assay result, and ` +
+      `${posting ? "posting shows it" : "saving this shows it"} on every deck link ` +
+      `for this project immediately. Press again only if it has already been ` +
+      `disclosed.${posting ? " If it has not, save it as a draft and post when the release is out." : ""}`
+    : `Reads as an assay result: ${quoted}. ` +
+      `${posting ? "Post it" : "Save it"} only if it is already public — a grade that ` +
+      `reaches a deck link ahead of the news release is selective disclosure.`;
+}
 
 // ------------------------------------------------- figures from the file ----
 // A drilling programme used to be the one screen in this console with nothing
@@ -117,6 +196,11 @@ async function applyFigures(g, stats, prevHoleIds, ups) {
     const row = {
       metres_total: metres,
       holes_done: holes === null ? null : Math.round(holes),
+      // Counted from the holes standing open in the file, not guessed. Null
+      // when the file has no finish-date column to answer it with, which
+      // leaves the field for the issuer rather than filing a zero that reads
+      // as "the rig has stopped".
+      holes_active: num(s.holes_turning),
       // A restatement of the two figures, which is what an issuer writes here
       // anyway, and nothing editorial: this text goes out under their name.
       // Proposed holes are deliberately absent — "17 planned" in a progress
@@ -142,16 +226,23 @@ async function applyFigures(g, stats, prevHoleIds, ups) {
     if (error) { fail("Fill in the report", error); return { failed: true }; }
   }
 
-  // The rig. Moved when the programme has no position at all, or when the
-  // newest finished hole is one that was not in the previous upload — that is
-  // the rig having moved. If the newest finished hole is the same one as last
-  // time, the rig has not finished anything since and its pin is left alone.
+  // The rig. Moved when the programme has no position at all, or when the hole
+  // it is standing on is one that was not in the previous upload — that is the
+  // rig having moved. Same hole as last time means it has not moved and its pin
+  // is left alone.
+  //
+  // `rig` before `latest`: an OPEN hole is where the rig is, the newest
+  // FINISHED hole is where it was when it last moved. The second was always a
+  // deliberate approximation — "it is on the next hole, which by definition
+  // has no finish date yet" — and a file carrying start dates answers the
+  // question outright, so it should not be approximated any more. `latest`
+  // remains the answer for a file that has only finish dates.
   //
   // Not moved at all when the total went BACKWARDS. A file that reports fewer
-  // metres than the last one is a partial export, and the newest finished hole
-  // in a partial export is the newest hole IN THAT SLICE — moving a rig onto it
+  // metres than the last one is a partial export, and the newest hole in a
+  // partial export is the newest hole IN THAT SLICE — moving a rig onto it
   // puts the marker on whichever zone happened to be exported.
-  const L = out.lower ? null : s.latest;
+  const L = out.lower ? null : (s.rig || s.latest);
   if (L && Number.isFinite(+L.easting) && Number.isFinite(+L.northing)) {
     const unplaced = g.easting === null || g.easting === undefined;
     const isNew = !Array.isArray(prevHoleIds) || !prevHoleIds.includes(L.id);
@@ -182,10 +273,110 @@ function sayFigures(r) {
   if (r.unchanged) bits.push("the figures are unchanged");
   else bits.push(`${fmtInt(Math.round(r.metres))} m in ` +
                  `${fmtInt(Math.round(r.holes || 0))} holes — a draft report is ready to post`);
-  if (r.moved) bits.push(`rig moved to ${r.moved.id}`);
+  if (r.moved) {
+    bits.push(r.moved.turning
+      ? `rig moved to ${r.moved.id}, which the file has open`
+      : `rig moved to ${r.moved.id}, the last hole it finished`);
+  }
   toast(`Drilling: ${bits.join(", ")}.`);
 }
 
+
+// ------------------------------------------------- telling the audience ----
+// A posted report changes every share link for the project and tells nobody.
+// The people a gated deck captured are precisely the people who asked to be
+// told, and the published privacy policy says their details are held so the
+// issuer can follow up.
+//
+// SO WHY IS THIS NOT AUTOMATIC. Because the schema already draws this line
+// once, and for the same reason: reading a figure off a file is arithmetic,
+// telling the shareholders of a public company what it is, is disclosure.
+// Mailing it to a list of named people is a third decision. Hanging it off the
+// Post button would silently turn one act into two, and a deck can be
+// withdrawn where an email cannot.
+//
+// The count comes from the function, not from arithmetic done here. Which
+// decks show this programme, whose share link still opens, and who has
+// unsubscribed are all rules that live on the server; a second copy in the
+// console would eventually put a different number on the button than the one
+// that actually gets mailed, and that number is the entire point of asking.
+const fnBase = () => `${CONFIG.url.replace(/\/$/, "")}/functions/v1/drill-notice`;
+
+async function callNotice(updateId, preview) {
+  const { data: sess } = await db.auth.getSession();
+  const jwt = sess?.session?.access_token;
+  if (!jwt) return { error: "Sign in again — your session has expired." };
+  let res, body;
+  try {
+    res = await fetch(fnBase(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
+      body: JSON.stringify({ update_id: updateId, preview }),
+    });
+    body = await res.json().catch(() => ({}));
+  } catch {
+    return { error: "Could not reach the mail service." };
+  }
+  if (!res.ok) {
+    return { error: res.status === 501
+      ? "Email is not set up on this project yet."
+      : (body?.error || res.statusText) + (body?.detail ? ` (${body.detail})` : "") };
+  }
+  return body;
+}
+
+/** Count first, then ask, then send. Three steps because the number is the
+ *  thing being confirmed — "are you sure" with no count attached is a dialog
+ *  people clear without reading. */
+async function tellModal(updateId, done) {
+  const p = await callNotice(updateId, true);
+  if (p.error) return toast(p.error, true);
+  const n = Number(p.recipients || 0);
+  const sk = p.skipped || {};
+  // Said rather than hidden. "Nobody to tell" and "nobody asked" are different
+  // facts and only one of them is worth acting on.
+  const why = [];
+  if (sk.already) why.push(`${fmtInt(sk.already)} already told about this report`);
+  if (sk.unsubscribed) why.push(`${fmtInt(sk.unsubscribed)} unsubscribed`);
+  if (sk.no_link) why.push(`${fmtInt(sk.no_link)} whose share link has been revoked or expired`);
+  if (!n) {
+    return toast(why.length
+      ? `Nobody new to tell — ${why.join(", ")}.`
+      : "Nobody has entered their details on a deck for this project yet, so " +
+        "there is no audience to tell. Turn the sign-in form on for a deck to " +
+        "start collecting one.", true);
+  }
+  modal(`
+    <h2>Tell ${fmtInt(n)} ${n === 1 ? "person" : "people"}?</h2>
+    <p class="sub">Everyone who entered their details to open a deck for this
+      project, and has not unsubscribed.</p>
+    <div class="note" style="margin-bottom:14px">Each one gets the figures from
+      this report, your note as you wrote it, a link to the deck they were
+      given, and an unsubscribe link. <b>An email cannot be withdrawn</b> — the
+      deck can.</div>
+    ${why.length ? `<p class="hintline" style="margin:-6px 0 14px">Not
+      included: ${esc(why.join(", "))}.</p>` : ""}
+    <div class="row-actions">
+      <button class="btn primary" id="tellgo">Send to ${fmtInt(n)}</button>
+      <button class="btn" id="tellno">Cancel</button>
+    </div>`);
+  $("tellno").onclick = closeModal;
+  $("tellgo").onclick = async () => {
+    const btn = $("tellgo");
+    btn.disabled = true; btn.textContent = "Sending…";
+    const r = await callNotice(updateId, false);
+    closeModal();
+    if (r.error) return toast(r.error, true);
+    const sent = Number(r.sent || 0), bad = Number(r.failed || 0);
+    // A partial send is reported as one. "Sent" over a run where four bounced
+    // is the kind of reassurance that costs somebody a follow-up they thought
+    // they had already made.
+    toast(bad
+      ? `Sent to ${fmtInt(sent)}; ${fmtInt(bad)} did not go out. Press again to retry those.`
+      : `Sent to ${fmtInt(sent)} ${sent === 1 ? "person" : "people"}.`, bad > 0);
+    done();
+  };
+}
 
 /** Mount the drilling panel into `el` and keep re-rendering it in place.
  *  Deliberately NOT via route(): a page reload to show a posted update loses
@@ -215,6 +406,17 @@ export async function renderDrilling(project, zones, datasets, el) {
     if (ue) fail("Drilling reports", ue);
     ups = data || [];
   }
+  // Who has already been told about which report. Read here so the table can
+  // say "23 told" without a round trip per row, and so the button can
+  // disappear once everybody has been reached.
+  let notices = [];
+  if (ups.length) {
+    const { data } = await db.from("drill_notices")
+      .select("update_id, lead_id, status").in("update_id", ups.map((u) => u.id));
+    notices = data || [];
+  }
+  const toldOf = (updateId) =>
+    notices.filter((n) => n.update_id === updateId && n.status === "sent").length;
   const upsOf = (id) => ups.filter((u) => u.program_id === id);
   const zoneName = (id) => (zones || []).find((z) => z.id === id)?.name || null;
 
@@ -237,6 +439,16 @@ export async function renderDrilling(project, zones, datasets, el) {
     if (st.latest?.id) {
       bits.push(`newest finished ${esc(st.latest.id)}` +
                 (st.latest.on ? ` on ${onDate(st.latest.on)}` : ""));
+    }
+    // The holes standing open. Named rather than counted where there are one
+    // or two, because the geologist reading this knows those names and a count
+    // of "2" makes them go and look up which two.
+    const tn = st.turning;
+    if (Array.isArray(tn) && tn.length) {
+      const nm = tn.slice(0, 2).map((t) => esc(t.id)).join(" and ");
+      bits.push(tn.length <= 2
+        ? `${nm} turning` + (tn[0].on ? ` since ${onDate(tn[0].on)}` : "")
+        : `${fmtInt(tn.length)} holes turning`);
     }
     return `<div class="row" style="margin:-4px 0 12px;gap:10px;align-items:baseline">
       <p class="hintline grow" style="margin:0">From your collar file${
@@ -380,16 +592,27 @@ export async function renderDrilling(project, zones, datasets, el) {
                   if (p !== null) { prev = p; break; }
                 }
                 const d = (cur !== null && prev !== null) ? cur - prev : null;
+                const told = toldOf(x.id);
                 return `<tr>
                   <td class="mono">${onDate(x.as_of)}</td>
                   <td class="n mono">${cur === null ? "—" : fmtInt(Math.round(cur))}</td>
                   <td class="n mono">${d === null ? "—" : (d >= 0 ? "+" : "") + fmtInt(Math.round(d))}</td>
                   <td>${esc(x.body || "")}${x.author ? `<span class="sub"> — ${esc(x.author)}</span>` : ""}</td>
                   <td><span class="chip ${x.published_at ? "live" : "draft"}">${
-                    x.published_at ? "Posted" : "Draft"}</span></td>
+                    x.published_at ? "Posted" : "Draft"}</span>${
+                    told ? `<span class="sub"> · ${fmtInt(told)} told</span>` : ""}</td>
                   <td class="n">
                     <button class="btn sm" data-dppub="${x.id}" data-on="${x.published_at ? "1" : "0"}">${
                       x.published_at ? "Withdraw" : "Post"}</button>
+                    ${x.published_at
+                      // MAILING IS A THIRD ACT. Posting puts the figure on
+                      // every share link; this tells the people who asked to
+                      // be told. Offered only on a POSTED report, because a
+                      // draft is an unfinished number and an email cannot be
+                      // withdrawn the way a deck can.
+                      ? `<button class="btn sm" data-dptell="${x.id}">${
+                          told ? "Tell anyone new" : "Tell the audience"}</button>`
+                      : ""}
                     <button class="btn sm danger" data-dpudel="${x.id}">Delete</button>
                   </td></tr>`;
               }).join("")}</tbody></table></div>`}
@@ -433,7 +656,7 @@ export async function renderDrilling(project, zones, datasets, el) {
   });
   el.querySelectorAll("[data-dppost]").forEach((b) => {
     const g = (progs || []).find((x) => x.id === b.dataset.dppost);
-    b.onclick = () => updateModal(g, upsOf(g.id), again);
+    b.onclick = () => updateModal(g, upsOf(g.id), again, drillFile(datasets, g.zone_id));
   });
   el.querySelectorAll("[data-dpdel]").forEach((b) => {
     b.onclick = async () => {
@@ -463,6 +686,9 @@ export async function renderDrilling(project, zones, datasets, el) {
       toast(on ? "Withdrawn — the deck no longer shows it" : "Posted — every deck shows it now");
       again();
     };
+  });
+  el.querySelectorAll("[data-dptell]").forEach((b) => {
+    b.onclick = () => tellModal(b.dataset.dptell, again);
   });
   el.querySelectorAll("[data-dpudel]").forEach((b) => {
     b.onclick = async () => {
@@ -604,6 +830,7 @@ function programModal(project, zones, datasets, g, done, prefill = null) {
              value="${esc(v.operator || "")}"></div>
     <div class="field"><label for="dpnote">What it is testing</label>
       <textarea id="dpnote" rows="2" placeholder="One line. Shown under the programme name in the deck.">${esc(v.note || "")}</textarea></div>
+    <p class="hintline" id="dpnotewarn" hidden style="margin:-10px 0 14px"></p>
 
     <div class="field">
       <label>Where the rig stands</label>
@@ -628,6 +855,18 @@ function programModal(project, zones, datasets, g, done, prefill = null) {
       <button class="btn" id="dpcancel">Cancel</button>
     </div>`);
   $("dpcancel").onclick = closeModal;
+
+  // The note is the other free-text field that reaches a shareholder, and it
+  // is the more exposed of the two: a programme has no draft state, so saving
+  // it IS publishing it. Same guard, one press earlier.
+  const SAVE = isNew ? "Add programme" : "Save plan";
+  let noteOk = false;
+  const noteClaims = () => {
+    if (noteOk) { noteOk = false; $("dpsave").textContent = SAVE; }
+    sayClaims($("dpnotewarn"), gradeClaims($("dpnote").value), false, false);
+  };
+  $("dpnote").oninput = noteClaims;
+  noteClaims();
 
   // The collar sheet is already uploaded, so the commonest position for a rig
   // is "in the middle of the holes" and nobody should have to go and average
@@ -676,6 +915,13 @@ function programModal(project, zones, datasets, g, done, prefill = null) {
     if (start && end && end < start) {
       return toast("The finish date is before the start.", true);
     }
+    const nhits = gradeClaims($("dpnote").value);
+    if (nhits.length && !noteOk) {
+      noteOk = true;
+      $("dpsave").textContent = "Already public — save it";
+      sayClaims($("dpnotewarn"), nhits, false, true);
+      return;
+    }
     const row = {
       project_id: project.id,
       zone_id: $("dpzone").value || null,
@@ -703,12 +949,20 @@ function programModal(project, zones, datasets, g, done, prefill = null) {
 }
 
 // --------------------------------------------------------- the report ------
-function updateModal(g, ups, done) {
+function updateModal(g, ups, done, file = null) {
   const prev = lastMetres(ups);
   const prevM = prev ? num(prev.metres_total) : null;
   const t = num(g.target_m);
   // Whoever filed the last one is overwhelmingly whoever is filing this one.
   const who = (ups || []).find((u) => u.author)?.author || "";
+  // Holes standing open in the collar file: started, never finished. Filled in
+  // rather than asked for, on the same principle as the metres — it is already
+  // on the server, and a retyped number can only disagree with its own source.
+  // Null, not zero, when the file cannot answer: a zero here reads as "the rig
+  // has stopped", which is a claim, and an absent finish-date column is not.
+  const turning = num(file?.stats?.holes_turning);
+  const turnNames = Array.isArray(file?.stats?.turning)
+    ? file.stats.turning.map((t) => t.id) : [];
   modal(`
     <h2>Report progress</h2>
     <p class="sub">${esc(g.name)}${prev
@@ -731,11 +985,21 @@ function updateModal(g, ups, done) {
         <input type="number" id="duh" min="0" step="1"
                placeholder="${g.holes_planned ? "of " + g.holes_planned : "optional"}"></div>
       <div class="field"><label for="dur">Holes turning now</label>
-        <input type="number" id="dur" min="0" step="1" placeholder="optional"></div>
+        <input type="number" id="dur" min="0" step="1" placeholder="optional"
+               value="${turning === null ? "" : turning}"></div>
     </div>
+
+    ${turning === null ? "" : `<p class="hintline" style="margin:-8px 0 14px">${
+      turning === 0
+        ? "Your collar file has no hole standing open — every hole in it has a finish date."
+        : `From your collar file: ${esc(turnNames.slice(0, 3).join(", "))}${
+            turnNames.length > 3 ? ` and ${turnNames.length - 3} more` : ""
+          } started and not yet finished. Change it if the rig has moved since.`
+    }</p>`}
 
     <div class="field"><label for="dub">What happened</label>
       <textarea id="dub" rows="3" placeholder="Two sentences. What was drilled, where, and what is next. No assay results unless they have already been disclosed."></textarea></div>
+    <p class="hintline" id="dubwarn" hidden style="margin:-10px 0 14px"></p>
     <div class="field"><label for="duau">Reported by</label>
       <input type="text" id="duau" placeholder="Name and title — shown on the report"
              value="${esc(who)}"></div>
@@ -780,11 +1044,32 @@ function updateModal(g, ups, done) {
   $("dum").oninput = delta;
   delta();
 
+  // Assay discipline — see gradeClaims. Checked as it is typed so the question
+  // is asked while the sentence is being written, not after Post was pressed.
+  const POST = "Post to shareholders";
+  let affirmed = false;
+  const claims = () => {
+    // Editing the text withdraws an affirmation that was given about different
+    // text: affirm, then paste a grade in, and the second press must ask again.
+    if (affirmed) { affirmed = false; $("dupost").textContent = POST; }
+    sayClaims($("dubwarn"), gradeClaims($("dub").value), true, false);
+  };
+  $("dub").oninput = claims;
+  claims();
+
   const save = async (publish) => {
     const m = num($("dum").value);
     const body = $("dub").value.trim();
     if (m === null && !body) {
       return toast("A report needs a metre count, a note, or both.", true);
+    }
+    // A draft is not disclosure and is never interrupted. A post is.
+    const hits = publish ? gradeClaims(body) : [];
+    if (hits.length && !affirmed) {
+      affirmed = true;
+      $("dupost").textContent = "Already public — post it";
+      sayClaims($("dubwarn"), hits, true, true);
+      return;
     }
     const btn = publish ? $("dupost") : $("dudraft");
     btn.disabled = true;

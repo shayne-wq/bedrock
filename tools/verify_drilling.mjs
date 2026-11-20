@@ -66,6 +66,30 @@ const PAYLOAD = {
     { ord: 1, kind: 'view', section: 'Overview', title: 'Elsewhere',
       body: 'Not about the drilling.', camera: { h: 90, p: -40, r: 4000 },
       layers: { drilling: false }, dwell_ms: 9000, areas: [] },
+    // The slide that opts IN. `drilling: false` could always switch the rig
+    // off; nothing could make it the subject, so the most current fact in the
+    // deck was a pin in the corner of a slide about something else. Its camera
+    // is a FALLBACK — the viewer frames the rig from the programme's own
+    // coordinates, because a 12 m mast is not findable in a shot composed
+    // around an orebody.
+    { ord: 2, kind: 'view', section: 'Drilling', title: 'Drilling under way',
+      body: 'Where the rig is standing.', camera: { h: 30, p: -16, r: 900 },
+      layers: { rig: 'prog-1', drilling: true, drills: true },
+      dwell_ms: 9000, areas: [] },
+    // Same subject, framed by hand. `property` returns before a chapter's own
+    // camera is ever read — that threw away twelve authored cameras during the
+    // Williams port — and a rig chapter must not repeat it.
+    { ord: 3, kind: 'view', section: 'Drilling', title: 'Framed by hand',
+      body: 'An author who set a shot keeps it.',
+      camera: { mode: 'free', lon: -121.6, lat: 49.8, height: 12000,
+                heading: 10, pitch: -35 },
+      layers: { rig: 'prog-1' }, dwell_ms: 9000, areas: [] },
+    // A rig chapter pointed at a programme that no longer exists. It must not
+    // land on the orebody with drilling copy over it.
+    { ord: 4, kind: 'view', section: 'Drilling', title: 'Stale reference',
+      body: 'The programme this slide named has been deleted.',
+      camera: { h: 30, p: -16, r: 900 },
+      layers: { rig: 'prog-deleted' }, dwell_ms: 9000, areas: [] },
   ],
   assets: [],
   programs: [
@@ -212,11 +236,44 @@ await pg.screenshot({ path: '/tmp/drill-rig.png' });
 await pg.evaluate(() => document.querySelectorAll('#rigpick button')[1].click());
 await pg.waitForTimeout(1200);
 const two = await L();
+// Read here, not in the assertion. The rig chapters below select programme 1
+// again, and an assertion that reaches into the live DOM afterwards is asking
+// about a panel that has since moved on.
+const twoBody = await pg.evaluate(() =>
+  document.getElementById('rigbody').textContent);
 
 // The slide that opts out.
 await pg.evaluate(() => window.__api.go(1));
 await pg.waitForTimeout(3000);
 const off = await L();
+
+// The chapter whose subject is the rig. Same arrival as clicking the marker:
+// waited on rather than slept through, so a regression fails here.
+await pg.evaluate(() => window.__api.go(2));
+await pg.waitForFunction(() => {
+  const c = window.__api.cam();
+  return c.terrain !== null && c.h - c.terrain < 200;
+}, null, { timeout: 15000 }).catch(() => {});
+await pg.waitForTimeout(800);
+const rigCh = await L();
+
+// The authored camera must survive the rig layer.
+await pg.evaluate(() => window.__api.go(3));
+await pg.waitForFunction(() => {
+  const c = window.__api.cam();
+  return c.terrain !== null && c.h - c.terrain > 3000;
+}, null, { timeout: 20000 }).catch(() => {});
+await pg.waitForTimeout(600);
+const rigFree = await L();
+
+// And a dangling programme id.
+await pg.evaluate(() => window.__api.go(4));
+await pg.waitForFunction(() => {
+  const c = window.__api.cam();
+  return c.terrain !== null && c.h - c.terrain < 200;
+}, null, { timeout: 15000 }).catch(() => {});
+await pg.waitForTimeout(800);
+const rigStale = await L();
 
 // The text edition, for the reader with no GPU.
 await pg.evaluate(() => { document.getElementById('datatoggle').click(); });
@@ -352,8 +409,8 @@ ok('the rig view looks across, not down', Math.abs(near.cam.pitch + 12) <= 4,
 ok('the camera stays above ground', near.cam.under === false, JSON.stringify(near.cam));
 ok('an unplaced programme can be opened without flying anywhere',
    two.progSel === 1 && two.progPanel === true, JSON.stringify([two.progSel, two.progPanel]));
-ok('an unplaced programme still shows its plan', /2,500 m planned/.test(
-   await pg.evaluate(() => document.getElementById('rigbody').textContent)));
+ok('an unplaced programme still shows its plan', /2,500 m planned/.test(twoBody),
+   twoBody.slice(0, 160));
 // The drilling panel sits in the same column as the ledger and is named for
 // the rig. Two ids in this file were one careless rename away from it — the
 // caption's own progress strip is #prog and its fill was once addressed the
@@ -362,6 +419,26 @@ ok('an unplaced programme still shows its plan', /2,500 m planned/.test(
 ok('the caption progress strip still belongs to the caption',
    /%$/.test(off.capBar || '') && off.capBar !== '0%', String(off.capBar));
 ok('a slide can opt out of the rig', off.progOn === false);
+
+// A chapter can now opt IN and make the drilling its subject.
+ok('a rig chapter flies to the rig rather than the orebody',
+   rigCh.cam.terrain !== null && rigCh.cam.h - rigCh.cam.terrain < 200,
+   JSON.stringify(rigCh.cam));
+ok('...with the rig drawn and its report open',
+   rigCh.progOn === true && rigCh.progPanel === true && rigCh.progEnts > 0,
+   JSON.stringify({ on: rigCh.progOn, panel: rigCh.progPanel, ents: rigCh.progEnts }));
+ok('...and the camera above ground where it lands', rigCh.cam.under === false,
+   JSON.stringify(rigCh.cam));
+// The trap `property` sets and this deliberately does not: an authored camera
+// is read BEFORE the rig framing, so framing by hand still works.
+ok('an authored camera beats the rig framing',
+   rigFree.cam.terrain !== null && rigFree.cam.h - rigFree.cam.terrain > 3000,
+   JSON.stringify(rigFree.cam));
+// A slide whose copy is about drilling is better pointed at the wrong rig than
+// at the orebody, so a dangling id falls back to the programme that is turning.
+ok('a rig chapter naming a deleted programme still frames a rig',
+   rigStale.cam.terrain !== null && rigStale.cam.h - rigStale.cam.terrain < 200,
+   JSON.stringify(rigStale.cam));
 ok('opting out hides it in the scene rather than forgetting it',
    off.progShown === 0 && off.progEnts === ch0.progEnts,
    off.progShown + ' shown of ' + off.progEnts);

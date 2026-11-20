@@ -936,8 +936,13 @@ async function renderProject(id) {
     // Empty, not "null" — the project-level slots carry no zone id, and the
     // handlers read a missing value as "the whole project".
     const zk = z.id || "";
+    // What a loaded geochemistry slot is OF. One sample medium is kept per
+    // zone, so "Loaded" alone left the one fact that decides whether the next
+    // upload destroys this one off the screen entirely.
+    const med = ds?.stats?.medium;
     return `<div class="slot ${ds ? "on" : ""}">
-      <span class="k">${k.label}${k.note ? ` <em class="opt">${k.note}</em>` : ""}</span>
+      <span class="k">${k.label}${med ? ` <em class="opt">${esc(med)}</em>`
+        : k.note ? ` <em class="opt">${k.note}</em>` : ""}</span>
       <span class="acts">
       ${ds ? `<span class="chip ${ds.synthetic ? "warn" : "live"}">${ds.synthetic ? "Fabricated" : "Loaded"}</span>
         <button class="btn sm" data-load="${k.key}" data-zone="${zk}">Replace</button>

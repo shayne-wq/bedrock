@@ -28,7 +28,8 @@ globalThis.document = {
 globalThis.location = { origin: "", pathname: "", hash: "" };
 globalThis.addEventListener = () => {};
 
-const { classify, routeFiles } = await import("../dashboard/ingest.js");
+const { classify, routeFiles, geochemMedium, geochemClash } =
+  await import("../dashboard/ingest.js");
 const { sniff } = await import("../dashboard/lib/formats.js");
 
 let pass = 0, fail = 0;
@@ -155,6 +156,50 @@ const gc = readAsciiGrid(
   "ncols 2\nnrows 1\nxllcenter 1000\nyllcenter 2000\ncellsize 5\n7 8", "c.asc");
 ok("xllcenter is honoured without the half-cell shift", gc.extent.west === 1000,
    String(gc.extent.west));
+
+
+console.log("— geochemistry: soil, rock, till and stream are not versions of each other");
+// One geochemistry dataset is kept per zone, so a rock-chip upload DELETED the
+// soil survey already in it — 4,298 samples, "Geochemistry saved" both times,
+// no warning. The medium is what tells them apart, and it is in the filename
+// that routed the file here to begin with.
+const med = (n) => geochemMedium(n);
+ok("a soil survey is named", med("macpass_soil_samples.csv") === "soil", String(med("macpass_soil_samples.csv")));
+ok("rock chips are named", med("GIC_rock_chip_assays.csv") === "rock chip", String(med("GIC_rock_chip_assays.csv")));
+ok("a rock grab is a rock chip", med("rock_grab_2026.csv") === "rock chip", String(med("rock_grab_2026.csv")));
+ok("stream sediment is named", med("regional_stream_sediment.csv") === "stream sediment");
+ok("silt is stream sediment", med("silt_survey.csv") === "stream sediment");
+ok("till is named", med("till_geochem_2025.csv") === "till");
+ok("talus is named", med("talus_fines.csv") === "talus");
+// A file that does not say what it is of must come back null, not a guess:
+// null is what makes the guard below refuse to fire on it.
+ok("an unnamed geochemistry file declares no medium", med("geochem.csv") === null, String(med("geochem.csv")));
+ok("...and neither does a bare assay export", med("assays_2026.csv") === null);
+// Every name in classify's own geochem rule should also yield a medium or an
+// honest null — never the wrong medium.
+ok("soil is not read as rock, nor rock as soil",
+   med("soil.csv") === "soil" && med("rockchips.csv") === "rock chip");
+
+const soilRow = [{ stats: { medium: "soil", samples: 4298 } }];
+const clash = geochemClash("rock chip", soilRow, "T-Bill");
+ok("saving rock chips over a soil survey is refused", typeof clash === "string", String(clash));
+ok("...and the sentence says how many samples are at stake",
+   /4,298 soil samples/.test(clash || ""), String(clash));
+ok("...names the zone it is talking about", /\(T-Bill\)/.test(clash || ""), String(clash));
+ok("...and says what to do instead, both ways",
+   /own zone/.test(clash || "") && /remove the soil survey/.test(clash || ""), String(clash));
+// The cases that must stay silent, because a guard that fires on an ordinary
+// re-upload is one people learn to click past.
+ok("re-uploading a corrected soil survey over soil is not a collision",
+   geochemClash("soil", soilRow, "T-Bill") === null);
+ok("an empty zone is not a collision", geochemClash("soil", [], "T-Bill") === null);
+ok("a file that declares no medium cannot prove harm",
+   geochemClash(null, soilRow, "T-Bill") === null);
+ok("neither can a legacy row that recorded no medium",
+   geochemClash("rock chip", [{ stats: { samples: 10 } }], "T-Bill") === null);
+ok("a project-level upload says project, not zone",
+   /^This project already holds/.test(geochemClash("rock chip", soilRow) || ""),
+   String(geochemClash("rock chip", soilRow)));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

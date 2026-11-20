@@ -87,7 +87,9 @@ function builder(table, op) {
     then(res) {
       let data = [];
       if (rec.op === 'select') {
-        data = table === 'drill_programs' ? (window.__noProgs ? [] : PROGS) : UPS;
+        data = table === 'drill_programs' ? (window.__noProgs ? [] : PROGS)
+             : table === 'drill_notices' ? (window.__notices || [])
+             : UPS;
         // An is(published_at, null) filter is applyFigures asking whether a draft
         // already exists for today. Nothing in the fixture does, so it inserts.
         if (rec.filters.some((f) => f[0] === 'is' && f[1] === 'published_at')) data = [];
@@ -98,7 +100,9 @@ function builder(table, op) {
   return self;
 }
 window.supabase = { createClient: () => ({
-  auth: { getSession: async () => ({ data: { session: null } }) },
+  // A token, because telling the audience is the one action on this screen
+  // that leaves for an edge function and has to carry the caller's JWT.
+  auth: { getSession: async () => ({ data: { session: { access_token: 'test-jwt' } } }) },
   from(table) {
     return {
       select(c) { return builder(table, 'select').select(c); },
@@ -113,6 +117,32 @@ window.supabase = { createClient: () => ({
     createSignedUrl: async () => ({ data: { signedUrl: '/__traces.json' }, error: null }),
   }) },
 }) };
+</script>
+<script>
+// The drill-notice function, stubbed. Recorded rather than mocked away: what
+// is under test is that a PREVIEW happens first and that nothing is sent
+// until the count has been confirmed.
+window.__notices = [];
+window.__fetches = [];
+window.__preview = { ok: true, preview: true, recipients: 23, skipped: {} };
+window.__send = { ok: true, recipients: 23, sent: 23, failed: 0, skipped: {} };
+window.__noticeStatus = 200;
+(function () {
+  const real = window.fetch.bind(window);
+  window.fetch = (u, o) => {
+    if (String(u).includes('drill-notice')) {
+      const body = JSON.parse(o.body);
+      window.__fetches.push({ url: String(u), body: body,
+                              auth: o.headers.Authorization });
+      const payload = body.preview ? window.__preview : window.__send;
+      return Promise.resolve({
+        ok: window.__noticeStatus < 400, status: window.__noticeStatus,
+        statusText: 'stub', json: async () => payload,
+      });
+    }
+    return real(u, o);
+  };
+})();
 </script>
 <script type="module">
 import { state } from '/dashboard/lib/ui.js';
@@ -136,6 +166,12 @@ const DATASETS = [{ id: 'd1', kind: 'drills', zone_id: 'z1',
                     provenance: { uploaded_at: '${d(-9)}T09:00:00Z' } }];
 window.__render = () => renderDrilling(PROJ, ZONES, DATASETS,
   document.getElementById('drillpanel'));
+// The same panel against a DIFFERENT collar file, so a fixture describing a
+// file with open holes does not have to be the fixture every other assertion
+// reads. FILE_STATS above is a finish-dates-only export, which is its own real
+// case and the one the rig-moves-to-the-last-finished-hole tests describe.
+window.__renderWith = (stats) => renderDrilling(PROJ, ZONES,
+  [{ ...DATASETS[0], stats }], document.getElementById('drillpanel'));
 window.__stats = FILE_STATS;
 // What a drop hands over: putAux's return value.
 window.__sync = (stats, prev, zid) => syncFromUpload(PROJ, ZONES, DATASETS,
@@ -471,6 +507,402 @@ ok('the console reads the same rules the deck does',
    FC.live.pace === 114.29 && FC.live.forecast !== null &&
    FC.paused.forecast === null && FC.cold.forecast === null &&
    FC.noTarget.forecast === null, JSON.stringify(FC));
+
+// ------------------------------------------------- assay discipline --------
+// The detector, through the shipped function rather than a copy of its rules,
+// and from both directions. The false-positive half is the half that decides
+// whether this guard survives: a warning on "4,012 m to date" is dismissed by
+// week two, and a dismissed warning is worse than none at all.
+const GRADES = await pg.evaluate(async () => {
+  const M = await import('/dashboard/drilling.js');
+  const fires = [
+    'TC-26-011 returned 4.5 g/t Au over 12 m.',
+    'Best interval 1,200 ppm Cu.',
+    '850 ppb Au in the second hole.',
+    'Assays up to 1.2% Cu.',
+    'Copper grade of 0.8%.',
+    '12 m @ 4.5 from TC-26-014.',
+    '2.1 g/t AuEq across the zone.',
+    '0.35 oz/t in the quartz.',
+    'Visible gold logged in TC-26-014.',
+    'Massive sulphides from 210 m.',
+  ];
+  const quiet = [
+    // The body applyFigures writes for itself. If the guard fires on this,
+    // every upload would ask to be affirmed.
+    '38 holes, 11,240 m to date.',
+    'TC-26-011 completed to 412 m.',
+    'Drilled 4,012 m of the 10,000 m programme; 40% complete.',
+    'Second rig mobilised.',
+    'The property is 100% owned and in good standing.',
+    'Assays pending for holes 12 to 14.',
+    'Hole TC-26-014 intersected the target horizon at 250 m.',
+    'Standdown 3 days for 50 m of casing.',
+  ];
+  return {
+    fires: fires.map((t) => [t, M.gradeClaims(t)]),
+    quiet: quiet.map((t) => [t, M.gradeClaims(t)]),
+  };
+});
+ok('every result-shaped sentence is caught',
+   GRADES.fires.every(([, h]) => h.length > 0),
+   JSON.stringify(GRADES.fires.filter(([, h]) => !h.length)));
+ok('no ordinary progress sentence is',
+   GRADES.quiet.every(([, h]) => h.length === 0),
+   JSON.stringify(GRADES.quiet.filter(([, h]) => h.length)));
+ok('it quotes back what it found, for the person to check',
+   GRADES.fires[0][1].some((h) => /4\.5\s*g\s*\/\s*t/i.test(h)),
+   JSON.stringify(GRADES.fires[0][1]));
+
+// And in the form. A grade typed into the body warns as it is typed...
+await pg.evaluate(() => document.querySelector('[data-dppost="p1"]').click());
+await pg.waitForTimeout(200);
+await pg.fill('#dum', '4600');
+await pg.fill('#dub', 'TC-26-015 returned 4.5 g/t Au over 12 m.');
+await pg.waitForTimeout(150);
+const warned = await pg.evaluate(() => ({
+  shown: !document.getElementById('dubwarn').hidden,
+  text: document.getElementById('dubwarn').textContent.replace(/\s+/g, ' '),
+  colour: getComputedStyle(document.getElementById('dubwarn')).color,
+  btn: document.getElementById('dupost').textContent,
+}));
+ok('a grade in the report body warns as it is typed',
+   warned.shown && /already public/i.test(warned.text), JSON.stringify(warned));
+ok('...in the warning colour, not the error colour',
+   warned.colour === 'rgb(138, 100, 16)', warned.colour);
+
+// ...and the first press of Post does not post it.
+const before = await pg.evaluate(() => window.__calls.filter((c) => c.op === 'insert').length);
+await pg.evaluate(() => document.getElementById('dupost').click());
+await pg.waitForTimeout(250);
+const held = await pg.evaluate(() => ({
+  inserts: window.__calls.filter((c) => c.op === 'insert').length,
+  btn: document.getElementById('dupost').textContent,
+  text: document.getElementById('dubwarn').textContent.replace(/\s+/g, ' '),
+  colour: getComputedStyle(document.getElementById('dubwarn')).color,
+  open: document.getElementById('modal').classList.contains('on'),
+}));
+ok('the first press of Post does not post a grade',
+   held.inserts === before && held.open, JSON.stringify(held));
+ok('...it asks, in the button itself',
+   /already public/i.test(held.btn), held.btn);
+ok('...and escalates the line to the error colour',
+   held.colour === 'rgb(194, 58, 46)', held.colour);
+
+// Editing the text withdraws the affirmation: affirm, paste something else in,
+// and the guard has to ask again about the new sentence.
+await pg.fill('#dub', 'TC-26-015 returned 9.9 g/t Au.');
+await pg.waitForTimeout(150);
+const withdrawn = await pg.evaluate(() => document.getElementById('dupost').textContent);
+ok('editing the body withdraws the affirmation', /Post to shareholders/.test(withdrawn), withdrawn);
+
+// Two presses do post it.
+await pg.evaluate(() => document.getElementById('dupost').click());
+await pg.waitForTimeout(150);
+await pg.evaluate(() => document.getElementById('dupost').click());
+await pg.waitForTimeout(300);
+const affirmed = await pg.evaluate(() => {
+  const ins = window.__calls.filter((c) => c.op === 'insert');
+  return { n: ins.length, last: ins[ins.length - 1]?.payload };
+});
+ok('affirmed, it posts — published, with the body intact',
+   affirmed.n === before + 1 && affirmed.last?.published_at &&
+   /9\.9 g\/t/.test(affirmed.last?.body || ''), JSON.stringify(affirmed));
+
+// A DRAFT is not disclosure and is never interrupted, however it reads.
+await pg.evaluate(() => document.querySelector('[data-dppost="p1"]').click());
+await pg.waitForTimeout(200);
+await pg.fill('#dum', '4700');
+await pg.fill('#dub', 'Visible gold in TC-26-016, 12 m @ 4.5.');
+await pg.evaluate(() => document.getElementById('dudraft').click());
+await pg.waitForTimeout(300);
+const drafted = await pg.evaluate(() => window.__calls.filter((c) => c.op === 'insert').pop());
+ok('a draft carrying a grade saves on the first press',
+   drafted?.payload?.published_at === null &&
+   /Visible gold/.test(drafted?.payload?.body || ''), JSON.stringify(drafted?.payload));
+
+// The programme note is the MORE exposed of the two fields, because a
+// programme has no draft state: there is no "save it for later" press on this
+// form, so the guard is the only thing between the sentence and the deck.
+await pg.evaluate(() => document.querySelector('[data-dpedit="p1"]').click());
+await pg.waitForTimeout(250);
+await pg.fill('#dpnote', 'Testing the north extension — 1.2% Cu in trenching.');
+await pg.waitForTimeout(150);
+const noteWarn = await pg.evaluate(() => ({
+  shown: !document.getElementById('dpnotewarn').hidden,
+  text: document.getElementById('dpnotewarn').textContent.replace(/\s+/g, ' '),
+}));
+ok('a grade in the programme note warns too',
+   noteWarn.shown && /already public/i.test(noteWarn.text), JSON.stringify(noteWarn));
+// Its warning says SAVING publishes it, not posting — there is no post here.
+ok('...and says that saving is what publishes it',
+   /Save it only if it is already public/i.test(noteWarn.text) &&
+   !/\bPost it\b/.test(noteWarn.text), noteWarn.text);
+
+const nBefore = await pg.evaluate(() =>
+  window.__calls.filter((c) => c.op === 'update' || c.op === 'insert').length);
+await pg.evaluate(() => document.getElementById('dpsave').click());
+await pg.waitForTimeout(250);
+const nHeld = await pg.evaluate(() => ({
+  writes: window.__calls.filter((c) => c.op === 'update' || c.op === 'insert').length,
+  btn: document.getElementById('dpsave').textContent,
+  open: document.getElementById('modal').classList.contains('on'),
+}));
+ok('the first press of Save does not publish a grade in the note',
+   nHeld.writes === nBefore && nHeld.open && /already public/i.test(nHeld.btn),
+   JSON.stringify(nHeld));
+
+await pg.evaluate(() => document.getElementById('dpsave').click());
+await pg.waitForTimeout(300);
+const nSaved = await pg.evaluate(() => {
+  const w = window.__calls.filter((c) => c.op === 'update' || c.op === 'insert');
+  return { n: w.length, last: w[w.length - 1]?.payload };
+});
+ok('affirmed, the plan saves with the note intact',
+   nSaved.n === nBefore + 1 && /1\.2% Cu/.test(nSaved.last?.note || ''),
+   JSON.stringify(nSaved.last));
+
+// ------------------------------------------- which hole the rig is on ------
+// The programme knew its metres and not its holes, so the rig stood on the
+// newest hole it FINISHED — "it is on the next hole, which by definition has
+// no finish date yet". A collar file with start dates answers the question
+// outright, and then it should not be approximated.
+//
+// OPEN carries a hole that was started and never finished, 2 km from the
+// newest finished one so the two answers cannot be confused for each other.
+const OPEN = {
+  files: 3, holes: 39, metres: 11450, intervals: 4810, assumed_vertical: 0,
+  planned_holes: 12, planned_m: 4100,
+  hole_ids: ['GC21-01', 'GC24-01', 'GC24-03', 'GC24-04'],
+  latest: { id: 'GC24-03', on: '2026-10-02',
+            easting: 498168, northing: 5521008, elev_m: 1122.7 },
+  holes_turning: 1,
+  turning: [{ id: 'GC24-04', on: '2026-10-03', td: 210 }],
+  rig: { id: 'GC24-04', on: '2026-10-03', turning: true,
+         easting: 500200, northing: 5523000, elev_m: 1180.4 },
+};
+await pg.evaluate(() => { window.__calls.length = 0;
+  document.getElementById('toast').textContent = ''; });
+await pg.evaluate((st) => window.__sync(st, ['GC21-01', 'GC24-01', 'GC24-03']), OPEN);
+await pg.waitForTimeout(600);
+const onHole = await pg.evaluate(() => ({
+  toast: document.getElementById('toast').textContent.replace(/\s+/g, ' '),
+  wrote: window.__calls.find((c) => c.op === 'insert' && c.table === 'drill_updates')?.payload,
+  moved: window.__calls.find((c) => c.op === 'update' && c.table === 'drill_programs')?.payload,
+}));
+ok('the rig stands on the hole the file has OPEN, not the last one finished',
+   Number(onHole.moved?.easting) === 500200 && Number(onHole.moved?.northing) === 5523000,
+   JSON.stringify(onHole.moved));
+ok('...and the sentence says that is why', /which the file has open/.test(onHole.toast),
+   onHole.toast);
+// A file with only finish dates cannot answer it, and the older sentence has
+// to keep being true for that file rather than quietly claiming more.
+ok('a finish-dates-only file still says it is the last hole finished',
+   /the last hole it finished/.test(used.toast), used.toast);
+ok('holes turning now is filled in from the file, not left to be counted',
+   Number(onHole.wrote?.holes_active) === 1, JSON.stringify(onHole.wrote));
+
+// Panel and form, against that same file.
+await pg.evaluate((st) => window.__renderWith(st), OPEN);
+await pg.waitForTimeout(400);
+const openPanel = await pg.evaluate(() =>
+  document.getElementById('drillpanel').textContent.replace(/\s+/g, ' '));
+ok('the panel names the hole that is turning, not just a count',
+   /GC24-04 turning since/.test(openPanel), openPanel.slice(-400));
+
+await pg.evaluate(() => document.querySelector('[data-dppost="p1"]').click());
+await pg.waitForTimeout(250);
+const prefill = await pg.evaluate(() => ({
+  turning: document.getElementById('dur').value,
+  hint: [...document.querySelectorAll('#modalinner .hintline')]
+    .map((h) => h.textContent.replace(/\s+/g, ' ')).join(' | '),
+}));
+ok('the report form opens with holes turning already in it',
+   prefill.turning === '1', JSON.stringify(prefill));
+ok('...and names which hole, so the figure can be checked rather than trusted',
+   /GC24-04 started and not yet finished/.test(prefill.hint), prefill.hint);
+await pg.evaluate(() => document.getElementById('ducancel').click());
+
+// Zero open holes is a fact worth stating; it is NOT the same as a file that
+// cannot answer, which must leave the field alone rather than file a zero
+// that reads as "the rig has stopped".
+const CLOSED = { ...OPEN, holes_turning: 0, turning: [], rig: undefined };
+await pg.evaluate((st) => window.__renderWith(st), CLOSED);
+await pg.waitForTimeout(300);
+await pg.evaluate(() => document.querySelector('[data-dppost="p1"]').click());
+await pg.waitForTimeout(250);
+const zero = await pg.evaluate(() => ({
+  turning: document.getElementById('dur').value,
+  hint: [...document.querySelectorAll('#modalinner .hintline')]
+    .map((h) => h.textContent.replace(/\s+/g, ' ')).join(' | '),
+}));
+ok('a file with every hole finished says so',
+   zero.turning === '0' && /no hole standing open/.test(zero.hint), JSON.stringify(zero));
+await pg.evaluate(() => document.getElementById('ducancel').click());
+
+await pg.evaluate(() => window.__renderWith(window.__stats));
+await pg.waitForTimeout(300);
+await pg.evaluate(() => document.querySelector('[data-dppost="p1"]').click());
+await pg.waitForTimeout(250);
+const cannot = await pg.evaluate(() => ({
+  turning: document.getElementById('dur').value,
+  hint: [...document.querySelectorAll('#modalinner .hintline')]
+    .map((h) => h.textContent.replace(/\s+/g, ' ')).join(' | '),
+}));
+ok('a file that cannot answer leaves the field empty rather than filing a zero',
+   cannot.turning === '' && !/standing open/.test(cannot.hint), JSON.stringify(cannot));
+await pg.evaluate(() => document.getElementById('ducancel').click());
+
+// --------------------------------------------- telling the audience --------
+// Posting a report changes every share link and tells nobody. Mailing it is a
+// THIRD act — the schema already separates writing from posting for the same
+// reason, and a deck can be withdrawn where an email cannot.
+await pg.evaluate(() => window.__renderWith(window.__stats));
+await pg.waitForTimeout(400);
+const tellBtns = await pg.evaluate(() => {
+  const rows = [...document.querySelectorAll('#drillpanel tbody tr')];
+  return rows.map((r) => ({
+    status: r.children[4].textContent.replace(/\s+/g, ' ').trim(),
+    tell: !!r.querySelector('[data-dptell]'),
+  }));
+});
+// The fixture holds two posted reports and one draft.
+ok('only a POSTED report can be mailed',
+   tellBtns.filter((r) => r.tell).length === 2 &&
+   tellBtns.every((r) => r.tell === /Posted/.test(r.status)),
+   JSON.stringify(tellBtns));
+
+// Pressing it COUNTS first and sends nothing.
+await pg.evaluate(() => { window.__fetches.length = 0; });
+await pg.evaluate(() => document.querySelector('[data-dptell]').click());
+await pg.waitForTimeout(400);
+const asked = await pg.evaluate(() => ({
+  calls: window.__fetches.map((f) => ({ preview: f.body.preview, id: f.body.update_id })),
+  auth: window.__fetches[0]?.auth,
+  open: document.getElementById('modal').classList.contains('on'),
+  head: document.querySelector('#modalinner h2')?.textContent,
+  note: document.querySelector('#modalinner .note')?.textContent.replace(/\s+/g, ' '),
+  go: document.getElementById('tellgo')?.textContent,
+}));
+ok('it asks the server for the count before it asks the user',
+   asked.calls.length === 1 && asked.calls[0].preview === true, JSON.stringify(asked.calls));
+ok('...carrying the caller\'s token, because authorisation is the server\'s job',
+   asked.auth === 'Bearer test-jwt', String(asked.auth));
+ok('...and puts the number in the question, not just "are you sure"',
+   /Tell 23 people/.test(asked.head || '') && /Send to 23/.test(asked.go || ''),
+   JSON.stringify([asked.head, asked.go]));
+ok('...and says plainly that this one cannot be taken back',
+   /cannot be withdrawn/.test(asked.note || ''), asked.note);
+
+// Cancelling sends nothing. The preview already happened; no second call may.
+await pg.evaluate(() => document.getElementById('tellno').click());
+await pg.waitForTimeout(250);
+const cancelled = await pg.evaluate(() => ({
+  calls: window.__fetches.length,
+  open: document.getElementById('modal').classList.contains('on'),
+}));
+ok('cancelling sends nothing', cancelled.calls === 1 && cancelled.open === false,
+   JSON.stringify(cancelled));
+
+// Confirming does.
+await pg.evaluate(() => document.querySelector('[data-dptell]').click());
+await pg.waitForTimeout(400);
+await pg.evaluate(() => document.getElementById('tellgo').click());
+await pg.waitForTimeout(500);
+const went = await pg.evaluate(() => ({
+  calls: window.__fetches.map((f) => f.body.preview === true),
+  toast: document.getElementById('toast').textContent.replace(/\s+/g, ' '),
+  bad: document.getElementById('toast').classList.contains('bad'),
+}));
+ok('confirming sends, as a second call that is not a preview',
+   went.calls.length === 3 && went.calls[2] === false, JSON.stringify(went.calls));
+ok('...and reports how many actually went', /Sent to 23 people/.test(went.toast), went.toast);
+ok('...without an error style on a clean run', went.bad === false, went.toast);
+
+// A partial send is reported as one. "Sent" over a run where four bounced is
+// the kind of reassurance that costs somebody a follow-up they thought they
+// had already made.
+await pg.evaluate(() => {
+  window.__send = { ok: true, recipients: 23, sent: 19, failed: 4, skipped: {} };
+  document.getElementById('toast').textContent = '';
+});
+await pg.evaluate(() => document.querySelector('[data-dptell]').click());
+await pg.waitForTimeout(400);
+await pg.evaluate(() => document.getElementById('tellgo').click());
+await pg.waitForTimeout(500);
+const partial = await pg.evaluate(() => ({
+  toast: document.getElementById('toast').textContent.replace(/\s+/g, ' '),
+  bad: document.getElementById('toast').classList.contains('bad'),
+}));
+ok('a partial send is reported as a partial send',
+   /19/.test(partial.toast) && /4 did not go out/.test(partial.toast) && partial.bad === true,
+   partial.toast);
+
+// Nobody to tell is a toast, not a dialog with a zero in it — and the two
+// reasons for it are different facts.
+await pg.evaluate(() => {
+  window.__preview = { ok: true, preview: true, recipients: 0, skipped: {} };
+  document.getElementById('toast').textContent = '';
+});
+await pg.evaluate(() => document.querySelector('[data-dptell]').click());
+await pg.waitForTimeout(400);
+const none = await pg.evaluate(() => ({
+  open: document.getElementById('modal').classList.contains('on'),
+  toast: document.getElementById('toast').textContent.replace(/\s+/g, ' '),
+}));
+ok('no audience at all explains how to get one',
+   none.open === false && /no audience to tell/.test(none.toast) &&
+   /sign-in form/.test(none.toast), none.toast);
+
+await pg.evaluate(() => {
+  window.__preview = { ok: true, preview: true, recipients: 0,
+                       skipped: { already: 23, unsubscribed: 2, no_link: 1 } };
+  document.getElementById('toast').textContent = '';
+});
+await pg.evaluate(() => document.querySelector('[data-dptell]').click());
+await pg.waitForTimeout(400);
+const allTold = await pg.evaluate(() =>
+  document.getElementById('toast').textContent.replace(/\s+/g, ' '));
+ok('everybody already told is a different sentence from nobody to tell',
+   /Nobody new to tell/.test(allTold) && /23 already told/.test(allTold) &&
+   /2 unsubscribed/.test(allTold) && /revoked or expired/.test(allTold), allTold);
+
+// Email not configured must not read as "sent".
+await pg.evaluate(() => {
+  window.__noticeStatus = 501;
+  document.getElementById('toast').textContent = '';
+});
+await pg.evaluate(() => document.querySelector('[data-dptell]').click());
+await pg.waitForTimeout(400);
+const unconf = await pg.evaluate(() => ({
+  open: document.getElementById('modal').classList.contains('on'),
+  toast: document.getElementById('toast').textContent.replace(/\s+/g, ' '),
+}));
+ok('an unconfigured mail service says so instead of claiming a send',
+   unconf.open === false && /not set up/.test(unconf.toast), unconf.toast);
+await pg.evaluate(() => { window.__noticeStatus = 200; });
+
+// Once people have been told, the table says so and the button changes to
+// offer only the difference.
+await pg.evaluate(() => {
+  window.__notices = [{ update_id: 'u2', lead_id: 'l1', status: 'sent' },
+                      { update_id: 'u2', lead_id: 'l2', status: 'sent' },
+                      { update_id: 'u2', lead_id: 'l3', status: 'failed' }];
+});
+await pg.evaluate(() => window.__renderWith(window.__stats));
+await pg.waitForTimeout(400);
+const counted = await pg.evaluate(() => {
+  const rows = [...document.querySelectorAll('#drillpanel tbody tr')];
+  const r = rows.find((x) => /Posted/.test(x.children[4].textContent) &&
+                             /2 told/.test(x.children[4].textContent));
+  return { found: !!r, label: r?.querySelector('[data-dptell]')?.textContent };
+});
+// Two sent, one failed: the count is what reached somebody, not what was tried.
+ok('the table says how many were told, counting only the ones that arrived',
+   counted.found === true, JSON.stringify(counted));
+ok('...and the button then offers only anyone new',
+   counted.label === 'Tell anyone new', String(counted.label));
+await pg.evaluate(() => { window.__notices = []; });
 
 console.log('\nerrors:', errs.length ? errs : 'none');
 console.log('non-200:', missing.length ? missing : 'none');
