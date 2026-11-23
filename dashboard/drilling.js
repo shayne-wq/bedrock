@@ -38,6 +38,11 @@ import {
   DRILL, dNum, drillReport, drillMetres, drillPace, drillForecast,
   drillStaleDays, drillVariance, fmtPace,
 } from "./lib/drill-forecast.js";
+// Placing the rig by pointing at it. The boxes below the map remain the
+// record — this is the other way to fill them in, for the people who know
+// where the rig is without knowing its easting.
+import { ensureLeaflet, mountRigMap } from "./lib/rigmap.js";
+import { utmFor, isNAD27 } from "./lib/geo.js";
 
 const STATUS = {
   planned: "Planned", active: "Drilling", paused: "Paused", complete: "Complete",
@@ -834,16 +839,26 @@ function programModal(project, zones, datasets, g, done, prefill = null) {
 
     <div class="field">
       <label>Where the rig stands</label>
+      <!-- The map is the control and the boxes under it are the same position
+           written out, so it is mounted between the label and them. Hidden
+           until it has something to show: a map that opens on an empty ocean
+           because the project has no claims, no collars and no position yet
+           is worse than the two boxes on their own. -->
+      <div class="rigmapwrap" id="dpmapwrap" hidden>
+        <div class="rigmap" id="dpmap"></div>
+        <p class="rigmaphint" id="dpmaphint">Drag the rig, or click the map, to
+           put it where it stands. The coordinates below follow it.</p>
+      </div>
       <div class="grid two">
         <input type="number" id="dpe" step="0.1" placeholder="Easting"
                value="${v.easting ?? ""}">
         <input type="number" id="dpn" step="0.1" placeholder="Northing"
                value="${v.northing ?? ""}">
       </div>
-      <p class="hintline">In this project's own grid — EPSG ${project.epsg}, the
-         same coordinates as your collar sheet. Leave both blank and the deck
-         shows the figures with no rig on the ground; it will not invent a
-         location.</p>
+      <p class="hintline" id="dpgridnote">In this project's own grid — EPSG
+         ${project.epsg}, the same coordinates as your collar sheet. Leave both
+         blank and the deck shows the figures with no rig on the ground; it
+         will not invent a location.</p>
       <div class="row-actions" style="margin-top:8px">
         <button class="btn sm" id="dpmid">Use the centre of the drilling</button>
         <span class="hint" id="dpmidnote"></span>
@@ -854,7 +869,11 @@ function programModal(project, zones, datasets, g, done, prefill = null) {
       <button class="btn primary" id="dpsave">${isNew ? "Add programme" : "Save plan"}</button>
       <button class="btn" id="dpcancel">Cancel</button>
     </div>`);
-  $("dpcancel").onclick = closeModal;
+  // Leaflet keeps document-level listeners, and this modal's markup is
+  // replaced wholesale the next time one opens. Shut the map down with
+  // the screen it belongs to rather than orphaning it behind the next one.
+  const shut = () => { if (rig) { rig.destroy(); rig = null; } closeModal(); };
+  $("dpcancel").onclick = shut;
 
   // The note is the other free-text field that reaches a shareholder, and it
   // is the more exposed of the two: a programme has no draft state, so saving
@@ -868,39 +887,146 @@ function programModal(project, zones, datasets, g, done, prefill = null) {
   $("dpnote").oninput = noteClaims;
   noteClaims();
 
-  // The collar sheet is already uploaded, so the commonest position for a rig
-  // is "in the middle of the holes" and nobody should have to go and average
-  // it by hand. The drills artifact holds the collars; this reads them.
-  $("dpmid").onclick = async () => {
-    const zid = $("dpzone").value || null;
-    const d = (datasets || []).find((x) => x.kind === "drills" && (x.zone_id || null) === zid)
-      || (datasets || []).find((x) => x.kind === "drills");
-    if (!d?.storage_path) {
-      $("dpmidnote").textContent = "No drill collars are loaded for this project yet.";
-      return;
-    }
-    $("dpmid").disabled = true;
-    $("dpmidnote").textContent = "Reading the collars…";
-    try {
+  // ONE READ, TWO CONSUMERS. The centre button and the map both want this
+  // project's collars, and reading the artifact twice would be two signed
+  // URLs, two fetches and two chances to disagree about what is in it.
+  // Cached per zone, because the zone picker can change which file applies.
+  const collarReads = new Map();
+  const readCollars = (zid) => {
+    const key = String(zid || "");
+    if (!collarReads.has(key)) collarReads.set(key, (async () => {
+      const d = (datasets || []).find((x) => x.kind === "drills" && (x.zone_id || null) === zid)
+        || (datasets || []).find((x) => x.kind === "drills");
+      if (!d?.storage_path) return [];
       const { data: sg, error: se } = await db.storage.from("artifacts")
         .createSignedUrl(d.storage_path, 300);
       if (se || !sg?.signedUrl) throw se || new Error("could not read the collar file");
       const r = await fetch(sg.signedUrl);
       if (!r.ok) throw new Error("the collar file could not be fetched (" + r.status + ")");
       const body = await r.json();
-      const cs = (body.traces || []).map((t) => t.collar)
-        .filter((c) => Array.isArray(c) && isFinite(c[0]) && isFinite(c[1]));
-      if (!cs.length) throw new Error("that file has no readable collars");
+      // [easting, northing, id] — the id so the map can name a dot on hover,
+      // which is how an issuer recognises the ground they are looking at.
+      return (body.traces || [])
+        .filter((t) => Array.isArray(t.collar) && isFinite(t.collar[0]) && isFinite(t.collar[1]))
+        .map((t) => [Number(t.collar[0]), Number(t.collar[1]), t.id || null]);
+    })());
+    return collarReads.get(key);
+  };
+
+  // The claim boundary, already in longitude and latitude — `orebody-claims/1`
+  // is stored as EPSG:4326 at ingest — so it needs no conversion to draw.
+  const readClaims = async () => {
+    const d = (datasets || []).find((x) => x.kind === "site");
+    if (!d?.storage_path) return [];
+    const { data: sg } = await db.storage.from("artifacts")
+      .createSignedUrl(d.storage_path, 300);
+    if (!sg?.signedUrl) return [];
+    const r = await fetch(sg.signedUrl);
+    if (!r.ok) return [];
+    const body = await r.json();
+    // Capped. A regional tenure export can hold thousands of rings, and this
+    // map exists to show WHERE, not to render a register — past a few hundred
+    // outlines the ground disappears under its own boundaries.
+    return (body.rings || []).slice(0, 400);
+  };
+
+  // The collar sheet is already uploaded, so the commonest position for a rig
+  // is "in the middle of the holes" and nobody should have to go and average
+  // it by hand.
+  $("dpmid").onclick = async () => {
+    $("dpmid").disabled = true;
+    $("dpmidnote").textContent = "Reading the collars…";
+    try {
+      const cs = await readCollars($("dpzone").value || null);
+      if (!cs.length) throw new Error("No drill collars are loaded for this project yet.");
       const e = cs.reduce((a, c) => a + c[0], 0) / cs.length;
       const n = cs.reduce((a, c) => a + c[1], 0) / cs.length;
       $("dpe").value = e.toFixed(1);
       $("dpn").value = n.toFixed(1);
       $("dpmidnote").textContent = `Centre of ${cs.length} collar${cs.length === 1 ? "" : "s"}. Move it if the rig is somewhere else.`;
+      // The map is the same position, so it moves too — otherwise the pin sits
+      // where it was while the boxes say somewhere else, and the screen is
+      // showing two answers to one question.
+      pushToMap();
     } catch (err) {
       $("dpmidnote").textContent = err.message || String(err);
     }
     $("dpmid").disabled = false;
   };
+
+  // ---- the map ------------------------------------------------------------
+  // Everything it needs is already in this project: the collars are in the
+  // same grid as the boxes, the claims are already lon/lat. The only thing
+  // that can stop it is a grid this console will not convert — and when that
+  // happens the sentence under the boxes says which grid and why, because
+  // "no map appeared" is not something an issuer can act on.
+  let rig = null;
+  const pushToMap = () => {
+    const e = num($("dpe").value), n = num($("dpn").value);
+    if (rig && e !== null && n !== null) { rig.setGrid(e, n); sayOffset(e, n); }
+  };
+  const sayOffset = (e, n) => {
+    const hint = $("dpmaphint");
+    if (!rig || !hint) return;
+    const d = rig.offFrom(e, n);
+    const base = "Drag the rig, or click the map, to put it where it stands. " +
+      "The coordinates below follow it.";
+    // How far the pin is from the nearest hole. The one figure that catches a
+    // rig dropped on the wrong property, which is the mistake this control
+    // makes easiest to make and hardest to see.
+    hint.textContent = d === null ? base
+      : `${base} Nearest collar ${d < 1000 ? Math.round(d) + " m" :
+          (d / 1000).toFixed(1) + " km"} away.`;
+  };
+
+  (async () => {
+    const note = $("dpgridnote");
+    const because = (s) => { note.textContent = note.textContent.trim() + " " + s; };
+    if (!utmFor(project.epsg)) {
+      because(isNAD27(project.epsg)
+        ? `There is no map for EPSG ${project.epsg}: it is NAD27, and this ` +
+          `console does not carry the datum shift that would put a pin where ` +
+          `those coordinates actually are on the ground.`
+        : `The map is offered for UTM grids; EPSG ${project.epsg} is not one ` +
+          `this console converts, so this position is typed.`);
+      return;
+    }
+    if (!(await ensureLeaflet())) {
+      because("The map could not be loaded, so this position is typed.");
+      return;
+    }
+    // A failed read of either file is not a failed modal. The boxes work.
+    const [cs, claims] = await Promise.all([
+      readCollars($("dpzone").value || null).catch(() => []),
+      readClaims().catch(() => []),
+    ]);
+    const e0 = num($("dpe").value), n0 = num($("dpn").value);
+    rig = mountRigMap({
+      host: $("dpmap"),
+      epsg: project.epsg,
+      value: (e0 !== null && n0 !== null) ? [e0, n0] : null,
+      collars: cs,
+      claims,
+      onChange: (e, n) => {
+        $("dpe").value = e;
+        $("dpn").value = n;
+        sayOffset(e, n);
+      },
+    });
+    if (!rig) {
+      because("Load a property outline or a collar file and the rig can be " +
+              "placed on the map instead of typed.");
+      return;
+    }
+    $("dpmapwrap").hidden = false;
+    rig.map.invalidateSize();
+    if (e0 !== null && n0 !== null) sayOffset(e0, n0);
+    // Typed digits reach the pin on COMMIT, not on every keystroke: a half-
+    // typed easting is a real number somewhere else entirely, and a map that
+    // flies to it on the way past is a map nobody can type into.
+    $("dpe").onchange = pushToMap;
+    $("dpn").onchange = pushToMap;
+  })();
 
   $("dpsave").onclick = async () => {
     const name = $("dpname").value.trim();
@@ -942,7 +1068,7 @@ function programModal(project, zones, datasets, g, done, prefill = null) {
     const { error } = await q;
     $("dpsave").disabled = false;
     if (error) return fail(g ? "Save plan" : "Add programme", error);
-    closeModal();
+    shut();
     toast(g ? "Plan saved" : "Programme added");
     done();
   };

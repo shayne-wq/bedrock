@@ -206,6 +206,15 @@ const BASE = `http://127.0.0.1:${server.address().port}`;
 
 const b = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
 const pg = await b.newPage({ viewport: { width: 1280, height: 1000 } });
+// The plan modal now carries a map, so opening one asks for basemap tiles.
+// Served locally: a suite that reaches Esri is a suite that fails on a train,
+// and the imagery is not what this file is about. The map itself is verified
+// in tools/verify_rigmap.mjs.
+await pg.route(/arcgisonline\.com|openstreetmap\.org/, (route) => route.fulfill({
+  status: 200, contentType: 'image/png',
+  body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mN' +
+                    'k+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'),
+}));
 const errs = [];
 const missing = [];
 pg.on('response', (r) => { if (r.status() >= 400) missing.push(r.status() + ' ' + r.url()); });

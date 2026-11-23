@@ -1117,3 +1117,61 @@ body.stripoff .stmain { grid-column: 1 / -1; }
 .mkcol:hover { transform: scale(1.12); }
 .mkcol.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--accent); }
 .mkcol:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ------------------------------------------------- placing the drill rig -- */
+/* A map inside a form. It inherits this console's system rather than bringing
+   its own: Leaflet's stylesheet styles only the mechanism — tiles, panes, the
+   zoom control — and everything below is the frame around it. */
+.rigmapwrap { margin: 0 0 12px; }
+.rigmap {
+  height: 280px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl);
+  overflow: hidden;
+  background: var(--raised);
+}
+.rigmaphint { font-size: 12.5px; color: var(--ink-mute); margin: 6px 0 0; }
+
+/* The live position, on the map. The boxes below hold the same two numbers,
+   but this form scrolls and a drag often happens with them off the bottom of
+   the screen — so the figure that is changing is shown on the thing being
+   dragged. Dark plate rather than a tint: it has to hold over snow. */
+.rigmap { position: relative; }
+.rigmap-readout {
+  position: absolute; z-index: 500; top: 8px; right: 8px;
+  padding: 5px 9px; border-radius: var(--r-ctl);
+  background: rgb(14 20 24 / .82);
+  color: #fff;
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: .02em;
+  white-space: pre;
+  pointer-events: none;
+}
+
+/* The pin. Distinguished from the collars under it by SHAPE — a mast leaning
+   out of a base, the same silhouette the deck draws on the ground — rather
+   than by a hue this product does not otherwise use. The white ring is what
+   keeps it readable over both a snowfield and a shadowed valley. */
+.rigpin { background: none; border: 0; }
+.rigpin-dot {
+  position: absolute; left: 3px; bottom: 0;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--accent);
+  border: 2.5px solid #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / .55);
+}
+.rigpin-mast {
+  position: absolute; left: 11px; bottom: 9px;
+  width: 2.5px; height: 22px;
+  background: #fff;
+  border-radius: 2px;
+  transform-origin: bottom center;
+  transform: rotate(22deg);
+  box-shadow: 0 1px 3px rgb(0 0 0 / .55);
+}
+.leaflet-container .rigpin { cursor: grab; }
+.leaflet-container .rigpin:active { cursor: grabbing; }
+/* Leaflet's own attribution and scale, pulled down to this console's type. */
+.rigmap .leaflet-control-attribution,
+.rigmap .leaflet-control-scale-line {
+  font-family: var(--sans); font-size: 10.5px;
+}
