@@ -57,12 +57,27 @@ export function isNAD27(code) {
 const K0 = 0.9996, FE = 500000, FN_S = 10000000;
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 
+/** Null for anything that is not actually a number.
+ *
+ *  `Number(null)` is 0 and 0 is finite, so a bare `Number.isFinite(Number(v))`
+ *  reads a MISSING easting as a real one on the central meridian — which is
+ *  how an unplaced programme once drew a rig in the Gulf of Guinea. Empty
+ *  string and whitespace do the same thing. `drill-forecast.js` carries the
+ *  identical guard for identical reasons; this is the second place in this
+ *  product where that trap lives, and both of them have now sprung it. */
+const num = (v) => {
+  if (v === null || v === undefined || typeof v === "boolean") return null;
+  if (typeof v === "string" && v.trim() === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
 /** Project grid → [lon, lat]. Returns null when the code is out of scope or
  *  either number is not finite — a half-position is not a position. */
 export function gridToLonLat(easting, northing, code) {
   const p = utmFor(code);
-  const E = Number(easting), N = Number(northing);
-  if (!p || !Number.isFinite(E) || !Number.isFinite(N)) return null;
+  const E = num(easting), N = num(northing);
+  if (!p || E === null || N === null) return null;
 
   const { a, f } = p;
   const e2 = f * (2 - f);
@@ -100,8 +115,8 @@ export function gridToLonLat(easting, northing, code) {
 /** [lon, lat] → project grid. Returns null on the same terms. */
 export function lonLatToGrid(lon, lat, code) {
   const p = utmFor(code);
-  const LO = Number(lon), LA = Number(lat);
-  if (!p || !Number.isFinite(LO) || !Number.isFinite(LA)) return null;
+  const LO = num(lon), LA = num(lat);
+  if (!p || LO === null || LA === null) return null;
 
   const { a, f } = p;
   const e2 = f * (2 - f);

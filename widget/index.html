@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Drilling progress</title>
+<!--
+  The drilling card an issuer puts on their own website.
+
+  This is NOT the deck. The deck is 1.4 MB of Cesium and answers "show me the
+  property"; this answers one question in a sidebar — is the rig turning, and
+  how far through is it — and it has to do that on a phone, on someone else's
+  page, next to their own markup. So: no libraries, no globe, static imagery
+  tiles placed by hand, and the two shared modules that already exist rather
+  than a second copy of the same arithmetic.
+
+  It hydrates the same way every share link does:
+    widget/?t=<share token>&api=<functions base>[&p=<programme id>][&terrain=…]
+  Without `api` it cannot reach the deck function at all — the viewer directory
+  has silently broken every share link once already by forgetting exactly that.
+
+  TWO STATES. At rest it is a 16:9 card over satellite imagery of the ground
+  the rig actually stands on. Pressing Details pushes in on that imagery and
+  dissolves to a rig clip with the figures beside it. The dissolve is
+  deliberate and is not a continuous zoom: the imagery is their property and
+  the clip is an illustration, and one unbroken push from the first to the
+  second would say the clip is the same place at higher magnification.
+-->
+<style>
+  /* Single theme, dark, on purpose: this card sits over satellite imagery and
+     video, and a light variant would fight both. Everything is stated
+     explicitly so it holds on a light host page or a dark one.
+     Layout: one 16:9 box at rest; expanded, a video and a figure column that
+     stack to one column under 620px. */
+  :root {
+    --ink:        #f2f6f8;
+    --ink-dim:    #aab8bf;
+    --ink-mute:   #87959d;
+    --plate:      #0d1316;
+    --plate-2:    #131b1f;
+    --line:       #263036;
+    --accent:     #33b6d8;
+    --accent-ink: #06222c;
+    --good:       #5fd0a0;
+    --warn:       #e0b65a;
+    --r:          10px;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  /* `hidden` is a browser rule of the lowest possible specificity, so ANY
+     class that sets display beats it — and .exp below sets display:grid. That
+     left the expanded panel laid out on top of the resting card, invisible at
+     opacity 0 and still taking every click aimed at the Details button. It
+     only bit at narrow widths, where the video covers the whole card, which is
+     exactly the width a sidebar gives this thing. */
+  [hidden] { display: none !important; }
+  html, body { margin: 0; padding: 0; background: transparent; }
+  body { font-family: var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
+  img { max-width: 100%; }
+
+  .w {
+    position: relative;
+    width: 100%;
+    background: var(--plate);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .w.rest-mode { aspect-ratio: 16 / 9; }
+
+  /* ---- the ground it stands on ---- */
+  .map { position: absolute; inset: 0; overflow: hidden; z-index: 0; }
+  .map img {
+    position: absolute; width: 256px; height: 256px;
+    max-width: none; display: block; user-select: none; -webkit-user-drag: none;
+  }
+  .maplift {
+    position: absolute; inset: 0;
+    transform: scale(1);
+    transition: transform 1100ms cubic-bezier(.22,.61,.36,1);
+    will-change: transform;
+  }
+  .w.going .maplift { transform: scale(1.14); }
+  /* No imagery — a grid this console will not convert, or no position on file.
+     A flat plate, never a map of somewhere else. */
+  .map.blank { background: linear-gradient(160deg, #16222a 0%, #0d1316 70%); }
+  .scrim {
+    position: absolute; inset: 0; z-index: 1;
+    background:
+      linear-gradient(to top, rgb(5 9 11 / .92) 0%, rgb(5 9 11 / .45) 42%, rgb(5 9 11 / .12) 70%),
+      linear-gradient(to bottom, rgb(5 9 11 / .55) 0%, rgb(5 9 11 / 0) 38%);
+  }
+
+  /* ---- resting card ---- */
+  .rest {
+    position: absolute; inset: 0; z-index: 2;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 14px 16px;
+    transition: opacity 320ms ease, transform 320ms ease;
+  }
+  .w.open .rest { opacity: 0; transform: scale(1.03); pointer-events: none; }
+
+  .top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .logo {
+    height: 26px; width: auto; max-width: 128px; object-fit: contain;
+    flex: none; display: block;
+  }
+  .logo-fallback {
+    font-weight: 600; font-size: 13px; letter-spacing: .02em;
+    color: var(--ink); flex: none;
+  }
+  .chip {
+    margin-left: auto; flex: none;
+    font-size: 10.5px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase;
+    padding: 4px 8px; border-radius: 5px;
+    background: rgb(51 182 216 / .18); color: var(--accent);
+    border: 1px solid rgb(51 182 216 / .35);
+  }
+  .chip.live { background: rgb(95 208 160 / .16); color: var(--good); border-color: rgb(95 208 160 / .34); }
+
+  .bottom { display: flex; align-items: flex-end; gap: 14px; min-width: 0; }
+  .btxt { min-width: 0; flex: 1; }
+  h1 {
+    margin: 0 0 3px;
+    font-size: clamp(15px, 3.4vw, 21px);
+    line-height: 1.2; letter-spacing: -.015em; font-weight: 600;
+    text-wrap: balance;
+    overflow-wrap: anywhere;
+  }
+  .asof {
+    margin: 0; font-size: 12px; color: var(--ink-dim);
+    font-variant-numeric: tabular-nums;
+  }
+  .asof.stale { color: var(--warn); }
+
+  .cta {
+    flex: none;
+    font: inherit; font-size: 13px; font-weight: 600;
+    color: var(--accent-ink); background: var(--accent);
+    border: 0; border-radius: 7px; padding: 9px 15px;
+    cursor: pointer;
+    transition: transform 110ms ease, filter 160ms ease;
+  }
+  .cta:hover { filter: brightness(1.08); }
+  .cta:active { transform: translateY(1px) scale(.985); }
+  .cta:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  /* ---- expanded ---- */
+  .exp {
+    position: relative; z-index: 3;
+    display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    gap: 0;
+    opacity: 0;
+    transition: opacity 420ms ease 120ms;
+  }
+  .w.open .exp { opacity: 1; }
+  @media (max-width: 619px) { .exp { grid-template-columns: 1fr; } }
+
+  .vid { position: relative; background: #000; min-width: 0; }
+  .vid video, .vid .vfallback {
+    display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover;
+    background: linear-gradient(160deg, #1b2a33, #0a0f12);
+  }
+  /* Permanent, on the frame, from the first frame. Not a caption underneath
+     that scrolls away: this sits beside real metre counts, and the one thing
+     the card must never imply is that it is footage of their own rig. */
+  .illus {
+    position: absolute; left: 10px; bottom: 10px;
+    font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+    color: #dfe8ec; background: rgb(5 9 11 / .72);
+    padding: 4px 8px; border-radius: 4px;
+    backdrop-filter: blur(2px);
+  }
+  .back {
+    position: absolute; right: 10px; top: 10px;
+    font: inherit; font-size: 12px; font-weight: 600;
+    color: #eaf1f4; background: rgb(5 9 11 / .72);
+    border: 1px solid rgb(255 255 255 / .18);
+    border-radius: 6px; padding: 6px 11px; cursor: pointer;
+  }
+  .back:hover { background: rgb(5 9 11 / .9); }
+  .back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .figs {
+    background: var(--plate-2);
+    padding: 16px 18px 18px;
+    min-width: 0;
+    display: flex; flex-direction: column;
+  }
+  .figs h2 {
+    margin: 0 0 2px; font-size: 15px; font-weight: 600; letter-spacing: -.01em;
+    text-wrap: balance;
+  }
+  .figs .sub {
+    margin: 0 0 14px; font-size: 11.5px; color: var(--ink-mute);
+    letter-spacing: .02em;
+  }
+
+  .bar { height: 5px; border-radius: 3px; background: #222d33; overflow: hidden; margin: 0 0 14px; }
+  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+
+  .rows { display: flex; flex-direction: column; gap: 0; margin: 0; }
+  .row {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 7px 0; border-bottom: 1px solid var(--line);
+    font-size: 13px;
+  }
+  .row:last-child { border-bottom: 0; }
+  .row .k { color: var(--ink-mute); flex: 1; min-width: 0; }
+  .row .v {
+    font-weight: 600; font-variant-numeric: tabular-nums; text-align: right;
+    overflow-wrap: anywhere;
+  }
+  .row .v.quiet { font-weight: 500; color: var(--ink-dim); }
+
+  /* Disclosed results. A POINTER, never a number typed into this product:
+     an intercept is material scientific information, and it reaches the public
+     through a news release with a qualified person's name on it. The slot only
+     ever renders what the issuer has already published, with the date it was
+     published and a link to it. */
+  .disc { margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--line); }
+  .disc .k {
+    font-size: 10.5px; font-weight: 600; letter-spacing: .09em;
+    text-transform: uppercase; color: var(--ink-mute); margin: 0 0 6px;
+  }
+  .disc a { color: var(--accent); text-decoration: none; font-size: 13px; font-weight: 600; }
+  .disc a:hover { text-decoration: underline; }
+  .disc .when { display: block; font-size: 11.5px; color: var(--ink-mute); margin-top: 3px; }
+  .disc .none { font-size: 12.5px; color: var(--ink-mute); margin: 0; }
+
+  .foot {
+    margin-top: auto; padding-top: 14px;
+    font-size: 10.5px; line-height: 1.5; color: var(--ink-mute);
+  }
+  .foot a { color: var(--ink-dim); text-decoration: none; }
+  .foot a:hover { text-decoration: underline; }
+
+  .msg {
+    padding: 20px 18px; font-size: 13px; color: var(--ink-dim); line-height: 1.55;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .maplift, .rest, .exp, .cta { transition-duration: 1ms !important; }
+    .w.going .maplift { transform: none; }
+  }
+</style>
+</head>
+<body>
+<div class="w rest-mode" id="w" hidden>
+  <div class="map" id="map"><div class="maplift" id="maplift"></div></div>
+  <div class="scrim"></div>
+
+  <div class="rest" id="rest">
+    <div class="top">
+      <span id="brand"></span>
+      <span class="chip" id="chip" hidden></span>
+    </div>
+    <div class="bottom">
+      <div class="btxt">
+        <h1 id="pname">—</h1>
+        <p class="asof" id="asof"></p>
+      </div>
+      <button class="cta" id="cta" type="button">Details</button>
+    </div>
+  </div>
+
+  <div class="exp" id="exp" hidden>
+    <div class="vid">
+      <video id="vid" muted loop playsinline preload="none" aria-hidden="true"></video>
+      <span class="illus">Illustration</span>
+      <button class="back" id="back" type="button">Close</button>
+    </div>
+    <div class="figs">
+      <h2 id="fname">—</h2>
+      <p class="sub" id="fsub"></p>
+      <div class="bar" id="bar" hidden><i id="barfill"></i></div>
+      <div class="rows" id="rows"></div>
+      <div class="disc" id="disc"></div>
+      <p class="foot" id="foot"></p>
+    </div>
+  </div>
+</div>
+<div class="msg" id="msg" hidden></div>
+
+<script type="module">
+// The two shared modules. Imported, never reimplemented: the console's panel,
+// the deck and this card all have to say the same thing about one programme,
+// and three copies of "metres per day" is three answers waiting to happen.
+import { gridToLonLat } from '../dashboard/lib/geo.js';
+import { drillCalc, drillMetres, drillField, dNum, DRILL }
+  from '../dashboard/lib/drill-forecast.js';
+
+const $ = (id) => document.getElementById(id);
+const QS = new URLSearchParams(location.search);
+const TOKEN = QS.get('t');
+const API = QS.get('api');
+const WANT = QS.get('p');
+// The setting the clip is shot in. It lives in the embed URL rather than in the
+// database on purpose: it is a choice about a picture, not a fact about the
+// ground, and putting it here means an issuer can change it without a
+// migration and without anybody redeploying.
+const TERRAIN = (QS.get('terrain') || '').toLowerCase();
+const SHOW_FORECAST = QS.get('forecast') === '1';
+
+const TERRAINS = { desert: 1, forest: 1, alpine: 1, winter: 1 };
+const STATUS = { planned: 'Planned', active: 'Drilling', paused: 'Paused', complete: 'Complete' };
+
+const fmtInt = (n) => Math.round(n).toLocaleString('en-CA');
+const fmtM = (n) => fmtInt(n) + ' m';
+const fmtDate = (s) => {
+  if (!s) return null;
+  const d = new Date(String(s).slice(0, 10) + 'T12:00:00Z');
+  return isNaN(+d) ? null : d.toLocaleDateString('en-CA',
+    { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+};
+
+function say(text) { $('msg').textContent = text; $('msg').hidden = false; }
+
+/* ---------------------------------------------------------------- imagery --
+ * Three or four satellite tiles placed by hand. A slippy map would be a
+ * library and an interaction, and this card is neither: nobody pans a logo.
+ */
+function mercator(lon, lat, z) {
+  const n = 2 ** z;
+  const r = lat * Math.PI / 180;
+  return {
+    x: (lon + 180) / 360 * n,
+    y: (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n,
+  };
+}
+function paintMap(host, lon, lat, z) {
+  const T = 256, n = 2 ** z;
+  const w = host.clientWidth || 480;
+  const h = host.clientHeight || 270;
+  const c = mercator(lon, lat, z);
+  // Over-draw by a tile on every side so the push-in at the start of the
+  // transition does not pull empty plate in from the edges.
+  const ox = c.x * T - w / 2, oy = c.y * T - h / 2;
+  const x0 = Math.floor(ox / T) - 1, x1 = Math.floor((ox + w) / T) + 1;
+  const y0 = Math.floor(oy / T) - 1, y1 = Math.floor((oy + h) / T) + 1;
+  let asked = 0;
+  for (let ty = y0; ty <= y1; ty++) {
+    if (ty < 0 || ty >= n) continue;
+    for (let tx = x0; tx <= x1; tx++) {
+      const wx = ((tx % n) + n) % n;
+      const img = new Image();
+      img.alt = '';
+      img.decoding = 'async';
+      img.loading = 'eager';
+      img.src = 'https://services.arcgisonline.com/arcgis/rest/services/' +
+        'World_Imagery/MapServer/tile/' + z + '/' + ty + '/' + wx;
+      img.style.left = (tx * T - ox) + 'px';
+      img.style.top = (ty * T - oy) + 'px';
+      host.appendChild(img);
+      asked++;
+    }
+  }
+  return asked;
+}
+
+/* ------------------------------------------------------------------ host --
+ * The card lives in an iframe on somebody else's page, and an iframe cannot
+ * paint outside its own box. So expanding is a request, not an act: the embed
+ * snippet listens for this and resizes the frame. If the host ignores it the
+ * card still works — it just expands inside whatever height it was given,
+ * which is why the expanded layout stacks rather than assuming width.
+ */
+function tellHost(type, px) {
+  if (window.parent === window) return;
+  try { window.parent.postMessage({ source: 'bedrock-drill', type, height: px }, '*'); }
+  catch { /* a host that will not listen is not an error */ }
+}
+function measure() {
+  const el = $('w');
+  return Math.ceil(el.getBoundingClientRect().height) + 2;
+}
+
+/* ------------------------------------------------------------------ boot -- */
+if (!TOKEN || !API) {
+  say('This card needs its share link. The embed code carries both ?t= and ' +
+      '&api=, and without them there is nothing to read.');
+} else {
+  boot().catch((e) => say('The drilling programme could not be loaded. ' +
+                          (e && e.message ? e.message : '')));
+}
+
+async function boot() {
+  const url = API.replace(/\/+$/, '') + '/functions/v1/deck?t=' +
+    encodeURIComponent(TOKEN) + '&embed=1';
+  const r = await fetch(url, { headers: { accept: 'application/json' } });
+  const payload = await r.json().catch(() => null);
+  if (!r.ok || !payload) {
+    throw new Error(payload && payload.error ? payload.error : 'HTTP ' + r.status);
+  }
+
+  const progs = payload.programs || [];
+  // Named programme, else the one that is turning, else the first on file.
+  const g = (WANT && progs.find((p) => String(p.id) === String(WANT)))
+    || progs.find((p) => p.status === 'active')
+    || progs[0];
+  if (!g) {
+    say('No drilling programme has been published on this deck yet.');
+    return;
+  }
+  render(g, payload);
+}
+
+function render(g, payload) {
+  const project = payload.project || {};
+  const now = Date.now();
+  const calc = drillCalc(g, now);
+  const metres = drillMetres(g);
+  const target = dNum(g.target_m);
+  const holes = drillField(g, 'holes_done');
+  const turning = drillField(g, 'holes_active');
+  const planned = dNum(g.holes_planned);
+
+  // ---- resting card
+  const brand = $('brand');
+  const logo = project.brand && project.brand.logo;
+  if (logo) {
+    const img = new Image();
+    img.className = 'logo';
+    img.alt = project.name || '';
+    img.src = logo;
+    // A logo that will not load must not leave a broken frame on a card whose
+    // whole job is to look like it belongs to that company.
+    img.onerror = () => { brand.textContent = project.name || ''; brand.className = 'logo-fallback'; };
+    brand.appendChild(img);
+  } else {
+    brand.textContent = project.name || '';
+    brand.className = 'logo-fallback';
+  }
+
+  const chip = $('chip');
+  chip.textContent = STATUS[g.status] || g.status || '';
+  chip.hidden = !chip.textContent;
+  if (g.status === 'active') chip.classList.add('live');
+
+  $('pname').textContent = g.name || 'Drilling programme';
+  $('fname').textContent = g.name || 'Drilling programme';
+
+  // "As of" is the figure that separates a live card from a dead one, so it
+  // is on the resting state and it goes amber rather than quietly staying
+  // accurate-but-ancient.
+  const last = (g.updates || []).find((u) => u.as_of);
+  const asof = $('asof');
+  if (last) {
+    asof.textContent = 'As of ' + fmtDate(last.as_of);
+    if (calc.stale !== null && calc.stale > DRILL.STALE && g.status !== 'complete') {
+      asof.classList.add('stale');
+      asof.textContent += ' · ' + fmtInt(calc.stale) + ' days ago';
+    }
+  } else {
+    asof.textContent = 'No progress reported yet';
+    asof.classList.add('stale');
+  }
+
+  const sub = [STATUS[g.status] || g.status];
+  if (g.operator) sub.push(g.operator);
+  if (project.location) sub.push(project.location);
+  $('fsub').textContent = sub.filter(Boolean).join(' · ');
+
+  // ---- figures
+  if (target && metres !== null) {
+    const pct = Math.max(0, Math.min(1, metres / target));
+    $('barfill').style.width = (pct * 100).toFixed(1) + '%';
+    $('bar').hidden = false;
+  }
+  const rows = $('rows');
+  const row = (k, v, quiet) => {
+    if (v === null || v === undefined || v === '') return;
+    const d = document.createElement('div');
+    d.className = 'row';
+    const a = document.createElement('span'); a.className = 'k'; a.textContent = k;
+    const b = document.createElement('span');
+    b.className = 'v' + (quiet ? ' quiet' : ''); b.textContent = v;
+    d.appendChild(a); d.appendChild(b); rows.appendChild(d);
+  };
+  row('Planned', target ? fmtM(target) : '—');
+  row('Drilled to date', metres === null ? 'none reported' : fmtM(metres));
+  if (target && metres !== null) {
+    row('Remaining', (target - metres) <= 0 ? 'target met' : fmtM(target - metres));
+  }
+  row('Holes', holes === null && planned === null ? null
+      : (holes === null ? '—' : fmtInt(holes)) + (planned !== null ? ' of ' + fmtInt(planned) : ''));
+  row('Turning now', turning === null ? null
+      : fmtInt(turning) + (Math.round(turning) === 1 ? ' hole' : ' holes'));
+
+  // The date the issuer committed to. The projection is a different number and
+  // a different kind of statement — on their own website it is something THEY
+  // are publishing — so it is opt-in and says plainly that it was computed.
+  row('Expected completion', fmtDate(g.expected_end) || '—');
+  if (SHOW_FORECAST && calc.forecast) {
+    row('Projected finish', fmtDate(calc.forecast) +
+        (calc.variance ? ' · ' + calc.variance : ''), true);
+  }
+
+  // ---- disclosed results
+  const disc = $('disc');
+  const k = document.createElement('p');
+  k.className = 'k'; k.textContent = 'Disclosed results';
+  disc.appendChild(k);
+  const rel = Array.isArray(g.disclosures) ? g.disclosures[0] : null;
+  if (rel && rel.url && rel.headline) {
+    const a = document.createElement('a');
+    a.href = rel.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+    a.textContent = rel.headline;
+    disc.appendChild(a);
+    const w = document.createElement('span');
+    w.className = 'when';
+    w.textContent = 'News release' + (rel.released_on ? ' · ' + fmtDate(rel.released_on) : '');
+    disc.appendChild(w);
+  } else {
+    const p = document.createElement('p');
+    p.className = 'none';
+    p.textContent = 'None linked. Results appear here once the issuer links the news release that disclosed them.';
+    disc.appendChild(p);
+  }
+
+  $('foot').textContent =
+    'Progress figures are reported by the issuer and are not assay results or ' +
+    'a mineral resource statement. The rig shown is an illustration.';
+
+  // ---- the ground
+  // The tiles are placed in pixels against a MEASURED box, so the card has to
+  // be on the page before they are laid out. Painted while it was still
+  // hidden, clientWidth is 0, the fallback size is used instead, and the
+  // imagery stops short of the right edge of any card wider than the guess.
+  const lonlat = gridToLonLat(g.easting, g.northing, project.epsg);
+  const map = $('map'), lift = $('maplift');
+  $('w').hidden = false;
+  if (lonlat) {
+    // Kept on the element so a resize can lay the tiles out again without
+    // reaching back into the payload — the card is correct at one width
+    // otherwise, the one it happened to load at.
+    lift.dataset.lon = String(lonlat[0]);
+    lift.dataset.lat = String(lonlat[1]);
+    paintMap(lift, lonlat[0], lonlat[1], 15);
+  } else {
+    map.classList.add('blank');
+  }
+
+  // ---- the clip
+  const key = TERRAINS[TERRAIN] ? TERRAIN
+    : (dNum(g.elev_m) !== null && dNum(g.elev_m) > 1700 ? 'alpine' : 'forest');
+  const vid = $('vid');
+  vid.poster = 'rig/' + key + '.jpg';
+  vid.dataset.src = 'rig/' + key + '.mp4';
+
+  wire();
+  tellHost('ready', measure());
+}
+
+function wire() {
+  const w = $('w'), vid = $('vid');
+  let open = false;
+
+  const expand = () => {
+    if (open) return;
+    open = true;
+    // Push in on the imagery first, then dissolve. The clip is loaded only
+    // now: most people who see this card never press the button, and a
+    // sidebar widget has no business pulling a video down for all of them.
+    if (!vid.src && vid.dataset.src) vid.src = vid.dataset.src;
+    w.classList.add('going');
+    $('exp').hidden = false;
+    const go = () => {
+      w.classList.remove('rest-mode');
+      w.classList.add('open');
+      vid.play().catch(() => { /* a browser that refuses autoplay keeps the poster */ });
+      requestAnimationFrame(() => tellHost('expand', measure()));
+    };
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    setTimeout(go, reduced ? 0 : 820);
+  };
+
+  const collapse = () => {
+    if (!open) return;
+    open = false;
+    w.classList.remove('open', 'going');
+    w.classList.add('rest-mode');
+    vid.pause();
+    setTimeout(() => {
+      $('exp').hidden = true;
+      tellHost('collapse', measure());
+    }, 340);
+  };
+
+  $('cta').onclick = expand;
+  $('back').onclick = collapse;
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') collapse(); });
+
+  // The imagery is laid out in pixels against a measured box, so it has to be
+  // laid out again when that box changes. Cheap, and the alternative is a card
+  // that is correct only at the width it first loaded at.
+  let t = null;
+  const relay = () => {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      const lift = $('maplift');
+      if (lift.dataset.lon) {
+        lift.innerHTML = '';
+        paintMap(lift, Number(lift.dataset.lon), Number(lift.dataset.lat), 15);
+      }
+      tellHost('resize', measure());
+    }, 160);
+  };
+  window.addEventListener('resize', relay);
+
+  // Exposed for tools/verify_widget.mjs, which drives this the way a reader
+  // would rather than reaching into it.
+  window.__widget = {
+    expand, collapse, isOpen: () => open,
+    height: measure,
+    tiles: () => document.querySelectorAll('.maplift img').length,
+    rows: () => [...document.querySelectorAll('.row')].map((r) =>
+      [r.querySelector('.k').textContent, r.querySelector('.v').textContent]),
+  };
+}
+</script>
+</body>
+</html>

@@ -268,6 +268,12 @@ const refusals = await pg.evaluate(() => ({
   // A longitude the far side of the antimeridian from the zone. Unwrapped,
   // this is an arc of twenty radians and an easting in the billions.
   wrap: window.__geo.lonLatToGrid(179.9, 0, 32601),
+  // Number(null) is 0 and 0 is finite, so a missing easting converts to a real
+  // place on the central meridian. This product has put a rig in the Gulf of
+  // Guinea that way once already.
+  nullE: window.__geo.gridToLonLat(null, null, 26910),
+  emptyE: window.__geo.gridToLonLat('', '', 26910),
+  nullLon: window.__geo.lonLatToGrid(null, null, 26910),
 }));
 ok('NAD27 gets no projection at all', refusals.nad27 === null);
 ok('...and is named as NAD27, not just refused', refusals.isN27 === true);
@@ -276,6 +282,10 @@ ok('a non-UTM grid is refused', refusals.albers === null);
 ok('a code that is not a number is refused', refusals.rubbish === null);
 ok('a longitude across the antimeridian stays on the planet',
    refusals.wrap && Math.abs(refusals.wrap[0]) < 1e7, JSON.stringify(refusals.wrap));
+ok('a MISSING coordinate is not the origin of the grid',
+   refusals.nullE === null, JSON.stringify(refusals.nullE));
+ok('...nor is an empty one', refusals.emptyE === null, JSON.stringify(refusals.emptyE));
+ok('...in either direction', refusals.nullLon === null, JSON.stringify(refusals.nullLon));
 
 // ------------------------------------------------------------ the screen ---
 sec('the map opens on a programme that has a position');
